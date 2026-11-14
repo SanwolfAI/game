@@ -158,8 +158,8 @@ export class City {
           this.#buildHotels(d);
           break;
         case 'township':
-          this.#buildRdp(d);
-          this.#buildShops(d);
+          // Township road-network test phase: keep the real road layout open
+          // and drivable, but do not generate houses or shops yet.
           break;
         case 'informal':
           this.#buildShacks(d);
@@ -170,6 +170,8 @@ export class City {
           break;
       }
     }
+    // Street furniture is still generated; roads themselves are built by
+    // RoadNetwork and remain fully available through township areas.
     this.#buildStreetFurniture(districts);
     this.#commitInstances();
     return this.group;
