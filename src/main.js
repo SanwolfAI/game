@@ -179,7 +179,7 @@ async function main() {
   scene.add(landmarks);
 
   const input = new Input();
-  const vehicle = new Vehicle(hf, roads, city, input);
+  const vehicle = new Vehicle(hf, roads, city, input, 'polo');
   scene.add(vehicle.group);
 
   const [vx, vz] = vehicle.forward;
@@ -205,9 +205,14 @@ async function main() {
   const desiredPos = new THREE.Vector3();
   const desiredLook = new THREE.Vector3();
 
+  // Five selectable views, tuned around the Polo Vivo test car.
+  // Local coordinates use +Z as forward and +X as the driver's (right) side.
   const CAM_MODES = [
-    { dist: 9.5, height: 3.9, ahead: 7, look: 1.5 },
-    { dist: 18, height: 8.5, ahead: 12, look: 1.2 }
+    { name: 'Close chase', kind: 'chase', back: 9.5, height: 3.9, ahead: 7, look: 1.5 },
+    { name: 'High chase', kind: 'chase', back: 18, height: 8.5, ahead: 12, look: 1.2 },
+    { name: 'Bonnet', kind: 'bonnet', forward: 1.25, height: 1.65, ahead: 22, look: 1.25 },
+    { name: 'Front view', kind: 'front', forward: 8.5, height: 3.1, look: 1.2 },
+    { name: 'Side view', kind: 'side', right: 7.5, height: 3.2, ahead: 2.5, look: 1.2 }
   ];
 
   let newRoadTimer = 0;
@@ -323,14 +328,27 @@ async function main() {
   function updateCamera(dt, snap) {
     const ent = entity();
     const mode = CAM_MODES[camMode];
-    const dist = inVehicle ? mode.dist : 5.6;
-    const height = inVehicle ? mode.height : 2.5;
-    const ahead = inVehicle ? mode.ahead : 2.5;
-    const look = inVehicle ? mode.look : 1.35;
     const [fx, fz] = ent.forward;
+    const rx = fz;
+    const rz = -fx;
+    const ground = hf.heightAt(ent.x, ent.z);
 
-    desiredPos.set(ent.x - fx * dist, hf.heightAt(ent.x, ent.z) + height, ent.z - fz * dist);
-    desiredLook.set(ent.x + fx * ahead, hf.heightAt(ent.x, ent.z) + look, ent.z + fz * ahead);
+    if (!inVehicle) {
+      desiredPos.set(ent.x - fx * 5.6, ground + 2.5, ent.z - fz * 5.6);
+      desiredLook.set(ent.x + fx * 2.5, ground + 1.35, ent.z + fz * 2.5);
+    } else if (mode.kind === 'front') {
+      desiredPos.set(ent.x + fx * mode.forward, ground + mode.height, ent.z + fz * mode.forward);
+      desiredLook.set(ent.x - fx * 2.2, ground + mode.look, ent.z - fz * 2.2);
+    } else if (mode.kind === 'bonnet') {
+      desiredPos.set(ent.x + fx * mode.forward, ground + mode.height, ent.z + fz * mode.forward);
+      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
+    } else if (mode.kind === 'side') {
+      desiredPos.set(ent.x + rx * mode.right - fx * 1.5, ground + mode.height, ent.z + rz * mode.right - fz * 1.5);
+      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
+    } else {
+      desiredPos.set(ent.x - fx * mode.back, ground + mode.height, ent.z - fz * mode.back);
+      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
+    }
 
     const t = snap ? 1 : 1 - Math.exp(-7 * dt);
     camPos.lerp(desiredPos, t);
@@ -358,7 +376,7 @@ async function main() {
 
     if (input.takePressed('camera')) {
       camMode = (camMode + 1) % CAM_MODES.length;
-      hud.toast(camMode === 0 ? 'Chase camera' : 'High camera', 1.2);
+      hud.toast(`${CAM_MODES[camMode].name} camera`, 1.2);
     }
     if (input.takePressed('horn')) {
       unlockAudio();
