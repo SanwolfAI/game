@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
+import { EXTRA_VEHICLES } from './catalog.js';
 
 function paint(geo, color) {
   const c = new THREE.Color(color);
@@ -137,12 +138,42 @@ const BUILDERS = {
   }
 };
 
+
+function catalogVehicle(spec) {
+ const parts=[];
+ if(spec.shape==='motorcycle'){
+  for(const z of [-1.05,1.05]){const g=new THREE.CylinderGeometry(.43,.43,.18,16);paint(g,'#17191c');g.rotateX(Math.PI/2);g.translate(0,.43,z);parts.push(g);}
+  parts.push(box(.16,.18,1.35,0,.78,0,'#9da3a9'),box(.48,.42,.62,0,1.08,.12,spec.color),box(.42,.16,.62,0,1.02,-.52,'#202329'),box(.34,.12,.34,0,1.31,.16,spec.color),box(.48,.1,.12,0,1.22,.78,'#b8c0c8'),box(.1,.08,.48,0,1.27,.92,'#252a30'),box(.2,.12,.12,0,1.03,1.12,'#fff1c2'));
+  return mergeGeometries(parts);
+ }
+ const bus=spec.shape==='bus',van=spec.shape==='van',truck=spec.shape==='bakkie',suv=spec.shape==='suv';
+ const w=bus?2.55:van?2.05:truck||suv?2:1.86, len=bus?9.2:van?5.8:truck?5.3:suv?4.65:spec.shape==='sports'?4.25:spec.shape==='sedan'?4.7:3.9;
+ const y=bus?.78:.68, r=bus?.52:van||truck||suv?.45:.37, base=len*.34;
+ parts.push(box(w,bus?.72:.52,len,0,y,0,spec.color));
+ if(truck){parts.push(box(w*.92,.86,2.05,0,1.34,.78,spec.color),glass(w*.84,.55,.1,0,1.42,1.83),box(w*.9,.3,2,0,1.02,-1.48,'#555b61'),box(.12,.5,2,w*.43,1.2,-1.48,spec.color),box(.12,.5,2,-w*.43,1.2,-1.48,spec.color));}
+ else{
+  const cab=bus?7.3:van?4:spec.shape==='sports'?1.75:2, cy=bus?2.05:van?1.55:suv?1.35:1.22;
+  parts.push(box(w*.9,bus?1.55:van?1.1:.72,cab,0,cy,bus?-.15:-.12,spec.color));
+  if(bus){for(let z=-3;z<=3;z+=1){parts.push(glass(.08,.88,.76,w*.455,2.12,z),glass(.08,.88,.76,-w*.455,2.12,z));}parts.push(glass(w*.82,1,.1,0,2.12,4.58),glass(w*.82,1,.1,0,2.12,-4.58));}
+  else{parts.push(glass(w*.78,.48,.1,0,cy+.03,.9),glass(.08,.42,cab*.72,w*.455,cy+.02,-.15),glass(.08,.42,cab*.72,-w*.455,cy+.02,-.15),glass(w*.76,.42,.1,0,cy+.02,-1.16));
+   // Simple cockpit with steering wheel on the South African right-hand-drive side.
+   parts.push(box(.58,.12,.42,.42,.92,.55,'#252a30'),box(.1,.34,.1,.58,1.05,.62,'#181b20'),box(.42,.12,.36,.42,.72,-.12,'#24282d'),box(.42,.12,.36,-.42,.72,-.12,'#24282d'));}
+ }
+ const f=len/2;
+ parts.push(box(w*.26,.16,.08,-w*.29,y+.05,f+.02,'#fff2c4'),box(w*.26,.16,.08,w*.29,y+.05,f+.02,'#fff2c4'),box(w*.22,.14,.08,-w*.3,y+.05,-f-.02,'#a5221d'),box(w*.22,.14,.08,w*.3,y+.05,-f-.02,'#a5221d'));
+ if(bus){for(const z of [-3,0,3])parts.push(wheel(r,-w*.52,r,z),wheel(r,w*.52,r,z));}else parts.push(...wheels(w*.52,base,r));
+ if(spec.category==='taxi')parts.push(box(w*.54,.08,.32,0,1.9,-.2,'#f0c51b'),box(w*.72,.16,.08,0,.98,f+.06,'#f0c51b'));
+ return mergeGeometries(parts);
+}
+for(const spec of EXTRA_VEHICLES) BUILDERS[spec.id]=()=>catalogVehicle(spec);
+
 export const VEHICLE_TYPES = [
   { id: 'gusheshe', name: 'BMW 325i Gusheshe', max: 54, boost: 76, handling: 1.55 },
   { id: 'quantum', name: 'Toyota Quantum taxi', max: 44, boost: 62, handling: 1.35 },
   { id: 'polo', name: 'VW Polo Vivo', max: 48, boost: 68, handling: 1.7 },
   { id: 'hilux', name: 'Toyota Hilux bakkie', max: 46, boost: 64, handling: 1.45 },
-  { id: 'saps', name: 'SAPS patrol van', max: 58, boost: 82, handling: 1.5 }
+  { id: 'saps', name: 'SAPS patrol van', max: 58, boost: 82, handling: 1.5 },
+  ...EXTRA_VEHICLES
 ];
 
 export function vehicleType(id) {
@@ -156,7 +187,7 @@ function firstPaint(id) {
     gusheshe: '#b7332c',
     hilux: '#e8e6df',
     saps: '#f1f3f5'
-  }[id];
+  }[id] || EXTRA_VEHICLES.find((v) => v.id === id)?.color || '#e7e7e2';
 }
 
 export function buildVehicleMesh(id) {
