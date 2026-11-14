@@ -141,8 +141,8 @@ export class Input {
   isDown(action) {
     if (this.down.has(action)) return true;
     const s = this.stick;
-    if (action === 'left') return s.x < -0.3;
-    if (action === 'right') return s.x > 0.3;
+    if (action === 'left') return s.x < -0.12;
+    if (action === 'right') return s.x > 0.12;
         return false;
   }
 
