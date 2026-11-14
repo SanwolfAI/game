@@ -28,6 +28,14 @@ export class Input {
     this.down = new Set();
     this.queue = [];
     this.stick = { x: 0, y: 0, active: false };
+    this.gear = 'D';
+
+    for (const button of document.querySelectorAll('.gear-btn')) {
+      button.addEventListener('click', () => {
+        this.gear = button.dataset.gear;
+        for (const item of document.querySelectorAll('.gear-btn')) item.classList.toggle('active', item === button);
+      });
+    }
 
     addEventListener('keydown', (e) => {
       const press = PRESS_ACTIONS[e.code];
@@ -47,8 +55,8 @@ export class Input {
       this.stick.x = 0;
       this.stick.y = 0;
       this.stick.active = false;
-      const knob = document.getElementById('t-knob');
-      if (knob) knob.style.transform = '';
+      const wheel = document.getElementById('t-wheel-inner');
+      if (wheel) wheel.style.transform = '';
     });
 
     for (const btn of document.querySelectorAll('#touch .tbtn')) {
@@ -81,9 +89,9 @@ export class Input {
   }
 
   #setupStick() {
-    const stick = document.getElementById('t-stick');
-    const knob = document.getElementById('t-knob');
-    if (!stick || !knob) return;
+    const stick = document.getElementById('t-wheel');
+    const wheel = document.getElementById('t-wheel-inner');
+    if (!stick || !wheel) return;
     let pointerId = null;
 
     const update = (e) => {
@@ -91,15 +99,10 @@ export class Input {
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       let dx = (e.clientX - cx) / (rect.width / 2);
-      let dy = (e.clientY - cy) / (rect.height / 2);
-      const len = Math.hypot(dx, dy);
-      if (len > 1) {
-        dx /= len;
-        dy /= len;
-      }
+      dx = Math.max(-1, Math.min(1, dx));
       this.stick.x = dx;
-      this.stick.y = dy;
-      knob.style.transform = `translate(${dx * 30}px, ${dy * 30}px)`;
+      this.stick.y = 0;
+      wheel.style.transform = `rotate(${dx * 145}deg)`;
     };
 
     const release = () => {
@@ -107,7 +110,7 @@ export class Input {
       this.stick.x = 0;
       this.stick.y = 0;
       this.stick.active = false;
-      knob.style.transform = '';
+      wheel.style.transform = '';
       stick.classList.remove('active');
     };
 
@@ -140,9 +143,7 @@ export class Input {
     const s = this.stick;
     if (action === 'left') return s.x < -0.3;
     if (action === 'right') return s.x > 0.3;
-    if (action === 'gas') return s.y < -0.3;
-    if (action === 'brake') return s.y > 0.3;
-    return false;
+        return false;
   }
 
   takePressed(action) {
