@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
+import { EXPANSION_TYPES } from './vehicle-catalog.js';
 
 function paint(geo, color) {
   const c = new THREE.Color(color);
@@ -142,8 +143,12 @@ export const VEHICLE_TYPES = [
   { id: 'quantum', name: 'Toyota Quantum taxi', max: 44, boost: 62, handling: 1.35 },
   { id: 'polo', name: 'VW Polo Vivo', max: 48, boost: 68, handling: 1.7 },
   { id: 'hilux', name: 'Toyota Hilux bakkie', max: 46, boost: 64, handling: 1.45 },
-  { id: 'saps', name: 'SAPS patrol van', max: 58, boost: 82, handling: 1.5 }
+  { id: 'saps', name: 'SAPS patrol van', max: 58, boost: 82, handling: 1.5 },
+  ...EXPANSION_TYPES
 ];
+
+// Keep ambient traffic lightweight; the full catalogue is available to the player.
+export const TRAFFIC_VEHICLE_TYPES = VEHICLE_TYPES.slice(0, 5);
 
 export function vehicleType(id) {
   return VEHICLE_TYPES.find((t) => t.id === id) || VEHICLE_TYPES[0];
@@ -156,11 +161,86 @@ function firstPaint(id) {
     gusheshe: '#b7332c',
     hilux: '#e8e6df',
     saps: '#f1f3f5'
-  }[id];
+  }[id] || vehicleType(id).color || '#d8dce0';
+}
+
+
+function buildGenericVehicle(type) {
+  const kind = type.kind || 'car';
+  const color = type.color || '#d8dce0';
+  const parts = [];
+  if (kind === 'motorcycle' || kind === 'sportbike' || kind === 'cruiser' || kind === 'scooter') {
+    const sport = kind === 'sportbike';
+    const cruiser = kind === 'cruiser';
+    const wheelR = cruiser ? 0.43 : 0.36;
+    parts.push(
+      box(0.28, 0.28, 1.15, 0, 0.72, -0.02, '#30343a'),
+      box(0.42, 0.34, 0.62, 0, 1.0, 0.12, color),
+      box(0.38, 0.18, 0.65, 0, 0.84, -0.55, '#171a1e'),
+      box(0.12, 0.68, 0.14, -0.13, 0.75, 0.76, '#aeb8c2'),
+      box(0.12, 0.68, 0.14, 0.13, 0.75, 0.76, '#aeb8c2'),
+      box(0.68, 0.08, 0.12, 0, 1.25, 0.62, '#252a30'),
+      box(0.25, 0.12, 0.18, 0, 0.82, 0.92, '#fff4c5'),
+      wheel(wheelR, 0, wheelR, 1.02),
+      wheel(wheelR, 0, wheelR, -1.02)
+    );
+    if (sport) parts.push(box(0.58, 0.42, 0.48, 0, 1.05, 0.55, color));
+    if (cruiser) parts.push(box(0.62, 0.18, 0.72, 0, 0.95, -0.48, '#171a1e'));
+    if (kind === 'scooter') parts.push(box(0.48, 0.52, 0.58, 0, 0.88, 0.05, color));
+    return mergeGeometries(parts);
+  }
+
+  const isBus = kind === 'bus' || kind === 'coach';
+  const isVan = kind === 'van' || kind === 'minibus' || kind === 'taxi';
+  const isPickup = kind === 'pickup';
+  const isSuv = kind === 'suv' || kind === 'luxury';
+  const length = isBus ? 10.2 : isVan ? 5.8 : isPickup ? 5.3 : isSuv ? 4.8 : 4.25;
+  const width = isBus ? 2.5 : isVan ? 2.05 : 1.9;
+  const baseY = isBus ? 1.15 : isVan ? 1.0 : 0.76;
+  const bodyH = isBus ? 2.35 : isVan ? 1.65 : isSuv ? 0.82 : 0.62;
+  const wheelR = isBus ? 0.62 : isVan ? 0.43 : isPickup || isSuv ? 0.46 : 0.38;
+  parts.push(box(width, bodyH, length, 0, baseY, 0, color));
+  if (isBus) {
+    parts.push(box(width * 0.98, 0.12, length * 0.96, 0, baseY + 1.02, 0, color));
+    for (let z = -length * 0.39; z <= length * 0.4; z += 1.35) {
+      parts.push(box(0.07, 0.9, 0.92, width / 2 + 0.01, baseY + 0.47, z, '#243a4a'));
+      parts.push(box(0.07, 0.9, 0.92, -width / 2 - 0.01, baseY + 0.47, z, '#243a4a'));
+    }
+    parts.push(box(width * 0.82, 0.92, 0.08, 0, baseY + 0.48, length / 2 + 0.015, '#243a4a'));
+  } else {
+    const cabinZ = isPickup ? 0.78 : -0.05;
+    const cabinLen = isPickup ? 2.15 : length * 0.48;
+    parts.push(box(width * 0.84, isVan ? 0.78 : 0.62, cabinLen, 0, baseY + bodyH * 0.58, cabinZ, color));
+    parts.push(box(width * 0.78, 0.46, 0.07, 0, baseY + bodyH * 0.7, cabinZ + cabinLen / 2 + 0.01, '#243a4a'));
+    parts.push(box(0.07, 0.42, cabinLen * 0.7, width * 0.42, baseY + bodyH * 0.7, cabinZ, '#243a4a'));
+    parts.push(box(0.07, 0.42, cabinLen * 0.7, -width * 0.42, baseY + bodyH * 0.7, cabinZ, '#243a4a'));
+    if (isPickup) {
+      parts.push(box(width * 0.88, 0.24, length * 0.36, 0, baseY + 0.18, -length * 0.29, '#343a40'));
+    }
+  }
+  parts.push(
+    box(width * 0.22, 0.16, 0.08, -width * 0.31, baseY - 0.08, length / 2 + 0.02, '#fff4c5'),
+    box(width * 0.22, 0.16, 0.08, width * 0.31, baseY - 0.08, length / 2 + 0.02, '#fff4c5'),
+    box(width * 0.2, 0.14, 0.08, -width * 0.31, baseY - 0.08, -length / 2 - 0.02, '#9e2525'),
+    box(width * 0.2, 0.14, 0.08, width * 0.31, baseY - 0.08, -length / 2 - 0.02, '#9e2525')
+  );
+  const halfTrack = width * 0.54;
+  const halfBase = length * (isBus ? 0.37 : 0.31);
+  const axleCount = isBus ? 3 : 2;
+  for (let axle = 0; axle < axleCount; axle++) {
+    const z = axleCount === 3 ? (axle - 1) * halfBase : (axle === 0 ? halfBase : -halfBase);
+    parts.push(wheel(wheelR, -halfTrack, wheelR, z), wheel(wheelR, halfTrack, wheelR, z));
+  }
+  if (kind === 'taxi') {
+    parts.push(box(width + 0.02, 0.16, length * 0.82, 0, baseY - 0.04, 0, '#e4bd24'));
+    parts.push(box(width + 0.03, 0.08, length * 0.82, 0, baseY + 0.08, 0, '#23824c'));
+  }
+  return mergeGeometries(parts);
 }
 
 export function buildVehicleMesh(id) {
-  const geo = BUILDERS[id] ? BUILDERS[id]() : BUILDERS.gusheshe();
+  const type = vehicleType(id);
+  const geo = BUILDERS[id] ? BUILDERS[id]() : buildGenericVehicle(type);
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = `vehicle-${id}`;
