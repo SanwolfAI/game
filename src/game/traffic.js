@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp } from '../core/utils.js';
-import { VEHICLE_TYPES, buildVehicleMesh } from './models.js';
+import { TRAFFIC_VEHICLE_TYPES, buildVehicleMesh } from './models.js';
 
 function pointAlong(road, dir, dist) {
   const pts = road.pts;
@@ -63,7 +63,7 @@ export class Traffic {
     this.buckets = [];
     this.meshes = [];
 
-    for (const type of VEHICLE_TYPES) {
+    for (const type of TRAFFIC_VEHICLE_TYPES) {
       const count = COUNTS[type.id] || 10;
       const proto = buildVehicleMesh(type.id);
       const mesh = new THREE.InstancedMesh(proto.geometry, proto.material, count);
