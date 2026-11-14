@@ -246,35 +246,87 @@
       }
       #touch .tbtn.active { background: rgba(255, 207, 92, 0.34); }
       #touch .tbtn.small { width: 52px; height: 52px; font-size: 11px; letter-spacing: 0.5px; }
-      #t-stick {
+      #t-wheel {
         position: absolute;
         pointer-events: auto;
-        left: 18px;
+        left: 24px;
         bottom: 22px;
-        width: 138px;
-        height: 138px;
+        width: 154px;
+        height: 154px;
+        display: grid;
+        place-items: center;
         border-radius: 50%;
-        background: rgba(12, 22, 32, 0.42);
-        border: 1px solid var(--edge);
-        backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
+        background: rgba(12, 22, 32, 0.22);
         touch-action: none;
       }
-      #t-stick.active { background: rgba(12, 22, 32, 0.62); }
-      #t-knob {
+      #t-wheel-inner {
+        position: relative;
+        width: 142px;
+        height: 142px;
+        border: 13px solid #68747d;
+        border-radius: 50%;
+        background: radial-gradient(circle, #303b45 0 24%, transparent 26%);
+        box-shadow: inset 0 0 0 2px rgba(255,255,255,.18), 0 5px 16px rgba(0,0,0,.38);
+        transform: rotate(0deg);
+        transition: transform .04s linear;
+      }
+      #t-wheel-inner::before, #t-wheel-inner::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 48%;
+        width: 9px;
+        height: 48px;
+        border-radius: 6px;
+        background: #87939b;
+        transform-origin: 50% 0;
+      }
+      #t-wheel-inner::before { transform: translateX(-50%) rotate(90deg); }
+      #t-wheel-inner::after { transform: translateX(-50%) rotate(0deg); }
+      #t-wheel-hub {
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 58px;
-        height: 58px;
-        margin: -29px 0 0 -29px;
+        width: 35px;
+        height: 35px;
         border-radius: 50%;
-        background: rgba(255, 207, 92, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        transition: transform 0.04s linear;
+        transform: translate(-50%,-50%);
+        background: #b99a53;
+        border: 2px solid rgba(255,255,255,.45);
+        z-index: 2;
       }
-      #t-gas { right: 22px; bottom: 34px; }
-      #t-brake { right: 106px; bottom: 34px; }
+      #touch .pedal {
+        width: 76px;
+        height: 112px;
+        border-radius: 18px;
+        font-size: 14px;
+        letter-spacing: 1px;
+        writing-mode: vertical-rl;
+        box-shadow: inset 0 0 0 5px rgba(255,255,255,.06), 0 5px 16px rgba(0,0,0,.35);
+      }
+      #t-gas { right: 28px; bottom: 26px; background: rgba(39,105,76,.72); }
+      #t-brake { right: 116px; bottom: 26px; background: rgba(139,54,48,.72); }
+      #t-gear {
+        position: absolute;
+        right: 34px;
+        bottom: 150px;
+        display: flex;
+        gap: 7px;
+        padding: 7px;
+        pointer-events: auto;
+        border-radius: 14px;
+      }
+      .gear-btn {
+        width: 42px;
+        height: 38px;
+        border: 1px solid var(--edge);
+        border-radius: 9px;
+        color: var(--ink);
+        background: rgba(12,22,32,.72);
+        font-weight: 800;
+        touch-action: manipulation;
+      }
+      .gear-btn.active { color: #17202a; background: var(--accent); }
       #t-hand { right: 22px; bottom: 118px; }
       #t-horn { right: 106px; bottom: 118px; }
       #t-interact { right: 22px; top: 116px; }
@@ -338,9 +390,14 @@
     </div>
 
     <div id="touch">
-      <div id="t-stick"><div id="t-knob"></div></div>
-      <div class="tbtn" id="t-gas" data-action="gas">▲</div>
-      <div class="tbtn" id="t-brake" data-action="brake">▼</div>
+      <div id="t-wheel"><div id="t-wheel-inner"><div id="t-wheel-hub"></div></div></div>
+      <div class="tbtn pedal" id="t-gas" data-action="gas">ACCELERATOR</div>
+      <div class="tbtn pedal" id="t-brake" data-action="brake">BRAKE</div>
+      <div id="t-gear" class="panel" aria-label="Gear selector">
+        <button class="gear-btn" type="button" data-gear="R">R</button>
+        <button class="gear-btn active" type="button" data-gear="D">D</button>
+        <button class="gear-btn" type="button" data-gear="N">N</button>
+      </div>
       <div class="tbtn" id="t-hand" data-action="handbrake">DRIFT</div>
       <div class="tbtn" id="t-horn" data-action="horn" data-press="true">HORN</div>
       <div class="tbtn small" id="t-interact" data-action="interact" data-press="true">IN/OUT</div>
