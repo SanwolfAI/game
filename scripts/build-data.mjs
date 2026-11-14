@@ -74,10 +74,10 @@ const roads = raw.roads.map(r => {
   return {
     id: r.id,
     h: hw,
-    n: r.tags.name || r.tags.ref || '',
+    n: r.tags.old_name || r.tags.name || '',
     r: r.tags.ref || '',
     w: Number(r.tags.lanes) || 0,
-    o: r.tags.oneway === 'yes' || r.tags.oneway === '1' ? 1 : 0,
+    o: r.tags.oneway === 'yes' || r.tags.oneway === '1' || r.tags.oneway === '-1' ? 1 : 0,
     b: r.tags.bridge === 'yes' ? 1 : 0,
     p: simp
   };
