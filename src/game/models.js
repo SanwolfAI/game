@@ -148,8 +148,10 @@ function catalogVehicle(spec) {
  }
  const bus=spec.shape==='bus',van=spec.shape==='van',truck=spec.shape==='bakkie',suv=spec.shape==='suv';
  const w=bus?2.55:van?2.05:truck||suv?2:1.86, len=bus?9.2:van?5.8:truck?5.3:suv?4.65:spec.shape==='sports'?4.25:spec.shape==='sedan'?4.7:3.9;
- const y=bus?.78:.68, r=bus?.52:van||truck||suv?.45:.37, base=len*.34;
- parts.push(box(w,bus?.72:.52,len,0,y,0,spec.color));
+ const y = bus ? 0.78 : 0.68;
+ const r = bus ? 0.52 : (van || truck || suv) ? 0.45 : 0.37;
+ const base = len * 0.34;
+ parts.push(box(w, bus ? 0.72 : 0.52, len, 0, y, 0, spec.color));
  if(truck){parts.push(box(w*.92,.86,2.05,0,1.34,.78,spec.color),glass(w*.84,.55,.1,0,1.42,1.83),box(w*.9,.3,2,0,1.02,-1.48,'#555b61'),box(.12,.5,2,w*.43,1.2,-1.48,spec.color),box(.12,.5,2,-w*.43,1.2,-1.48,spec.color));}
  else{
   const cab=bus?7.3:van?4:spec.shape==='sports'?1.75:2, cy=bus?2.05:van?1.55:suv?1.35:1.22;
