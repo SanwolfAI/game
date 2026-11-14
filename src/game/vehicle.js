@@ -77,7 +77,8 @@ export class Vehicle {
 
   update(dt) {
     const input = this.input;
-    const gas = input.isDown('gas');
+    const gear = input.gear || 'D';
+    const gas = input.isDown('gas') && gear !== 'N';
     const brake = input.isDown('brake');
     const boost = input.isDown('boost');
     const handbrake = input.isDown('handbrake');
@@ -85,8 +86,9 @@ export class Vehicle {
 
     const maxSpeed = boost ? this.spec.boost : this.spec.max;
     if (gas) {
-      const pull = 1 - clamp(Math.max(this.speed, 0) / maxSpeed, 0, 1);
-      this.speed += (10 + 16 * pull) * dt;
+      const direction = gear === 'R' ? -1 : 1;
+      const pull = 1 - clamp(Math.max(this.speed * direction, 0) / maxSpeed, 0, 1);
+      this.speed += direction * (10 + 16 * pull) * dt;
     } else if (!brake && !handbrake) {
       this.speed *= Math.exp(-0.55 * dt);
       if (Math.abs(this.speed) < 0.25) this.speed = 0;
@@ -94,7 +96,8 @@ export class Vehicle {
 
     if (brake) {
       if (this.speed > 0.4) this.speed = Math.max(0, this.speed - 26 * dt);
-      else this.speed = Math.max(-MAX_REVERSE, this.speed - 7 * dt);
+      else if (this.speed < -0.4) this.speed = Math.min(0, this.speed + 26 * dt);
+      else this.speed = 0;
     }
 
     if (handbrake) {
