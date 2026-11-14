@@ -10,7 +10,12 @@ export const ROAD_CLASS = {
   tertiary: { width: 8.5, speed: 15, color: 0x5f5f5c, major: true },
   residential: { width: 7, speed: 11, color: 0x6f6f6a, major: false },
   unclassified: { width: 7, speed: 11, color: 0x6a6a64, major: false },
-  living_street: { width: 5.5, speed: 7, color: 0x66645e, major: false }
+  living_street: { width: 5.5, speed: 7, color: 0x66645e, major: false },
+  service: { width: 4.5, speed: 6, color: 0x62615d, major: false },
+  track: { width: 3.2, speed: 5, color: 0x756c59, major: false },
+  path: { width: 2, speed: 4, color: 0x817b6a, major: false },
+  footway: { width: 1.8, speed: 4, color: 0x898273, major: false },
+  steps: { width: 1.6, speed: 2, color: 0x898273, major: false }
 };
 
 const LINK_CLASS = { width: 6, speed: 14, color: 0x55555a, major: false };
@@ -45,7 +50,8 @@ export class RoadNetwork {
         ref: r.r || '',
         oneway: !!r.o,
         bridge: !!r.b,
-        width: info.width,
+        lanes: Math.max(1, Number(r.w) || 0),
+        width: Number(r.w) > 0 ? Math.max(info.width, Number(r.w) * (roadClass(r.h).major ? 3.7 : 3.4)) : info.width,
         speed: info.speed,
         major: info.major,
         pts,
@@ -135,7 +141,7 @@ export class RoadNetwork {
       const k = ckey(Math.floor(x / chunkSize), Math.floor(z / chunkSize));
       let chunk = chunks.get(k);
       if (!chunk) {
-        chunk = { positions: [], colors: [], indices: [], dashPos: [], dashIdx: [] };
+        chunk = { positions: [], colors: [], indices: [], dashPos: [], dashIdx: [], edgePos: [], edgeIdx: [] };
         chunks.set(k, chunk);
       }
       return chunk;
@@ -143,6 +149,7 @@ export class RoadNetwork {
 
     const asphalt = new THREE.MeshLambertMaterial({ vertexColors: true });
     const dashMat = new THREE.MeshBasicMaterial({ color: 0xf2e9c8, side: THREE.DoubleSide });
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffd52a, side: THREE.DoubleSide });
 
     for (const road of this.roads) {
       const positions = [];
@@ -206,7 +213,7 @@ export class RoadNetwork {
           const mx = (p[0] + q[0]) / 2;
           const mz = (p[1] + q[1]) / 2;
           const my = this.hf.heightAt(mx, mz) + (road.bridge ? lift : 0.33);
-          const hl = 2.2;
+          const hl = road.cls === 'motorway' || road.cls === 'trunk' ? 2 : 1.5;
           const hw = 0.16;
           const b0 = dashChunk.dashPos.length / 3;
           dashChunk.dashPos.push(
@@ -231,7 +238,7 @@ export class RoadNetwork {
       mesh.name = 'roads';
       this.group.add(mesh);
 
-      if (chunk.dashPos.length) {
+      if (chunk.edgePos.length) {\n        const eg = new THREE.BufferGeometry();\n        eg.setAttribute('position', new THREE.Float32BufferAttribute(chunk.edgePos, 3));\n        eg.setIndex(chunk.edgeIdx);\n        const em = new THREE.Mesh(eg, edgeMat);\n        em.name = 'yellowLeftEdge';\n        this.group.add(em);\n      }\n      if (chunk.dashPos.length) {
         const dg = new THREE.BufferGeometry();
         dg.setAttribute('position', new THREE.Float32BufferAttribute(chunk.dashPos, 3));
         dg.setIndex(chunk.dashIdx);
