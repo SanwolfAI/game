@@ -4,10 +4,15 @@ import { toXZ } from '../core/geo.js';
 
 export const ROAD_CLASS = {
   motorway: { width: 17, speed: 30, color: 0x3b3b40, major: true },
+  motorway_link: { width: 7, speed: 14, color: 0x4a4a50, major: false },
   trunk: { width: 14, speed: 25, color: 0x45454b, major: true },
+  trunk_link: { width: 7, speed: 13, color: 0x4e4e54, major: false },
   primary: { width: 12, speed: 22, color: 0x4e4e54, major: true },
+  primary_link: { width: 6, speed: 12, color: 0x55555b, major: false },
   secondary: { width: 10, speed: 18, color: 0x585860, major: true },
+  secondary_link: { width: 6, speed: 11, color: 0x5a5a60, major: false },
   tertiary: { width: 8.5, speed: 15, color: 0x5f5f5c, major: true },
+  tertiary_link: { width: 5, speed: 9, color: 0x60605c, major: false },
   residential: { width: 7, speed: 11, color: 0x6f6f6a, major: false },
   unclassified: { width: 7, speed: 11, color: 0x6a6a64, major: false },
   living_street: { width: 5.5, speed: 7, color: 0x66645e, major: false },
@@ -238,7 +243,15 @@ export class RoadNetwork {
       mesh.name = 'roads';
       this.group.add(mesh);
 
-      if (chunk.edgePos.length) {\n        const eg = new THREE.BufferGeometry();\n        eg.setAttribute('position', new THREE.Float32BufferAttribute(chunk.edgePos, 3));\n        eg.setIndex(chunk.edgeIdx);\n        const em = new THREE.Mesh(eg, edgeMat);\n        em.name = 'yellowLeftEdge';\n        this.group.add(em);\n      }\n      if (chunk.dashPos.length) {
+      if (chunk.edgePos.length) {
+        const eg = new THREE.BufferGeometry();
+        eg.setAttribute('position', new THREE.Float32BufferAttribute(chunk.edgePos, 3));
+        eg.setIndex(chunk.edgeIdx);
+        const em = new THREE.Mesh(eg, edgeMat);
+        em.name = 'yellowLeftEdge';
+        this.group.add(em);
+      }
+      if (chunk.dashPos.length) {
         const dg = new THREE.BufferGeometry();
         dg.setAttribute('position', new THREE.Float32BufferAttribute(chunk.dashPos, 3));
         dg.setIndex(chunk.dashIdx);
