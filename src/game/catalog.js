@@ -14,7 +14,7 @@ function add(brand,models,shape,category='car',opts={}) {
 }
 // Hatchbacks, sedans, SUVs, sports cars and bakkies. Existing Quantum, Hilux, Polo Vivo, Gusheshe and SAPS are excluded.
 add('Alfa Romeo','Giulia','sedan'); add('Alfa Romeo','Stelvio','suv');
-add('Audi','A1','compact'); add('Audi','A3;A4;A5;A6;A7;A8','sedan'); add('Audi','Q2;Q3;Q5;Q7;Q8;e-tron','suv'); add('Audi','R8','sports',{});
+add('Audi','A1','compact'); add('Audi','A3;A4;A5;A6;A7;A8','sedan'); add('Audi','Q2;Q3;Q5;Q7;Q8;e-tron','suv'); add('Audi','R8','sports');
 add('BAIC','B30;B40 Plus;X55 Plus','suv');
 add('BMW','1 Series;2 Series;3 Series;4 Series;5 Series;7 Series','sedan'); add('BMW','M3;M4;M5;Z4','sports'); add('BMW','X1;X2;X3;X4;X5;X6;X7;XM','suv');
 add('Chery','Tiggo 4;Tiggo 7;Tiggo 8;Tiggo 9','suv'); add('Citroën','C3','compact'); add('Citroën','C3 Aircross','suv'); add('Fiat','500','compact');
@@ -34,7 +34,7 @@ add('MINI','Cooper;Clubman','compact'); add('MINI','Countryman','suv');
 add('Mitsubishi','ASX;Eclipse Cross;Outlander;Pajero Sport','suv'); add('Mitsubishi','Triton','bakkie');
 add('Nissan','Magnite;Micra','compact'); add('Nissan','X-Trail;Patrol','suv'); add('Nissan','Navara','bakkie');
 add('Omoda','C5;C7;C9','suv'); add('Jaecoo','J5;J7','suv'); add('Opel','Corsa','compact'); add('Opel','Mokka;Grandland','suv');
-add('Peugeot','2008;3008;5008','suv'); add('Peugeot','Landtrek','bakkie'); add('Porsche','911;Cayenne?','sports'); add('Porsche','Cayenne;Macan','suv'); add('Porsche','Panamera;Taycan','sedan');
+add('Peugeot','2008;3008;5008','suv'); add('Peugeot','Landtrek','bakkie'); add('Porsche','911;Cayman;Boxster','sports'); add('Porsche','Cayenne;Macan','suv'); add('Porsche','Panamera;Taycan','sedan');
 add('Renault','Kwid;Kiger;Triber;Captur','compact'); add('Renault','Duster','suv');
 add('Suzuki','Swift;Baleno;Celerio;S-Presso','compact'); add('Suzuki','Jimny;Fronx;Grand Vitara','suv'); add('Suzuki','Ertiga','van');
 add('Tata','Tiago','compact'); add('Tata','Punch;Harrier;Curvv','suv');
@@ -46,7 +46,7 @@ add('Mercedes-Benz','Sprinter','van','minibus',{traffic:true}); add('Mercedes-Be
 add('MAN',"Lion's City;Lion's Coach",'bus','bus'); add('Scania','Touring;Citywide','bus','bus'); add('Volvo','B7R;B9R','bus','bus');
 add('Iveco','Daily Minibus','van','minibus'); add('Tata','Bus','bus','bus'); add('Isuzu','Bus','bus','bus'); add('Hino','Bus','bus','bus');
 add('Yutong','City Bus','bus','bus'); add('King Long','Coach','bus','bus'); add('Higer','Bus','bus','bus'); add('Marcopolo','Coach','bus','bus'); add('Irizar','Coach','bus','bus'); add('Fuso','Rosa','bus','bus');
-add('SA Taxi','Quantum 15-Seater','van','taxi',{color:'#f4f0e6',traffic:true}); add('SA Taxi','HiAce Commuter','van','taxi',{color:'#f4f0e6',traffic:true});
+add('SA Taxi','16-Seater Minibus Taxi','van','taxi',{color:'#f4f0e6',traffic:true});
 add('SA Bus','Metro Commuter Bus','bus','bus',{traffic:true}); add('SA Bus','Intercity Coach','bus','bus'); add('SA Bus','School Bus','bus','bus',{color:'#e7bd24'});
 // Motorcycles: sport, adventure, cruiser, road and commuter.
 add('BMW Motorrad','R1250 GS;R1300 GS;F900R;S1000RR','motorcycle','motorcycle');
