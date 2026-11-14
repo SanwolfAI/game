@@ -1,4 +1,8 @@
 .env
 *.key
+node_modules
 node_modules/
 __pycache__/
+android/.gradle/
+android/app/build/
+android/build/

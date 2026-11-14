@@ -1,0 +1,78 @@
+name: Build APK and website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the JavaScript
+        run: npm test
+      - name: Copy the game into the app
+        run: |
+          A=android/app/src/main/assets
+          mkdir -p $A/src/data
+          cp index.html $A/
+          cp -r vendor $A/
+          rsync -a --exclude data src/ $A/src/
+          cp src/data/durban-game.json $A/src/data/
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build APK
+        run: gradle -p android assembleDebug --no-daemon
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk eThekwini-Drive.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eThekwini-Drive-apk
+          path: eThekwini-Drive.apk
+      - name: Publish as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest -y --cleanup-tag || true
+          gh release create apk-latest eThekwini-Drive.apk \
+            --title "Latest test APK (build ${{ github.run_number }})" \
+            --notes "Built from ${{ github.sha }}" --target ${{ github.sha }}
+
+  website:
+    # Free GitHub Pages only works on a public repo.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect the game files
+        run: |
+          mkdir -p site/src/data
+          cp index.html site/
+          cp -r vendor site/
+          rsync -a --exclude data src/ site/src/
+          cp src/data/durban-game.json site/src/data/
+          touch site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
