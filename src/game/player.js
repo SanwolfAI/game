@@ -6,9 +6,9 @@ const RUN = 7.2;
 const PERSON_RADIUS = 0.5;
 
 export class Player {
-  constructor(hf, city, input, x, z, yaw = 0) {
+  constructor(hf, roads, input, x, z, yaw = 0) {
     this.hf = hf;
-    this.city = city;
+    this.roads = roads;
     this.input = input;
     this.x = x;
     this.z = z;
@@ -24,7 +24,7 @@ export class Player {
     this.legR = model.legR;
     this.shoeL = model.shoeL;
     this.shoeR = model.shoeR;
-    this.group.visible = false;
+    this.group.visible = true;
     this.#place();
   }
 
@@ -61,7 +61,9 @@ export class Player {
     this.x += fx * this.speed * dt;
     this.z += fz * this.speed * dt;
 
-    if (this.hf.signedCoastDistance(this.x, this.z) < 2) {
+    const nearest = this.roads?.nearestRoad(this.x, this.z, 45);
+    const roadLimit = nearest ? Math.max(1.8, nearest.road.width * 0.5 - PERSON_RADIUS) : 0;
+    if (!nearest || nearest.dist > roadLimit || this.hf.signedCoastDistance(this.x, this.z) < 2) {
       this.x = prevX;
       this.z = prevZ;
     }
@@ -76,8 +78,10 @@ export class Player {
   }
 
   #resolveCollisions() {
-    const nearby = this.city.hash.query(this.x, this.z, 6);
-    for (const c of nearby) {
+    const nearby = this.roads?.nearestRoad(this.x, this.z, 45);
+    if (!nearby) return;
+    // Roads are the only walkable surfaces in Phase 1; no building colliders exist.
+    for (const c of []) {
       const dx = this.x - c.x;
       const dz = this.z - c.z;
       const d = Math.hypot(dx, dz);
