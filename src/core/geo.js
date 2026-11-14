@@ -164,9 +164,89 @@ export const DISTRICTS = [
   }
 ];
 
-export function districtsWorld() {
-  return DISTRICTS.map((d) => {
+export function districtsWorld(data) {
+  const all = DISTRICTS.concat(osmDistricts(data?.places, data?.landuse));
+  return all.map((d) => {
     const [x, z] = toXZ(d.lon, d.lat);
     return { ...d, x, z, r: d.r };
   });
+}
+
+const TOWNSHIP_PALETTE = ['#c9a37a', '#b98f66', '#d6b48c', '#a8815c', '#c2a184', '#cfae86', '#bb9a72'];
+const INFORMAL_PALETTE = ['#9aa3a6', '#8d979b', '#a7afb1', '#7f8a8d', '#94a0a3'];
+const SUBURB_PALETTE = ['#e8e2d6', '#ded6c8', '#efe9dd', '#d6cdbc', '#f0ece2', '#e6ded0'];
+
+function buildingSpec(kind, r) {
+  if (kind === 'informal') {
+    return { min: 4, max: 7, count: Math.max(80, Math.min(420, Math.round(r * 0.9))), gap: 12 };
+  }
+  if (kind === 'township') {
+    return { min: 6, max: 11, count: Math.max(60, Math.min(300, Math.round(r * 0.5))), gap: 18 };
+  }
+  return { min: 7, max: 14, count: Math.max(30, Math.min(150, Math.round(r * 0.28))), gap: 28 };
+}
+
+function paletteFor(kind) {
+  if (kind === 'informal') return INFORMAL_PALETTE;
+  if (kind === 'township') return TOWNSHIP_PALETTE;
+  return SUBURB_PALETTE;
+}
+
+// Turns the OSM place labels and residential/informal landuse polygons into
+// extra city districts so the whole live map fills in, not just the landmarks.
+export function osmDistricts(places, landuse) {
+  const out = [];
+  const taken = DISTRICTS.map((d) => {
+    const [x, z] = toXZ(d.lon, d.lat);
+    return [x, z, d.r];
+  });
+  const overlaps = (x, z, r) => taken.some(([tx, tz, tr]) => Math.hypot(x - tx, z - tz) < Math.max(tr, r) * 0.7);
+  const add = (name, kind, lon, lat, r) => {
+    const [x, z] = toXZ(lon, lat);
+    if (overlaps(x, z, r)) return;
+    taken.push([x, z, r]);
+    out.push({
+      name,
+      kind,
+      lon,
+      lat,
+      r,
+      buildings: buildingSpec(kind, r),
+      palette: paletteFor(kind)
+    });
+  };
+
+  const labels = (Array.isArray(places) ? places : [])
+    .filter((p) => Array.isArray(p.c) && p.r >= 350)
+    .sort((a, b) => b.r - a.r)
+    .slice(0, 40);
+  for (const p of labels) {
+    const kind =
+      p.k === 'neighbourhood' || p.k === 'quarter'
+        ? 'township'
+        : p.r >= 1400
+          ? 'township'
+          : 'suburb';
+    add(p.n || 'Area', kind, p.c[0], p.c[1], Math.min(p.r, 2400));
+  }
+
+  const areas = (Array.isArray(landuse) ? landuse : [])
+    .filter((l) => Array.isArray(l.p) && l.p.length >= 4 && l.a > 150000)
+    .sort((a, b) => b.a - a.a)
+    .slice(0, 15);
+  for (const l of areas) {
+    let lon = 0;
+    let lat = 0;
+    for (const [x, y] of l.p) {
+      lon += x;
+      lat += y;
+    }
+    lon /= l.p.length;
+    lat /= l.p.length;
+    const r = Math.max(250, Math.min(2200, Math.sqrt(l.a / Math.PI)));
+    const kind = l.u === 'informal' ? 'informal' : r >= 900 ? 'township' : 'suburb';
+    add(kind === 'informal' ? 'Informal settlement' : 'Residential area', kind, lon, lat, r);
+  }
+
+  return out;
 }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0d1620" />
-    <title>eThekwini Drive</title>
+    <title>Izinja zase Kasi (IZK) — Durban</title>
     <style>
       :root {
         --ink: #f4f7fa;
@@ -42,7 +42,7 @@
       #place {
         position: absolute;
         top: 14px;
-        left: 14px;
+        left: 198px;
         padding: 10px 16px;
         min-width: 168px;
       }
@@ -151,8 +151,8 @@
 
       #map-box {
         position: absolute;
-        right: 14px;
-        bottom: 14px;
+        left: 14px;
+        top: 14px;
         padding: 8px;
         line-height: 0;
       }
@@ -282,6 +282,10 @@
       #t-cycle { right: 150px; top: 116px; }
       #t-gps { right: 214px; top: 116px; }
       @media (pointer: coarse) { #touch { display: block; } #help { display: none; } }
+      @media (max-width: 560px) {
+        #place { left: 14px; top: 198px; }
+        #clock-box { top: 198px; }
+      }
     </style>
     <script type="importmap">
       {
@@ -346,8 +350,8 @@
     </div>
 
     <div id="loading">
-      <h1>eThekwini <span>Drive</span></h1>
-      <p>Durban, KwaZulu-Natal</p>
+      <h1>Izinja <span>zase Kasi</span></h1>
+      <p>IZK · Durban, KwaZulu-Natal</p>
       <div id="load-track"><div id="load-fill"></div></div>
       <div id="load-status">Starting engine…</div>
     </div>

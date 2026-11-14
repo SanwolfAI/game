@@ -130,7 +130,7 @@ async function main() {
   setLoad(72, 'Raising the city…');
   await nextFrame();
   const city = new City(hf, roads, mulberry32(20241113));
-  const cityGroup = city.build(districtsWorld());
+  const cityGroup = city.build(districtsWorld(data));
 
   setLoad(82, 'Building Durban landmarks…');
   await nextFrame();
@@ -435,7 +435,7 @@ async function main() {
   cameraReady = true;
   const now = durbanNow();
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
-  hud.toast(`Welcome to eThekwini — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
+  hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
 
