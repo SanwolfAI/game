@@ -63,8 +63,8 @@ export class Traffic {
     this.buckets = [];
     this.meshes = [];
 
-    for (const type of VEHICLE_TYPES) {
-      const count = COUNTS[type.id] || 10;
+    for (const type of VEHICLE_TYPES.filter((item) => item.traffic === true || ['gusheshe','quantum','polo','hilux','saps'].includes(item.id))) {
+      const count = COUNTS[type.id] || 3;
       const proto = buildVehicleMesh(type.id);
       const mesh = new THREE.InstancedMesh(proto.geometry, proto.material, count);
       mesh.frustumCulled = false;
