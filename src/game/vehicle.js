@@ -3,7 +3,38 @@ import { clamp } from '../core/utils.js';
 import { buildVehicleMesh, vehicleType, VEHICLE_TYPES } from './models.js';
 
 const CAR_RADIUS = 2.1;
-const MAX_REVERSE = 13;
+
+// Per-vehicle driving physics derived from the catalogue spec.
+// a0: launch acceleration (m/s²), vk: speed where engine power starts to limit
+// thrust, vmax: top speed (m/s), brake: full-pedal deceleration (~0.9 g).
+const PHYS = {
+  gusheshe: { a0: 4.5, mass: 1200 },
+  quantum: { a0: 3.0, mass: 2300 },
+  polo: { a0: 3.5, mass: 1100 },
+  hilux: { a0: 3.1, mass: 1900 },
+  saps: { a0: 3.6, mass: 2100 }
+};
+
+function physicsFor(spec) {
+  const p = PHYS[spec.id] || { a0: 3.4, mass: 1500 };
+  const vk = 12;
+  const vmax = spec.max * 0.82; // Horus top speeds were arcade-high; keep them brisk but real-ish
+  const roll = 0.13;
+  // drag coefficient so full power balances resistance at vmax
+  const drag = Math.max(0.00005, (p.a0 * (vk / vmax) - roll) / (vmax * vmax));
+  return {
+    a0: p.a0,
+    vk,
+    vmax,
+    vmaxBoost: spec.boost * 0.82,
+    vmaxR: 9,
+    roll,
+    drag,
+    brake: p.mass > 2000 ? 8.2 : 9.0,
+    wheelbase: p.mass > 2000 ? 3.0 : 2.55,
+    grip: 7.2 * (spec.handling / 1.5)
+  };
+}
 
 export class Vehicle {
   constructor(hf, roads, city, input, typeId = 'gusheshe') {
@@ -24,6 +55,10 @@ export class Vehicle {
     this.driftTilt = 0;
     this.y = null;
     this.vy = 0;
+    this.accel = 0;
+    this.yawRate = 0;
+    this.bodyPitch = 0;
+    this.bodyRoll = 0;
 
     this.group = new THREE.Group();
     this.group.name = 'player-vehicle';
@@ -38,6 +73,7 @@ export class Vehicle {
     this.group.add(this.mesh);
     this.typeId = id;
     this.spec = vehicleType(id);
+    this.phys = physicsFor(this.spec);
   }
 
   cycleType() {
@@ -91,8 +127,9 @@ export class Vehicle {
     this.group.position.set(this.x, this.y, this.z);
     this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.yaw;
-    this.group.rotation.x = clamp(Math.atan2(hB - hF, 3.8), -0.35, 0.35) * 0.7;
-    this.group.rotation.z = clamp(Math.atan2(hR - hL, 1.9), -0.3, 0.3) * 0.7 + this.driftTilt;
+    this.slope = clamp(Math.atan2(hB - hF, 3.8), -0.35, 0.35);
+    this.group.rotation.x = this.slope * 0.7 + (this.bodyPitch || 0);
+    this.group.rotation.z = clamp(Math.atan2(hR - hL, 1.9), -0.3, 0.3) * 0.7 + this.driftTilt + (this.bodyRoll || 0);
   }
 
   // Keep the car between the parapets while on a bridge deck.
@@ -120,54 +157,87 @@ export class Vehicle {
 
   update(dt) {
     const input = this.input;
-    const gas = input.isDown('gas');
-    const brake = input.isDown('brake');
     const boost = input.isDown('boost');
     const handbrake = input.isDown('handbrake');
-    const steerTarget = (input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0);
+    const throttle = input.throttle ?? (input.isDown('gas') ? 1 : 0);
+    const brakeIn = input.brake ?? (input.isDown('brake') ? 1 : 0);
+    const gear = input.gear || 'D';
+    const ph = this.phys;
 
-    const maxSpeed = boost ? this.spec.boost : this.spec.max;
-    if (gas) {
-      const pull = 1 - clamp(Math.max(this.speed, 0) / maxSpeed, 0, 1);
-      this.speed += (10 + 16 * pull) * dt;
-    } else if (!brake && !handbrake) {
-      this.speed *= Math.exp(-0.55 * dt);
-      if (Math.abs(this.speed) < 0.25) this.speed = 0;
+    // ---- longitudinal dynamics (m/s, m/s²) ---------------------------------
+    const v = this.speed;
+    const dir = gear === 'D' ? 1 : gear === 'R' ? -1 : 0;
+    const vmax = dir < 0 ? ph.vmaxR : boost ? ph.vmaxBoost : ph.vmax;
+    const a0 = (dir < 0 ? ph.a0 * 0.7 : ph.a0) * (boost && dir > 0 ? 1.3 : 1);
+    let accel = 0;
+    if (dir !== 0) {
+      const vAlong = v * dir; // speed in the selected direction
+      // engine: constant force at low speed, power-limited above ~vk
+      const powerLimit = Math.min(1, ph.vk / Math.max(vAlong, 0.1));
+      // above top speed (e.g. after boost ends) the engine stops pulling
+      const headroom = vAlong > vmax ? 0 : 1;
+      let aEng = throttle * a0 * powerLimit * headroom;
+      // automatic gearbox idle creep (walking pace) when off both pedals
+      if (throttle < 0.05 && brakeIn < 0.05 && !handbrake && vAlong < 1.4) aEng += 0.7 * (1 - Math.max(vAlong, 0) / 1.4);
+      // engine braking when lifting off
+      if (throttle < 0.05 && vAlong > 2) aEng -= 0.32 + 0.011 * vAlong;
+      accel += aEng * dir;
     }
+    // rolling resistance + aerodynamic drag (balances full power at vmax)
+    const res = ph.roll + ph.drag * v * v;
+    if (Math.abs(v) > 0.01) accel -= Math.sign(v) * res;
+    // slope: gravity along the road
+    // slope > 0 = nose down (rotation.x convention), so downhill speeds you up
+    accel += 9.81 * Math.sin(this.slope || 0) * 0.6;
 
-    if (brake) {
-      if (this.speed > 0.4) this.speed = Math.max(0, this.speed - 26 * dt);
-      else this.speed = Math.max(-MAX_REVERSE, this.speed - 7 * dt);
+    let vNew = v + accel * dt;
+    // brakes / handbrake oppose motion and never push the car backwards
+    const decel = brakeIn * ph.brake + (handbrake ? 5.5 : 0);
+    if (decel > 0) {
+      const dv = decel * dt;
+      if (Math.abs(vNew) <= dv) vNew = 0;
+      else vNew -= Math.sign(vNew) * dv;
     }
+    // settle when parked in neutral or on the brake
+    if (Math.abs(vNew) < 0.05 && (dir === 0 || brakeIn > 0.05) && throttle < 0.05) vNew = 0;
+    this.speed = clamp(vNew, -ph.vmaxR * 1.05, (boost ? ph.vmaxBoost : ph.vmax) * 1.02);
+    this.accel = (this.speed - v) / Math.max(dt, 1e-4);
 
-    if (handbrake) {
-      this.speed *= Math.exp(-0.75 * dt);
-      if (Math.abs(this.speed) < 0.4) this.speed = 0;
-    }
-
-    this.speed = clamp(this.speed, -MAX_REVERSE, maxSpeed);
-
-    const steerSpeed = clamp(Math.abs(this.speed) / 7, 0, 1);
-    this.steer += (steerTarget - this.steer) * Math.min(1, dt * 9);
-    const driftBoost = handbrake && Math.abs(this.speed) > 4 ? 1.9 : 1;
-    const turnRate = (this.spec.handling / (1 + Math.abs(this.speed) * 0.018)) * driftBoost;
-    this.yaw += this.steer * turnRate * steerSpeed * Math.sign(this.speed || 1) * dt;
+    // ---- steering: bicycle model, speed-sensitive lock, grip limited --------
+    const steerIn = input.steer ?? ((input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0));
+    this.steer += (steerIn - this.steer) * Math.min(1, dt * 14);
+    const speedAbs = Math.abs(this.speed);
+    const maxAngle = (34 * Math.PI) / 180 / (1 + speedAbs / 13); // 34° parked, ~10° at 110 km/h
+    const delta = this.steer * maxAngle;
+    let yawRate = (this.speed / ph.wheelbase) * Math.tan(delta);
+    const grip = ph.grip * (handbrake && speedAbs > 5 ? 1.7 : 1); // lateral accel limit
+    const maxYaw = grip / Math.max(speedAbs, 1);
+    if (Math.abs(yawRate) > maxYaw) yawRate = Math.sign(yawRate) * maxYaw;
+    this.yaw += yawRate * dt;
+    this.yawRate = yawRate;
+    const steerSpeed = clamp(speedAbs / 7, 0, 1);
 
     const fx = Math.sin(this.yaw);
     const fz = Math.cos(this.yaw);
     const rx = Math.cos(this.yaw);
     const rz = -Math.sin(this.yaw);
 
-    const targetLateral = handbrake && Math.abs(this.speed) > 6 ? this.steer * this.speed * 0.55 : 0;
-    this.lateral += (targetLateral - this.lateral) * Math.min(1, dt * (handbrake ? 5 : 8));
+    const targetLateral = handbrake && speedAbs > 6 ? this.steer * this.speed * 0.5 : 0;
+    this.lateral += (targetLateral - this.lateral) * Math.min(1, dt * (handbrake ? 4 : 7));
     this.lateral = clamp(this.lateral, -9, 9);
+
+    // body pitch (dive under braking, squat on throttle) and roll in corners
+    const pitchT = clamp(-this.accel * 0.0065, -0.06, 0.05);
+    const rollT = clamp(yawRate * this.speed * 0.0042, -0.07, 0.07);
+    this.bodyPitch += (pitchT - this.bodyPitch) * Math.min(1, dt * 6);
+    this.bodyRoll += (rollT - this.bodyRoll) * Math.min(1, dt * 6);
 
     const prevX = this.x;
     const prevZ = this.z;
     this.x += (fx * this.speed + rx * this.lateral) * dt;
     this.z += (fz * this.speed + rz * this.lateral) * dt;
 
-    const tiltTarget = handbrake ? -this.steer * 0.06 * steerSpeed : 0;
+    const tiltTarget = handbrake ? -this.steer * 0.05 * steerSpeed : 0;
     this.driftTilt += (tiltTarget - this.driftTilt) * Math.min(1, dt * 6);
 
     if (this.hf.signedCoastDistance(this.x, this.z) < -7) {

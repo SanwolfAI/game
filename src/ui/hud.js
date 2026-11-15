@@ -40,6 +40,14 @@ export class HUD {
     this.lastSpeed = -1;
   }
 
+  updateGear(g) {
+    if (!this.gearEl) this.gearEl = document.getElementById('speed-gear');
+    if (this.gearEl && this._gear !== g) {
+      this._gear = g;
+      this.gearEl.textContent = g;
+    }
+  }
+
   setClock(seconds) {
     const total = Math.floor(seconds) % 86400;
     const h = Math.floor(total / 3600);

@@ -198,6 +198,7 @@ async function main() {
   scene.add(pedestrians.group);
 
   const hud = new HUD();
+  input.gearListeners.push((g) => hud.toast(g === 'D' ? 'Drive' : g === 'R' ? 'Reverse' : 'Neutral', 0.9));
   const minimap = createMinimap(hf, roads);
   const gps = new GPS();
 
@@ -412,7 +413,9 @@ async function main() {
     helpTimer += dt;
     if (helpTimer > 16) hud.hideHelp();
 
+    input.update(dt, inVehicle ? vehicle.speed : 0);
     ent.update(dt);
+    hud.updateGear?.(inVehicle ? input.gear : '');
     updateCamera(dt, !cameraReady || camSnap);
     cameraReady = true;
     camSnap = false;
