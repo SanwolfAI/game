@@ -123,7 +123,7 @@ async function main() {
   const terrain = buildTerrain(hf, coastXZ, 2);
   const landuse = buildLanduse(hf, data.landuse);
 
-  setLoad(58, 'Laying 19 000 roads…');
+  setLoad(58, `Laying ${data.roads.length.toLocaleString()} mapped roads…`);
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
 
@@ -141,7 +141,7 @@ async function main() {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
