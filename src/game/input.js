@@ -102,7 +102,7 @@ export class Input {
       dx = Math.max(-1, Math.min(1, dx));
       this.stick.x = dx;
       this.stick.y = 0;
-      wheel.style.transform = `rotate(${dx * 145}deg)`;
+      wheel.style.transform = `rotate(${dx * 125}deg)`;
     };
 
     const release = () => {
