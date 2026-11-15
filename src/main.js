@@ -25,6 +25,7 @@ import { honk, unlockAudio } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
+import { loadGameSave, writeGameSave } from './game/save.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xd97a4d);
@@ -245,9 +246,33 @@ async function main() {
   const hud = new HUD();
   const minimap = createMinimap(hf, roads);
   const gps = new GPS();
+  const savedGame = loadGameSave();
 
   let inVehicle = true;
   let camMode = 0;
+  if (savedGame) {
+    const insideMap = (x, z) =>
+      x >= hf.minX && x <= hf.minX + (hf.cols - 1) * hf.cell &&
+      z >= hf.minZ && z <= hf.minZ + (hf.rows - 1) * hf.cell;
+    if (insideMap(savedGame.vehicle.x, savedGame.vehicle.z) &&
+        insideMap(savedGame.player.x, savedGame.player.z)) {
+      vehicle.placeAt(
+        savedGame.vehicle.x, savedGame.vehicle.z, savedGame.vehicle.yaw,
+        savedGame.vehicle.y, savedGame.vehicle.typeId
+      );
+      player.placeAt(savedGame.player.x, savedGame.player.z, savedGame.player.yaw);
+      inVehicle = savedGame.inVehicle !== false;
+      player.group.visible = !inVehicle;
+      camMode = Number.isInteger(savedGame.camMode)
+        ? Math.max(0, Math.min(4, savedGame.camMode)) : 0;
+      if (['R', 'D', 'N'].includes(savedGame.gear)) input.gear = savedGame.gear;
+      if (Number.isInteger(savedGame.gpsIndex) &&
+          savedGame.gpsIndex >= 0 && savedGame.gpsIndex < gps.places.length) {
+        gps.index = savedGame.gpsIndex;
+        gps.dest = gps.places[gps.index];
+      }
+    }
+  }
   let cameraReady = false;
   let camSnap = true;
   const camPos = new THREE.Vector3();
@@ -416,10 +441,33 @@ async function main() {
 
   const clock = new THREE.Clock();
   let helpTimer = 0;
+  let saveTimer = 0;
+
+  function saveProgress() {
+    return writeGameSave({
+      version: 1,
+      vehicle: {
+        x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw,
+        y: vehicle.group.position.y, typeId: vehicle.typeId
+      },
+      player: { x: player.x, z: player.z, yaw: player.yaw },
+      inVehicle, camMode, gpsIndex: gps.index, gear: input.gear,
+      savedAt: Date.now()
+    });
+  }
+  addEventListener('pagehide', saveProgress);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveProgress();
+  });
 
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
+    saveTimer += dt;
+    if (saveTimer >= 8) {
+      saveTimer = 0;
+      saveProgress();
+    }
     if (terrain.ocean?.material?.uniforms?.time) terrain.ocean.material.uniforms.time.value += dt;
     const now = durbanNow();
     const { season, solar } = updateEnvironment(now);
@@ -511,7 +559,8 @@ async function main() {
   cameraReady = true;
   const now = durbanNow();
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
-  hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
+  hud.toast(savedGame ? 'Welcome back — your driving progress was restored' :
+    `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
 

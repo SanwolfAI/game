@@ -61,6 +61,19 @@ export class Vehicle {
     return !!ahead;
   }
 
+  placeAt(x, z, yaw, surfaceY = null, typeId = this.typeId) {
+    this.x = x;
+    this.z = z;
+    this.yaw = yaw;
+    this.speed = 0;
+    this.steer = 0;
+    this.lateral = 0;
+    this.driftTilt = 0;
+    if (typeId && typeId !== this.typeId) this.setType(typeId);
+    this.surfaceY = Number.isFinite(surfaceY) ? surfaceY : this.hf.heightAt(x, z);
+    this.#place();
+  }
+
   #place() {
     const surface = this.roads.deckHeightAt(this.x, this.z, this.surfaceY);
     this.surfaceY = surface;
