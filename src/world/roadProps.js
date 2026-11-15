@@ -47,14 +47,20 @@ export async function buildRoadProps(roads, hf) {
   const group = new THREE.Group();
   group.name = 'instanced-roadside-props';
   const loader = new GLTFLoader();
-  const [lightModel, barrierModel] = await Promise.all([
-    loader.loadAsync('./src/assets/roadkit/light-curved.glb'),
-    loader.loadAsync('./src/assets/roadkit/road-straight-barrier.glb')
-  ]);
-  const models = [
-    prepareModel(lightModel.scene),
-    prepareModel(barrierModel.scene)
-  ];
+  let models;
+  try {
+    const [lightModel, barrierModel] = await Promise.all([
+      loader.loadAsync('./src/assets/roadkit/light-curved.glb'),
+      loader.loadAsync('./src/assets/roadkit/road-straight-barrier.glb')
+    ]);
+    models = [
+      prepareModel(lightModel.scene),
+      prepareModel(barrierModel.scene)
+    ];
+  } catch (error) {
+    console.warn('Roadside 3D props unavailable; retaining the basic road furniture:', error);
+    return { group, update() {}, streetlightCount: 0, bridgeBarrierCount: 0 };
+  }
 
   const chunks = new Map();
   const add = (type, item) => {

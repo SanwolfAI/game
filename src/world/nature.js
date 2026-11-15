@@ -3,14 +3,17 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toXZ } from '../core/geo.js';
 
 const CHUNK_SIZE = 500;
-const MAX_VEGETATION = 6500;
+const MAX_VEGETATION = 7000;
 const VEGETATION_MODELS = [
   { file: 'tree_default.glb', height: 6.2 },
   { file: 'tree_plateau.glb', height: 7.2 },
   { file: 'tree_palm.glb', height: 9.2 },
   { file: 'plant_bush.glb', height: 1.8 },
   { file: 'grass.glb', height: 0.62 },
-  { file: 'crops_cornStageD.glb', height: 2.1 }
+  { file: 'crops_bambooStageB.glb', height: 2.4 },
+  { file: 'rock_largeA.glb', height: 1.8 },
+  { file: 'flower_yellowA.glb', height: 0.62 },
+  { file: 'grass_large.glb', height: 0.88 }
 ];
 
 function pointInRing(x, z, ring) {
@@ -124,20 +127,21 @@ export async function buildNature(data, roads, city, hf, coastXZ, rng) {
   // Land-cover categories come from the refreshed OpenStreetMap place/landuse query.
   const rules = {
     residential: { types: [0, 1], density: 22000, max: 12, spacing: 13, min: 1 },
-    forest: { types: [0, 1], density: 5500, max: 70, spacing: 10, min: 8 },
-    wood: { types: [0, 1], density: 5500, max: 70, spacing: 10, min: 8 },
-    park: { types: [0, 1, 3], density: 9000, max: 42, spacing: 10, min: 4 },
-    nature_reserve: { types: [0, 1, 3], density: 9000, max: 42, spacing: 10, min: 4 },
-    garden: { types: [0, 3], density: 7000, max: 28, spacing: 8, min: 3 },
-    golf_course: { types: [0, 1, 3], density: 10000, max: 35, spacing: 11, min: 4 },
-    scrub: { types: [3], density: 1800, max: 70, spacing: 5, min: 5 },
-    heath: { types: [3], density: 1800, max: 70, spacing: 5, min: 5 },
-    grassland: { types: [4], density: 900, max: 150, spacing: 2.6, min: 8 },
-    meadow: { types: [4], density: 900, max: 150, spacing: 2.6, min: 8 },
-    grass: { types: [4], density: 900, max: 150, spacing: 2.6, min: 8 },
-    farmland: { types: [5], density: 180, max: 400, spacing: 2.8, min: 12 },
-    orchard: { types: [0, 1], density: 7000, max: 60, spacing: 8, min: 6 },
-    vineyard: { types: [5], density: 250, max: 350, spacing: 2.8, min: 12 }
+    forest: { types: [0, 1, 3], density: 1200, max: 200, spacing: 7, min: 12 },
+    wood: { types: [0, 1, 3], density: 1200, max: 200, spacing: 7, min: 12 },
+    park: { types: [0, 1, 3, 7], density: 4000, max: 60, spacing: 8, min: 4 },
+    nature_reserve: { types: [0, 1, 3], density: 2500, max: 120, spacing: 7, min: 8 },
+    garden: { types: [0, 3, 7], density: 5000, max: 35, spacing: 8, min: 3 },
+    golf_course: { types: [0, 1, 3], density: 7000, max: 45, spacing: 10, min: 4 },
+    scrub: { types: [3, 6], density: 1000, max: 100, spacing: 5, min: 5 },
+    heath: { types: [3, 6], density: 1000, max: 100, spacing: 5, min: 5 },
+    grassland: { types: [4, 8, 7], density: 500, max: 250, spacing: 2.6, min: 8 },
+    meadow: { types: [4, 8, 7], density: 500, max: 250, spacing: 2.6, min: 8 },
+    grass: { types: [4, 8], density: 500, max: 250, spacing: 2.6, min: 8 },
+    farmland: { types: [5], density: 140, max: 500, spacing: 2.8, min: 12 },
+    orchard: { types: [0, 1], density: 1800, max: 160, spacing: 8, min: 6 },
+    vineyard: { types: [5], density: 180, max: 400, spacing: 2.8, min: 12 },
+    bare_rock: { types: [6], density: 1000, max: 80, spacing: 8, min: 6 }
   };
 
   let planted = 0;
