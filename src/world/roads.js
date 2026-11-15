@@ -62,8 +62,11 @@ export class RoadNetwork {
         }
       }
       if (pts.length < 2) continue;
-      let len = 0;
-      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      const cumulative = [0];
+      for (let i = 1; i < pts.length; i++) {
+        cumulative.push(cumulative[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      }
+      const len = cumulative[cumulative.length - 1];
       this.roads.push({
         id: r.id,
         cls: r.h,
@@ -77,6 +80,7 @@ export class RoadNetwork {
         major: info.major,
         pts,
         len,
+        cumulative,
         id2: this.roads.length
       });
     }
@@ -183,12 +187,7 @@ export class RoadNetwork {
       const n = road.pts.length;
       const half = road.width / 2;
       const lift = road.bridge ? 6.5 : 0;
-      const cumulative = [0];
-      for (let i = 1; i < n; i++) {
-        const a = road.pts[i - 1];
-        const b = road.pts[i];
-        cumulative.push(cumulative[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
-      }
+      const cumulative = road.cumulative;
       const bridgeLiftAt = (i) => {
         if (!road.bridge) return 0;
         const rampLength = 36;
@@ -457,6 +456,26 @@ export class RoadNetwork {
     }
   }
 
+  // Resolve the drivable surface at this position. The previous height keeps a
+  // vehicle on the correct deck when roads cross vertically: a car below a
+  // bridge stays on the ground, while a car already on the deck follows it.
+  deckHeightAt(x, z, prevY = this.hf.heightAt(x, z)) {
+    const ground = this.hf.heightAt(x, z);
+    const nearest = this.nearestRoad(x, z, 32);
+    if (!nearest || !nearest.road.bridge) return ground;
+
+    const road = nearest.road;
+    const distance = nearest.distanceAlong;
+    const ramp = Math.min(smooth01(distance / 36), smooth01((road.len - distance) / 36));
+    const deck = Math.max(ground, 1.2) + 6.5 * ramp;
+    const previous = Number.isFinite(prevY) ? prevY : ground;
+
+    // At the foot of a ramp the deck is effectively ground level. Elsewhere,
+    // require height continuity so a road passing underneath is not mistaken
+    // for the bridge deck.
+    return ramp < 0.04 || Math.abs(deck - previous) <= 2.75 ? deck : ground;
+  }
+
   // Nearest road query used for the driving assist and for placing props.
   nearestRoad(x, z, radius = 60) {
     const cs = this.cell;
@@ -486,7 +505,12 @@ export class RoadNetwork {
             const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
             if (d2 < bestD) {
               bestD = d2;
-              best = { road, x: px, z: pz, t: (i + t) / (pts.length - 1), dist: Math.sqrt(d2), dirX: dx, dirZ: dz };
+              best = {
+                road, x: px, z: pz,
+                t: (i + t) / (pts.length - 1),
+                distanceAlong: (road.cumulative[i] || 0) + Math.sqrt(l2) * t,
+                dist: Math.sqrt(d2), dirX: dx, dirZ: dz
+              };
             }
           }
         }
