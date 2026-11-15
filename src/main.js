@@ -123,7 +123,8 @@ async function main() {
   const terrain = buildTerrain(hf, coastXZ, 2);
   const landuse = buildLanduse(hf, data.landuse);
 
-  setLoad(58, 'Laying 19 000 roads…');
+  const mappedBridgeCount = data.roads.reduce((count, road) => count + (road.b ? 1 : 0), 0);
+  setLoad(58, `Paving ${data.roads.length.toLocaleString()} roads and building ${mappedBridgeCount.toLocaleString()} bridges…`);
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
 
