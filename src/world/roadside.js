@@ -30,9 +30,12 @@ export class Roadside {
     this.poleMaterial = new THREE.MeshLambertMaterial({ color: 0x55585c });
     this.signGeometry = new THREE.PlaneGeometry(0.82, 0.82);
     this.signMaterials = new Map();
+    this.streetNameMaterials = new Map();
+    this.streetBoardGeometry = new THREE.PlaneGeometry(2.7, 0.55);
 
     for (const feature of data.features || []) this.#placeFeature(feature);
     for (const road of roads.roads) this.#placeSpeedSign(road);
+    this.#placeStreetNames();
     this.#finishMarkings();
   }
 
@@ -237,6 +240,81 @@ export class Roadside {
       }
     }
     this.#featureMarkings(feature, x, z, nearest);
+  }
+
+  #streetNameMaterial(name) {
+    const key = String(name).trim();
+    if (this.streetNameMaterials.has(key)) return this.streetNameMaterials.get(key);
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#075b39';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 252, 60);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const fontSize = key.length > 23 ? 16 : key.length > 16 ? 19 : 23;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.fillText(key.slice(0, 30), 128, 33, 238);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+    this.streetNameMaterials.set(key, material);
+    return material;
+  }
+
+  #placeStreetNames() {
+    if (typeof document === 'undefined') return;
+    const maxSigns = 450;
+    let placed = 0;
+    const poleGeometry = new THREE.CylinderGeometry(0.055, 0.075, 3.1, 6);
+    for (const node of this.roads.nodes) {
+      if (placed >= maxSigns || node.edges.length < 3) continue;
+      const named = new Map();
+      for (const edgeId of node.edges) {
+        const edge = this.roads.edges[edgeId];
+        const road = edge?.road;
+        if (!road?.name || ['motorway', 'motorway_link'].includes(road.cls)) continue;
+        const key = road.name.trim().toLowerCase();
+        if (!key || named.has(key) || road.pts.length < 2) continue;
+        const atStart = road.fromNode === node.id;
+        const p0 = atStart ? road.pts[0] : road.pts[road.pts.length - 1];
+        const p1 = atStart ? road.pts[1] : road.pts[road.pts.length - 2];
+        const dx = p1[0] - p0[0], dz = p1[1] - p0[1];
+        const length = Math.hypot(dx, dz) || 1;
+        named.set(key, { name: road.name, dirX: dx / length, dirZ: dz / length, road });
+      }
+      const entries = [...named.values()];
+      if (entries.length < 2) continue;
+      const first = entries[0];
+      const leftX = -first.dirZ, leftZ = first.dirX;
+      const offset = first.road.width * 0.5 + 1.1;
+      const x = node.x + leftX * offset;
+      const z = node.z + leftZ * offset;
+      const ground = this.roads.deckHeightAt(x, z, this.hf.heightAt(x, z) + 6.5);
+      const group = new THREE.Group();
+      group.position.set(x, ground, z);
+      const pole = new THREE.Mesh(poleGeometry, this.poleMaterial);
+      pole.position.y = 1.55;
+      group.add(pole);
+      for (let i = 0; i < 2; i++) {
+        const entry = entries[i];
+        const board = new THREE.Mesh(this.streetBoardGeometry, this.#streetNameMaterial(entry.name));
+        board.position.set(0, 2.25 + i * 0.58, 0);
+        board.rotation.y = Math.atan2(entry.dirZ, -entry.dirX);
+        group.add(board);
+      }
+      group.userData.worldX = x;
+      group.userData.worldZ = z;
+      this.group.add(group);
+      this.records.push(group);
+      placed++;
+    }
+    this.group.userData.streetNameSigns = placed;
   }
 
   #placeSpeedSign(road) {
