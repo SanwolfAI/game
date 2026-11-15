@@ -9,6 +9,7 @@ const SIGN_FILES = {
   W307: 'w307.png',
   W308: 'w308.png',
   W309: 'w309.png',
+  W318: 'w318.png',
   W401: 'w401.png'
 };
 
@@ -212,6 +213,29 @@ export class Roadside {
       this.#addSign('W301', x - nearest.dirX * 80, z - nearest.dirZ * 80, nearest.dirX, nearest.dirZ, offset);
     }
     if (tags.highway === 'motorway_junction') this.#addExitSign(feature, x, z, nearest.dirX, nearest.dirZ, road);
+    if (tags.railway === 'level_crossing') {
+      // W318 warning signs are placed 120 m before the crossing on the left
+      // side of each legal approach. One-way roads need only their forward sign.
+      const approach = 120;
+      this.#addSign(
+        'W318',
+        x - nearest.dirX * approach,
+        z - nearest.dirZ * approach,
+        nearest.dirX,
+        nearest.dirZ,
+        offset
+      );
+      if (!road.oneway) {
+        this.#addSign(
+          'W318',
+          x + nearest.dirX * approach,
+          z + nearest.dirZ * approach,
+          -nearest.dirX,
+          -nearest.dirZ,
+          offset
+        );
+      }
+    }
     this.#featureMarkings(feature, x, z, nearest);
   }
 

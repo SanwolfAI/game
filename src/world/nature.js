@@ -66,10 +66,36 @@ function buildRailIndex(lines) {
   };
 }
 
+function buildRailIndex(lines) {
+  const cell = 18;
+  const cells = new Set();
+  for (const line of lines || []) {
+    for (let i = 1; i < line.pts.length; i++) {
+      const a = line.pts[i - 1], b = line.pts[i];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const steps = Math.max(1, Math.ceil(length / 10));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        cells.add(`${Math.floor((a[0] + (b[0] - a[0]) * t) / cell)},${Math.floor((a[1] + (b[1] - a[1]) * t) / cell)}`);
+      }
+    }
+  }
+  return (x, z) => {
+    const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (cells.has(`${cx + dx},${cz + dz}`)) return true;
+      }
+    }
+    return false;
+  };
+}
+
 export async function buildNature(data, roads, city, hf, coastXZ, rng) {
   const group = new THREE.Group();
   group.name = 'durban-natural-vegetation';
   const loader = new GLTFLoader();
+  const nearRail = buildRailIndex(roads.rail);
   const loaded = await Promise.all(TREE_MODELS.map(async (entry) => {
     try {
       const gltf = await loader.loadAsync(`./src/assets/naturekit/${entry.file}`);
@@ -105,7 +131,7 @@ export async function buildNature(data, roads, city, hf, coastXZ, rng) {
     spacingCells.get(sk).push([x, z]);
   };
   const clear = (x, z) => {
-    if (hf.isWater(x, z) || hf.signedCoastDistance(x, z) < 12) return false;
+    if (hf.isWater(x, z) || hf.signedCoastDistance(x, z) < 12 || nearRail(x, z)) return false;
     const nearest = roads.nearestRoad(x, z, 48);
     if (nearest && nearest.dist < nearest.road.width * 0.5 + 4) return false;
     if (city.hash.query(x, z, 10).some((c) => Math.hypot(c.x - x, c.z - z) < c.r + 2.5)) return false;
