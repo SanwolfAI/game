@@ -788,7 +788,7 @@ export class RoadNetwork {
         vertexColors: true,
         emissive: 0x222222,
         polygonOffset: true,
-        polygonOffsetFactor: -2,
+        polygonOffsetFactor: 0,
         polygonOffsetUnits: -4
       }),
       pier: new THREE.MeshLambertMaterial({ color: 0x9a968e })
