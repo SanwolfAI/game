@@ -99,9 +99,12 @@ export class Traffic {
       if (!edge) return null;
       mid = pointAlong(edge.road, 1, edge.road.len * 0.5);
     }
+    const ground = this.hf.heightAt(mid.x, mid.z);
+    const surfaceY = this.roads.deckHeightAt(mid.x, mid.z, edge.road.bridge ? ground + 6.5 : ground);
     return {
       type,
       edge,
+      surfaceY,
       dir: edge.reverse && this.rng() > 0.5 ? -1 : 1,
       dist: this.rng() * edge.road.len,
       speed: clamp(edge.road.speed * (0.28 + this.rng() * 0.18), 3.5, 13),
@@ -166,8 +169,12 @@ export class Traffic {
         }
 
         const pp = pointAlong(car.edge.road, car.dir, car.dist);
-        const y = this.hf.heightAt(pp.x, pp.z);
-        this.pos.set(pp.x + pp.fz * car.lane, y, pp.z - pp.fx * car.lane);
+        const worldX = pp.x + pp.fz * car.lane;
+        const worldZ = pp.z - pp.fx * car.lane;
+        const ground = this.hf.heightAt(worldX, worldZ);
+        const y = this.roads.deckHeightAt(worldX, worldZ, Number.isFinite(car.surfaceY) ? car.surfaceY : ground);
+        car.surfaceY = y;
+        this.pos.set(worldX, y, worldZ);
         this.quat.setFromAxisAngle(this.axis, Math.atan2(pp.fx, pp.fz));
         this.matrix.compose(this.pos, this.quat, this.scale);
         mesh.setMatrixAt(i, this.matrix);
