@@ -1,101 +1,16 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { buildPedestrianGeometry } from './models.js';
-
-const COUNT = 120;
-
-export class Pedestrians {
-  constructor(hf, city, rng, px, pz) {
-    this.hf = hf;
-    this.city = city;
-    this.rng = rng;
-    this.group = new THREE.Group();
-    this.group.name = 'pedestrians';
-
-    const geo = buildPedestrianGeometry();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    this.mesh = new THREE.InstancedMesh(geo, mat, COUNT);
-    this.mesh.frustumCulled = false;
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.group.add(this.mesh);
-
-    this.matrix = new THREE.Matrix4();
-    this.quat = new THREE.Quaternion();
-    this.axis = new THREE.Vector3(0, 1, 0);
-    this.pos = new THREE.Vector3();
-    this.scale = new THREE.Vector3();
-
-    this.people = [];
-    for (let i = 0; i < COUNT; i++) {
-      const person = this.#spawn(px, pz);
-      this.people.push(person);
-    }
-    this.#write();
-  }
-
-  #spawn(px, pz) {
-    for (let tries = 0; tries < 25; tries++) {
-      const ang = this.rng() * Math.PI * 2;
-      const r = 18 + this.rng() * 320;
-      const x = px + Math.cos(ang) * r;
-      const z = pz + Math.sin(ang) * r;
-      if (this.hf.isWater(x, z) || this.hf.signedCoastDistance(x, z) < 8) continue;
-      const near = this.city.hash.query(x, z, 2.5);
-      if (near.length) continue;
-      return this.#makePerson(x, z);
-    }
-    return this.#makePerson(px + 6, pz + 6);
-  }
-
-  #makePerson(x, z) {
-    return {
-      x,
-      z,
-      yaw: this.rng() * Math.PI * 2,
-      speed: 0.9 + this.rng() * 0.9,
-      phase: this.rng() * Math.PI * 2,
-      turn: this.rng() * 4,
-      scale: 0.9 + this.rng() * 0.18
-    };
-  }
-
-  update(dt, px, pz) {
-    for (let i = 0; i < this.people.length; i++) {
-      const p = this.people[i];
-      if (Math.hypot(p.x - px, p.z - pz) > 420) {
-        this.people[i] = this.#spawn(px, pz);
-        continue;
-      }
-
-      p.turn -= dt;
-      if (p.turn <= 0) {
-        p.turn = 2 + this.rng() * 6;
-        p.yaw += (this.rng() - 0.5) * 1.4;
-      }
-
-      const nx = p.x + Math.sin(p.yaw) * p.speed * dt;
-      const nz = p.z + Math.cos(p.yaw) * p.speed * dt;
-      if (this.hf.isWater(nx, nz) || this.hf.signedCoastDistance(nx, nz) < 5) {
-        p.yaw += Math.PI * (0.6 + this.rng() * 0.8);
-      } else {
-        p.x = nx;
-        p.z = nz;
-      }
-      p.phase += p.speed * dt * 5;
-    }
-    this.#write();
-  }
-
-  #write() {
-    for (let i = 0; i < this.people.length; i++) {
-      const p = this.people[i];
-      const bob = Math.abs(Math.sin(p.phase)) * 0.05;
-      this.pos.set(p.x, this.hf.heightAt(p.x, p.z) + bob, p.z);
-      this.quat.setFromAxisAngle(this.axis, p.yaw);
-      this.scale.set(p.scale, p.scale, p.scale);
-      this.matrix.compose(this.pos, this.quat, this.scale);
-      this.mesh.setMatrixAt(i, this.matrix);
-    }
-    this.mesh.count = this.people.length;
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
+const COUNT=36;
+const FILES=['character-male-a','character-male-b','character-male-c','character-male-d','character-male-e','character-male-f','character-male-g','character-female-a','character-female-b','character-female-c','character-female-d','character-female-e','character-female-f','character-worker'];
+function prepare(scene){scene.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(scene),s=b.getSize(new THREE.Vector3());scene.position.x-=(b.min.x+b.max.x)/2;scene.position.z-=(b.min.z+b.max.z)/2;scene.position.y-=b.min.y;scene.scale.multiplyScalar(1.72/Math.max(s.y,.001));scene.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();}});return scene;}
+export class Pedestrians{
+ constructor(hf,city,rng,px,pz){this.hf=hf;this.city=city;this.rng=rng;this.group=new THREE.Group();this.group.name='animated-durban-pedestrians';this.people=[];this.fallback=null;this.templates=[];this.ready=this.load(px,pz);}
+ async load(px,pz){const loader=new GLTFLoader();const results=await Promise.all(FILES.map(async name=>{try{const gltf=await loader.loadAsync('./src/assets/characterkit/'+name+'.glb');return {scene:prepare(gltf.scene),animations:gltf.animations||[]};}catch(e){console.warn('Character model unavailable',name,e);return null;}}));this.templates=results.filter(Boolean);if(!this.templates.length){this.makeFallback(px,pz);return;}for(let i=0;i<COUNT;i++){const p=this.spawn(px,pz);this.people.push(p);this.group.add(p.model);}}
+ find(px,pz){for(let n=0;n<24;n++){const a=this.rng()*Math.PI*2,r=18+this.rng()*320,x=px+Math.cos(a)*r,z=pz+Math.sin(a)*r;if(!this.hf.isWater(x,z)&&this.hf.signedCoastDistance(x,z)>=8&&!this.city.hash.query(x,z,2.5).length)return{x,z};}return{x:px+6,z:pz+6};}
+ spawn(px,pz){const t=this.templates[Math.floor(this.rng()*this.templates.length)],model=cloneSkeleton(t.scene),clips=t.animations;const clip=clips.find(c=>/walk/i.test(c.name))||clips.find(c=>/idle/i.test(c.name))||clips[0];const mixer=new THREE.AnimationMixer(model);if(clip)mixer.clipAction(clip).play();const p=this.find(px,pz);return{...p,model,mixer,yaw:this.rng()*Math.PI*2,speed:.65+this.rng()*.7,turn:2+this.rng()*6};}
+ makeFallback(px,pz){const geo=buildPedestrianGeometry(),mesh=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({vertexColors:true}),COUNT);mesh.frustumCulled=false;this.group.add(mesh);this.fallback=mesh;this.people=Array.from({length:COUNT},()=>({...this.find(px,pz),yaw:this.rng()*Math.PI*2,speed:1,turn:3,phase:0,scale:1}));this.writeFallback();}
+ update(dt,px,pz){for(let i=0;i<this.people.length;i++){const p=this.people[i];if(Math.hypot(p.x-px,p.z-pz)>420){if(p.model){this.group.remove(p.model);p.mixer.stopAllAction();this.people[i]=this.spawn(px,pz);this.group.add(this.people[i].model);}else this.people[i]={...this.find(px,pz),yaw:this.rng()*Math.PI*2,speed:1,turn:3,phase:0,scale:1};continue;}p.turn-=dt;if(p.turn<=0){p.turn=2+this.rng()*6;p.yaw+=(this.rng()-.5)*1.4;}const x=p.x+Math.sin(p.yaw)*p.speed*dt,z=p.z+Math.cos(p.yaw)*p.speed*dt;if(this.hf.isWater(x,z)||this.hf.signedCoastDistance(x,z)<5)p.yaw+=Math.PI*(.6+this.rng()*.8);else{p.x=x;p.z=z;}if(p.model){p.mixer.update(dt);p.model.position.set(p.x,this.hf.heightAt(p.x,p.z),p.z);p.model.rotation.y=p.yaw;}else p.phase+=dt*5;}if(this.fallback)this.writeFallback();}
+ writeFallback(){const m=new THREE.Matrix4(),p=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3(),axis=new THREE.Vector3(0,1,0);this.people.forEach((v,i)=>{p.set(v.x,this.hf.heightAt(v.x,v.z)+Math.abs(Math.sin(v.phase||0))*.05,v.z);q.setFromAxisAngle(axis,v.yaw);s.setScalar(v.scale||1);m.compose(p,q,s);this.fallback.setMatrixAt(i,m);});this.fallback.instanceMatrix.needsUpdate=true;}
 }

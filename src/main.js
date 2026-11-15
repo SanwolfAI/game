@@ -11,6 +11,7 @@ import { Roadside } from './world/roadside.js';
 import { buildRoadProps } from './world/roadProps.js';
 import { City } from './world/city.js';
 import { buildCityModels } from './world/buildingModels.js';
+import { buildIndustrialModels } from './world/industrialModels.js';
 import { buildTrains } from './game/trains.js';
 import { buildHarbour } from './world/harbour.js';
 import { buildRailTracks } from './world/railTracks.js';
@@ -159,6 +160,9 @@ async function main() {
   setLoad(76, 'Loading 3D Durban houses and buildings…');
   await nextFrame();
   const cityModels = await buildCityModels(city, hf, mulberry32(15112027));
+  setLoad(77, 'Building Durban industrial areas…');
+  await nextFrame();
+  const industrialModels = await buildIndustrialModels(data, hf, roads, city, mulberry32(15112029));
 
   setLoad(79, 'Loading Durban freight trains…');
   await nextFrame();
@@ -224,6 +228,7 @@ async function main() {
   scene.add(railTracks.group);
   scene.add(cityGroup);
   scene.add(cityModels.group);
+  scene.add(industrialModels.group);
   scene.add(trains.group);
   scene.add(harbour.group);
   scene.add(landmarks);
@@ -521,6 +526,7 @@ async function main() {
     pedestrians.update(dt, ent.x, ent.z);
     nature.update(ent.x, ent.z);
     cityModels.update(ent.x, ent.z);
+    industrialModels.update(ent.x, ent.z);
     trains.update(dt, ent.x, ent.z);
     harbour.update(ent.x, ent.z);
 
