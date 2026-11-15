@@ -461,8 +461,8 @@ export class RoadNetwork {
   // bridge stays on the ground, while a car already on the deck follows it.
   deckHeightAt(x, z, prevY = this.hf.heightAt(x, z)) {
     const ground = this.hf.heightAt(x, z);
-    const nearest = this.nearestRoad(x, z, 32);
-    if (!nearest || !nearest.road.bridge) return ground;
+    const nearest = this.nearestRoad(x, z, 32, (road) => road.bridge, prevY);
+    if (!nearest || nearest.dist > nearest.road.width * 0.5 + 4) return ground;
 
     const road = nearest.road;
     const distance = nearest.distanceAlong;
@@ -477,18 +477,20 @@ export class RoadNetwork {
   }
 
   // Nearest road query used for the driving assist and for placing props.
-  nearestRoad(x, z, radius = 60) {
+  nearestRoad(x, z, radius = 60, filter = null, targetY = null) {
     const cs = this.cell;
     const cr = Math.ceil(radius / cs);
     const cx = Math.floor(x / cs);
     const cz = Math.floor(z / cs);
     let best = null;
     let bestD = radius * radius;
+    let bestScore = Infinity;
     for (let gz = cz - cr; gz <= cz + cr; gz++) {
       for (let gx = cx - cr; gx <= cx + cr; gx++) {
         const list = this.grid.get(this.gridKey(gx, gz));
         if (!list) continue;
         for (const road of list) {
+          if (filter && !filter(road)) continue;
           const pts = road.pts;
           for (let i = 0; i < pts.length - 1; i++) {
             const ax = pts[i][0];
@@ -503,14 +505,27 @@ export class RoadNetwork {
             const px = ax + dx * t;
             const pz = az + dz * t;
             const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
-            if (d2 < bestD) {
-              bestD = d2;
-              best = {
-                road, x: px, z: pz,
-                t: (i + t) / (pts.length - 1),
-                distanceAlong: (road.cumulative[i] || 0) + Math.sqrt(l2) * t,
-                dist: Math.sqrt(d2), dirX: dx, dirZ: dz
-              };
+            if (d2 <= radius * radius) {
+              const distanceAlong = (road.cumulative[i] || 0) + Math.sqrt(l2) * t;
+              let score = d2;
+              if (targetY !== null && road.bridge) {
+                const ramp = Math.min(
+                  smooth01(distanceAlong / 36),
+                  smooth01((road.len - distanceAlong) / 36)
+                );
+                const deckY = Math.max(this.hf.heightAt(px, pz), 1.2) + 6.5 * ramp;
+                score += Math.pow(Math.abs(deckY - targetY) * 6, 2);
+              }
+              if (score < bestScore) {
+                bestD = d2;
+                bestScore = score;
+                best = {
+                  road, x: px, z: pz,
+                  t: (i + t) / (pts.length - 1),
+                  distanceAlong,
+                  dist: Math.sqrt(d2), dirX: dx, dirZ: dz
+                };
+              }
             }
           }
         }
