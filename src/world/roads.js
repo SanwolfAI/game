@@ -75,6 +75,7 @@ export class RoadNetwork {
         oneway: !!r.o,
         bridge: !!r.b,
         lanes: Math.max(1, Number(r.w) || 0),
+        lanesTagged: Number(r.w) > 0,
         width: Number(r.w) > 0 ? Math.max(info.width, Number(r.w) * (roadClass(r.h).major ? 3.7 : 3.4)) : info.width,
         speed: info.speed,
         major: info.major,
@@ -325,7 +326,7 @@ export class RoadNetwork {
       // SA lane markings: 3 m paint / 6 m gap in town, 4 m / 8 m on freeways.
       const freeway = ['motorway', 'motorway_link', 'trunk', 'trunk_link'].includes(road.cls);
       const laneWidth = freeway ? 3.7 : 3.4;
-      const laneCount = road.lanes > 1 ? road.lanes : (road.major ? 2 : 1);
+      const laneCount = road.lanesTagged ? road.lanes : (road.major ? 2 : 1);
       const lineOffsets = [];
       if (road.oneway) {
         for (let lane = 1; lane < laneCount; lane++) {
