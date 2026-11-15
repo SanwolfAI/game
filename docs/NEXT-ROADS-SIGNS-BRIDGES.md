@@ -64,7 +64,8 @@ The sign mesh is a pole plus a thin box. The texture goes on the front and grey 
 
 - **Roads kit** (barriers, traffic lights, signs, light posts, bridge pillars, cones; 90 glTF models, CC0): https://kenney.nl/assets/city-kit-roads (mirror: https://opengameart.org/content/city-kit-roads)
 - **Low-poly background cars** (CC0): https://quaternius.com/packs/cars.html
-- **Asphalt, concrete and kerb textures** (CC0): https://polyhaven.com/textures/asphalt and https://ambientcg.com/list?q=asphalt
+- **Asphalt, concrete and kerb textures** (CC0): https://polyhaven.com/textures/asphalt
+- **More CC0 textures**: https://ambientcg.com/list?q=asphalt
 - **SA road sign drawings** (mostly public domain; check each file): the Wikimedia links in section 3C
 - **OSM sign tagging reference**: https://wiki.openstreetmap.org/wiki/Key:traffic_sign
 
