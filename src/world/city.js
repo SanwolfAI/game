@@ -162,17 +162,16 @@ export class City {
           // and drivable, but do not generate houses or shops yet.
           break;
         case 'informal':
-          this.#buildShacks(d);
-          this.#buildShops(d);
+          // Shack construction is deliberately deferred to the later township
+          // detailing stage; the corrugated-metal assets are already in the repo.
           break;
         case 'suburb':
           this.#buildSuburbHomes(d);
           break;
       }
     }
-    // Street furniture is still generated; roads themselves are built by
-    // RoadNetwork and remain fully available through township areas.
-    this.#buildStreetFurniture(districts);
+    // Roadside 3D props and vegetation are handled by dedicated instanced
+    // systems so the older placeholder lamps and trees are not duplicated.
     this.#commitInstances();
     return this.group;
   }
