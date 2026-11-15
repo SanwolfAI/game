@@ -105,6 +105,8 @@ export class Roadside {
     const px = x + leftX * (road.width * 0.5 + 2);
     const pz = z + leftZ * (road.width * 0.5 + 2);
     group.position.set(px, this.roads.deckHeightAt(px, pz) + 3.1, pz);
+    group.userData.worldX = px;
+    group.userData.worldZ = pz;
     const board = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), material);
     board.rotation.y = Math.atan2(dirZ, -dirX);
     group.add(board);

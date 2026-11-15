@@ -10,7 +10,22 @@ Written 15 Nov 2026 for the next AI helper (ChatGPT/OpenCode). Read all of it be
 - Minimap: roads are drawn as sharp vectors in `src/ui/minimap.js`.
 - Touch layout: the `@media (pointer: coarse)` block at the end of the `<style>` in `index.html`. Keep the pedals, wheel, gear, HORN/RUN and the top buttons from overlapping. The phone is about 800 x 360 CSS px in landscape.
 
-**All models, sign pictures and textures are already in the repo. See `src/assets/ASSETS-README.md` for where each file is.**
+**All models, sign pictures and textures are already in the repo. See src/assets/ASSETS-README.md for where each file is.**
+
+Work completed on 15 Nov 2026:
+- Bridge deck height now follows the nearest bridge layer and previous vehicle height for the player and traffic; the driving camera follows the vehicle deck height.
+- SA lane markings now use OSM lane counts and the requested town/freeway dash patterns, with solid centre sections near connected junctions.
+- OSM data scripts now collect sign, traffic-signal, crossing, motorway-junction and level-crossing nodes, and preserve road maxspeed tags.
+- src/world/roadside.js connects SA stop/yield/speed-limit/crossing signs, simple cycling traffic lights, exit boards, stop lines and pedestrian crossing markings. Signs are distance-culled at 400 m.
+- Low road Sketchfab credit has been added to the in-game credits panel.
+
+Remaining work:
+- Refresh and rebuild the OSM data so src/data/durban-game.json contains the new features array.
+- Add a Three.js GLTFLoader module matching vendor/three/three.module.js; the repo currently has no GLTFLoader, so the 92 Kenney .glb props cannot yet be loaded by the game.
+- After the loader is available, connect the Kenney traffic lights, street lights, Jersey barriers and bridge pillars with instancing and distance culling.
+- Apply the supplied asphalt and concrete textures to roads, pavements and bridge decks.
+- Add the correct official SADC railway level-crossing warning sign image; the current sign pack does not include one.
+- Validate sign direction/placement at multi-road intersections and test the bridge fix on the Hisense E32 Pro.
 
 ## 2. Rules
 
@@ -76,3 +91,15 @@ Keep textures at 512 px or smaller (1024 px for asphalt), and use JPG or WebP to
 ## 5. When you finish
 
 Update this file's section 1 with what you changed, and push.
+
+
+## 6. Hark handoff — remaining downloads / data work
+
+The 92 Kenney road prop models, 17 SA sign PNGs, road textures and Low road model are already present. Do not download those again.
+
+Please supply only these missing pieces:
+1. A GLTFLoader.js module compatible with the exact Three.js revision in vendor/three/three.module.js, including any required helper modules. Keep it local/offline; do not use a CDN at runtime.
+2. The official SADC-RTSM railway level-crossing warning sign as a transparent PNG, 256 px, with its source and licence recorded in src/assets/signs/signs.json.
+3. Run node scripts/fetch-osm.mjs and then node scripts/build-data.mjs to regenerate src/data/durban-osm.json and src/data/durban-game.json with stop, give-way, traffic-signal, pedestrian-crossing, motorway-junction, level-crossing and maxspeed data. Commit both generated data files.
+
+Do not fetch more cars or replace src/game/sketchfabModels.js. The next implementation should use the existing Kenney models and texture files, keep models lightweight, use instancing for repeated props, and keep the APK below 60 MB.
