@@ -31,6 +31,16 @@ export function createMinimap(hf, roads) {
       oc.fillRect(ix * hf.cell * scale, iz * hf.cell * scale, 3 * hf.cell * scale + 1, 3 * hf.cell * scale + 1);
     }
   }
+  // Terrain-only copy: the minimap draws roads on top as sharp vectors.
+  const base = document.createElement('canvas');
+  base.width = off.width; base.height = off.height;
+  base.getContext('2d').drawImage(off, 0, 0);
+  const roadBoxes = roads.roads.map((road) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const p of road.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; }
+    const info = roadClass(road.cls);
+    return { road, x0, z0, x1, z1, width: info.width, color: road.major ? '#e4ecf1' : '#' + info.color.toString(16).padStart(6, '0') };
+  }).sort((a, b) => (a.road.major ? 1 : 0) - (b.road.major ? 1 : 0));
   oc.lineCap = 'round'; oc.lineJoin = 'round';
   for (const road of roads.roads) {
     oc.beginPath();
@@ -100,7 +110,28 @@ export function createMinimap(hf, roads) {
     player = { x, z, yaw, dest };
     ctx.clearRect(0, 0, size, size);
     const sw = VIEW_METERS * scale, sx = (x - hf.minX) * scale - sw / 2, sy = (z - hf.minZ) * scale - sw / 2;
-    ctx.drawImage(off, sx, sy, sw, sw, 0, 0, size, size);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(base, sx, sy, sw, sw, 0, 0, size, size);
+    // Sharp vector roads around the player.
+    const half = VIEW_METERS / 2, k = size / VIEW_METERS;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const rb of roadBoxes) {
+      if (rb.x1 < x - half || rb.x0 > x + half || rb.z1 < z - half || rb.z0 > z + half) continue;
+      const pts = rb.road.pts;
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const px = (pts[i][0] - x) * k + size / 2, py = (pts[i][1] - z) * k + size / 2;
+        if (!i) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(10,18,26,0.55)';
+      ctx.lineWidth = Math.max(rb.width * k, rb.road.major ? 3.2 : 1.6) + 1.6;
+      ctx.stroke();
+      ctx.strokeStyle = rb.color;
+      ctx.lineWidth = Math.max(rb.width * k, rb.road.major ? 3.2 : 1.6);
+      ctx.stroke();
+    }
+    ctx.restore();
     const center = size / 2;
     if (dest) {
       const s = size / sw, edge = 14;

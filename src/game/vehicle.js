@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp } from '../core/utils.js';
 import { buildVehicleMesh, vehicleType, VEHICLE_TYPES } from './models.js';
+import { animateVehicleWheels } from './sketchfabModels.js';
 
 const CAR_RADIUS = 2.1;
 const MAX_REVERSE = 13;
@@ -143,6 +144,7 @@ export class Vehicle {
 
     this.#resolveCollisions();
     this.#place();
+    animateVehicleWheels(this.mesh, this.speed, this.steer, dt);
   }
 
   #resolveCollisions() {

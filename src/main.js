@@ -9,6 +9,7 @@ import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
+import { loadDownloadedVehicles, applyVehicleEnvironment } from './game/sketchfabModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
@@ -123,7 +124,8 @@ async function main() {
   const terrain = buildTerrain(hf, coastXZ, 2);
   const landuse = buildLanduse(hf, data.landuse);
 
-  setLoad(58, `Laying ${data.roads.length.toLocaleString()} mapped roads…`);
+  const mappedBridgeCount = data.roads.reduce((count, road) => count + (road.b ? 1 : 0), 0);
+  setLoad(58, `Paving ${data.roads.length.toLocaleString()} roads and building ${mappedBridgeCount.toLocaleString()} bridges…`);
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
 
@@ -136,6 +138,8 @@ async function main() {
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
 
+  setLoad(88, 'Loading downloaded 3D vehicles…');
+  await loadDownloadedVehicles();
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
@@ -150,6 +154,8 @@ async function main() {
   const skyDay = new THREE.Color(0x9fc6e2);
   scene.background = skyDay.clone();
   scene.fog = new THREE.Fog(0x9fc6e2, 750, 5200);
+
+  applyVehicleEnvironment(renderer, scene);
 
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.5, 16000);
 
@@ -179,7 +185,7 @@ async function main() {
   scene.add(landmarks);
 
   const input = new Input();
-  const vehicle = new Vehicle(hf, roads, city, input, 'polo');
+  const vehicle = new Vehicle(hf, roads, city, input, 'gusheshe-3d');
   scene.add(vehicle.group);
 
   const [vx, vz] = vehicle.forward;

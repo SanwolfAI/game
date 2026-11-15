@@ -21,6 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check the JavaScript
         run: npm test
+      - name: Prepare downloaded Sketchfab vehicles
+        run: |
+          mkdir -p src/assets/vehicles
+          [ ! -f models/import/gusheshe.zip ] || unzip -oq models/import/gusheshe.zip -d src/assets/vehicles/gusheshe
+          [ ! -f models/import/bmw-lowpoly.zip ] || unzip -oq models/import/bmw-lowpoly.zip -d src/assets/vehicles/bmw-lowpoly
+          [ ! -f models/import/hiace.zip ] || unzip -oq models/import/hiace.zip -d src/assets/vehicles/hiace
       - name: Copy the game into the app
         run: |
           A=android/app/src/main/assets
