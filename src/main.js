@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
-import { durbanNow, seasonForDate, solarState } from './core/time.js';
+import { createGameClock, seasonForDate, solarState } from './core/time.js';
 import { Heightfield, loadDurbanDEM } from './world/heightfield.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
@@ -468,6 +468,7 @@ async function main() {
   addEventListener('resize', onResize);
 
   const clock = new THREE.Clock();
+  const gameClock = createGameClock();
   let helpTimer = 0;
   let saveTimer = 0;
 
@@ -497,7 +498,7 @@ async function main() {
       saveProgress();
     }
     if (terrain.ocean?.material?.uniforms?.time) terrain.ocean.material.uniforms.time.value += dt;
-    const now = durbanNow();
+    const now = gameClock();
     const { season, solar } = updateEnvironment(now);
     const ent = entity();
 
