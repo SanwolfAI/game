@@ -22,10 +22,12 @@ Written 15 Nov 2026 for the next AI helper (ChatGPT/OpenCode). Read all of it be
 
 ### A. The car must drive on bridges (bug, do this first)
 `Vehicle.#place()` in `src/game/vehicle.js` uses `hf.heightAt()`, which is the ground height. On a bridge the car drops under the deck.
+
 - In `RoadNetwork` (`src/world/roads.js`), add `deckHeightAt(x, z, prevY)`. It returns the bridge deck height when the car is on a bridge segment: the ground (minimum 1.2 m) plus `bridgeLiftAt` along the segment (6.5 m per layer, 36 m ramps). Otherwise it returns the ground height. Pick the layer closest to `prevY` so the car can drive under a bridge too.
 - Use it in `#place()`, and in `traffic.js` for AI cars.
 
 ### B. Road markings (SARTSM Vol 1 Ch 7)
+
 - There's already a yellow left edge line, and white centre dashes on major roads.
 - In town, white lane lines are 3 m line and 6 m gap; on rural and freeway roads, 4 m line and 8 m gap. Use the OSM `lanes` tag, with 3.4 m lanes in town and 3.7 m on freeways.
 - A solid white centre line marks no overtaking near junctions.
@@ -35,12 +37,14 @@ Written 15 Nov 2026 for the next AI helper (ChatGPT/OpenCode). Read all of it be
 
 ### C. Road signs
 Free SA sign drawings, the official SADC-RTSM designs:
+
 - https://commons.wikimedia.org/wiki/Category:Diagrams_of_road_signs_of_South_Africa
 - https://commons.wikimedia.org/wiki/Category:SVG_road_signs_in_South_Africa
 
 Check each file's licence on its own page (most are public domain). Convert each SVG to a 256 px PNG (for example `rsvg-convert -w 256`) and save it in `src/assets/signs/`.
 
 Where to place signs, using the OSM data in `scripts/fetch-osm.mjs` and `build-data.mjs`:
+
 - `highway=stop` gets the R1 STOP sign.
 - `highway=give_way` gets the R2 YIELD sign.
 - `highway=traffic_signals` gets traffic lights ("robots"). Use the Kenney traffic light model, or build one: a black pole and a 3-lamp head with red, amber and green on a cycle.
@@ -51,19 +55,18 @@ Where to place signs, using the OSM data in `scripts/fetch-osm.mjs` and `build-d
 The sign mesh is a pole plus a thin box. The texture goes on the front and grey on the back. Use instancing (`THREE.InstancedMesh`) for poles, and only show signs within about 400 m of the player.
 
 ### D. Bridges and freeway props
+
 - Bridges already have rails, posts and piers in `roads.js`. Swap the rails for Jersey barriers (grey concrete, about 0.8 m high) on motorways, M roads and N roads.
 - Add street lights along major roads every 35 m, staggered both sides, as InstancedMesh.
 - Add bridge pillars and barriers from the Kenney kit.
 
 ## 4. Free model and texture sources
 
-| What | Where | Licence |
-|---|---|---|
-| Roads kit: barriers, traffic lights, signs, light posts, bridge pillars, construction cones (90 models, glTF) | https://kenney.nl/assets/city-kit-roads (mirror: https://opengameart.org/content/city-kit-roads) | CC0 |
-| Low-poly background cars | https://quaternius.com/packs/cars.html | CC0 |
-| Asphalt, concrete and kerb textures | https://polyhaven.com/textures/asphalt and https://ambientcg.com/list?q=asphalt | CC0 |
-| SA road sign drawings | Wikimedia links above | Mostly public domain; check each file |
-| OSM sign tagging reference | https://wiki.openstreetmap.org/wiki/Key:traffic_sign | Docs |
+- **Roads kit** (barriers, traffic lights, signs, light posts, bridge pillars, cones; 90 glTF models, CC0): https://kenney.nl/assets/city-kit-roads (mirror: https://opengameart.org/content/city-kit-roads)
+- **Low-poly background cars** (CC0): https://quaternius.com/packs/cars.html
+- **Asphalt, concrete and kerb textures** (CC0): https://polyhaven.com/textures/asphalt and https://ambientcg.com/list?q=asphalt
+- **SA road sign drawings** (mostly public domain; check each file): the Wikimedia links in section 3C
+- **OSM sign tagging reference**: https://wiki.openstreetmap.org/wiki/Key:traffic_sign
 
 Keep textures at 512 px or smaller (1024 px for asphalt), and use JPG or WebP to keep the APK small.
 
