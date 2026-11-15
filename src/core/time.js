@@ -137,3 +137,14 @@ export function isNight(date) {
   const h = date.getHours() + date.getMinutes() / 60;
   return h < sunrise || h > sunset;
 }
+
+// Accelerated in-game clock: one 24-hour game day passes in four real hours.
+// Every fresh game session begins at 08:00 so play starts in daylight.
+export function createGameClock() {
+  const startReal = Date.now();
+  const startGame = durbanNow();
+  startGame.setHours(8, 0, 0, 0);
+  return function gameNow() {
+    return new Date(startGame.getTime() + (Date.now() - startReal) * 6);
+  };
+}
