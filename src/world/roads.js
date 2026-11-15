@@ -119,6 +119,8 @@ export class RoadNetwork {
       const to = nodeAt(b[0], b[1]);
       if (from === to) continue;
       const edge = { id: this.edges.length, road, from, to, forward: true, reverse: !road.oneway, len: road.len };
+      road.fromNode = from;
+      road.toNode = to;
       this.edges.push(edge);
       nodes[from].edges.push(edge.id);
       nodes[to].edges.push(edge.id);
@@ -320,41 +322,110 @@ export class RoadNetwork {
         chunk.edgeIdx.push(baseEdge, baseEdge + 2, baseEdge + 1, baseEdge + 1, baseEdge + 2, baseEdge + 3);
       }
 
-      // Centre dashes on the arterial roads.
-      if (road.major) {
-        const dashChunk = chunkFor(road.pts[0][0], road.pts[0][1]);
-        let acc = 0;
-        for (let i = 1; i < n; i++) {
-          const q = road.pts[i - 1];
-          const p = road.pts[i];
-          const segLen = Math.hypot(p[0] - q[0], p[1] - q[1]);
-          if (segLen < 0.001) continue;
-          acc += segLen;
-          if (acc < 9) continue;
-          acc = 0;
-          let dx = (p[0] - q[0]) / segLen;
-          let dz = (p[1] - q[1]) / segLen;
-          const lx = -dz;
-          const lz = dx;
-          const mx = (p[0] + q[0]) / 2;
-          const mz = (p[1] + q[1]) / 2;
-          const midDistance = cumulative[i - 1] + segLen * 0.5;
-          const dashRamp = road.bridge
-            ? lift * Math.min(smooth01(midDistance / 36), smooth01((road.len - midDistance) / 36))
-            : 0;
-          const my = road.bridge
-            ? Math.max(this.hf.heightAt(mx, mz), 1.2) + dashRamp + 0.05
-            : this.hf.heightAt(mx, mz) + 0.33;
-          const hl = 2.2;
-          const hw = 0.16;
-          const b0 = dashChunk.dashPos.length / 3;
-          dashChunk.dashPos.push(
-            mx - dx * hl + lx * hw, my, mz - dz * hl + lz * hw,
-            mx - dx * hl - lx * hw, my, mz - dz * hl - lz * hw,
-            mx + dx * hl + lx * hw, my, mz + dz * hl + lz * hw,
-            mx + dx * hl - lx * hw, my, mz + dz * hl - lz * hw
-          );
-          dashChunk.dashIdx.push(b0, b0 + 2, b0 + 1, b0 + 1, b0 + 2, b0 + 3);
+      // SA lane markings: 3 m paint / 6 m gap in town, 4 m / 8 m on freeways.
+      const freeway = ['motorway', 'motorway_link', 'trunk', 'trunk_link'].includes(road.cls);
+      const laneWidth = freeway ? 3.7 : 3.4;
+      const laneCount = road.lanes > 1 ? road.lanes : (road.major ? 2 : 1);
+      const lineOffsets = [];
+      if (road.oneway) {
+        for (let lane = 1; lane < laneCount; lane++) {
+          const offset = -half + laneWidth * lane;
+          if (Math.abs(offset) < half - 0.25) lineOffsets.push(offset);
+        }
+      } else if (laneCount >= 2) {
+        lineOffsets.push(0);
+        const extraLeft = Math.floor((laneCount - 2) / 2);
+        const extraRight = laneCount - 2 - extraLeft;
+        for (let lane = 1; lane <= extraLeft; lane++) lineOffsets.push(-lane * laneWidth);
+        for (let lane = 1; lane <= extraRight; lane++) lineOffsets.push(lane * laneWidth);
+      }
+
+      if (lineOffsets.length) {
+        const dashLength = freeway ? 4 : 3;
+        const dashGap = freeway ? 8 : 6;
+        const dashPeriod = dashLength + dashGap;
+        const solidRanges = [];
+        if (!road.oneway && road.major) {
+          const fromNode = this.nodes[road.fromNode];
+          const toNode = this.nodes[road.toNode];
+          if (fromNode?.edges.length > 1) solidRanges.push([0, Math.min(18, road.len)]);
+          if (toNode?.edges.length > 1) solidRanges.push([Math.max(0, road.len - 18), road.len]);
+        }
+
+        for (const offset of lineOffsets) {
+          const isCentre = !road.oneway && Math.abs(offset) < 0.01;
+          for (let i = 1; i < n; i++) {
+            const a = road.pts[i - 1];
+            const b = road.pts[i];
+            const ax = b[0] - a[0];
+            const az = b[1] - a[1];
+            const segLen = Math.hypot(ax, az);
+            if (segLen < 0.001) continue;
+            const dx = ax / segLen;
+            const dz = az / segLen;
+            const lx = -dz;
+            const lz = dx;
+            const segStart = cumulative[i - 1];
+            const segEnd = cumulative[i];
+
+            const drawPiece = (fromDistance, toDistance) => {
+              const t0 = clamp((fromDistance - segStart) / segLen, 0, 1);
+              const t1 = clamp((toDistance - segStart) / segLen, 0, 1);
+              if (t1 - t0 < 0.0001) return;
+              const x0 = a[0] + ax * t0;
+              const z0 = a[1] + az * t0;
+              const x1 = a[0] + ax * t1;
+              const z1 = a[1] + az * t1;
+              const d0 = segStart + segLen * t0;
+              const d1 = segStart + segLen * t1;
+              const yAt = (x, z, distance) => road.bridge
+                ? Math.max(this.hf.heightAt(x, z), 1.2)
+                  + lift * Math.min(smooth01(distance / 36), smooth01((road.len - distance) / 36)) + 0.055
+                : this.hf.heightAt(x, z) + 0.34;
+              const y0 = yAt(x0, z0, d0);
+              const y1 = yAt(x1, z1, d1);
+              const markHalf = 0.065;
+              const chunk = chunkFor((x0 + x1) * 0.5, (z0 + z1) * 0.5);
+              const baseMark = chunk.dashPos.length / 3;
+              chunk.dashPos.push(
+                x0 + lx * (offset - markHalf), y0, z0 + lz * (offset - markHalf),
+                x0 + lx * (offset + markHalf), y0, z0 + lz * (offset + markHalf),
+                x1 + lx * (offset - markHalf), y1, z1 + lz * (offset - markHalf),
+                x1 + lx * (offset + markHalf), y1, z1 + lz * (offset + markHalf)
+              );
+              chunk.dashIdx.push(baseMark, baseMark + 2, baseMark + 1, baseMark + 1, baseMark + 2, baseMark + 3);
+            };
+
+            if (isCentre) {
+              for (const [solidStart, solidEnd] of solidRanges) {
+                const from = Math.max(segStart, solidStart);
+                const to = Math.min(segEnd, solidEnd);
+                if (to > from) drawPiece(from, to);
+              }
+            }
+
+            const firstDash = Math.floor(segStart / dashPeriod);
+            const lastDash = Math.floor(segEnd / dashPeriod);
+            for (let dash = firstDash; dash <= lastDash; dash++) {
+              const dashStart = dash * dashPeriod;
+              const dashEnd = dashStart + dashLength;
+              let pieces = [[Math.max(segStart, dashStart), Math.min(segEnd, dashEnd)]];
+              if (isCentre) {
+                for (const [solidStart, solidEnd] of solidRanges) {
+                  const nextPieces = [];
+                  for (const [from, to] of pieces) {
+                    if (solidEnd <= from || solidStart >= to) nextPieces.push([from, to]);
+                    else {
+                      if (solidStart > from) nextPieces.push([from, solidStart]);
+                      if (solidEnd < to) nextPieces.push([solidEnd, to]);
+                    }
+                  }
+                  pieces = nextPieces;
+                }
+              }
+              for (const [from, to] of pieces) if (to - from > 0.05) drawPiece(from, to);
+            }
+          }
         }
       }
     }
