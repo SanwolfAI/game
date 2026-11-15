@@ -183,7 +183,7 @@ async function main() {
   scene.add(vehicle.group);
 
   const [vx, vz] = vehicle.forward;
-  const player = new Player(hf, city, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
+  const player = new Player(hf, roads, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
   scene.add(player.group);
 
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
