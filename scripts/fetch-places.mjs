@@ -76,13 +76,17 @@ relation["place"~"${PLACE_RE}"](${BBOX.join(',')});
 );out geom tags;`;
 
 const landuseQ = `[out:json][timeout:200];(
-way["landuse"~"^(residential|informal)$"](${BBOX.join(',')});
-relation["landuse"~"^(residential|informal)$"](${BBOX.join(',')});
+way["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard)$"](${BBOX.join(',')});
+relation["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard)$"](${BBOX.join(',')});
+way["natural"~"^(wood|scrub|heath|grassland)$"](${BBOX.join(',')});
+relation["natural"~"^(wood|scrub|heath|grassland)$"](${BBOX.join(',')});
+way["leisure"~"^(park|nature_reserve|garden|golf_course)$"](${BBOX.join(',')});
+relation["leisure"~"^(park|nature_reserve|garden|golf_course)$"](${BBOX.join(',')});
 );out geom tags;`;
 
 const labels = await cached('places', placeQ);
 const geoms = await cached('places-geom', geomQ);
-const landuse = await cached('landuse', landuseQ);
+const landuse = await cached('landcover-v2', landuseQ);
 
 function centerOf(el) {
   if (el.type === 'node') return [el.lon, el.lat];
@@ -153,6 +157,8 @@ await fs.writeFile(new URL('../src/data/places-raw.json', import.meta.url), JSON
       id: el.id,
       name: el.tags?.name || '',
       landuse: el.tags?.landuse || '',
+      natural: el.tags?.natural || '',
+      leisure: el.tags?.leisure || '',
       ring: rings.sort((a, b) => b.length - a.length)[0] || null
     };
   }).filter((l) => l.ring && l.ring.length > 2)

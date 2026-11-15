@@ -15,6 +15,7 @@ export function buildLanduse(hf, areas, { lift = 0.45, opacity = 0.4 } = {}) {
 
   const geometries = [];
   for (const area of areas) {
+    if (!['residential', 'informal'].includes(area?.u)) continue;
     const ring = area?.p;
     if (!ring || ring.length < 4) continue;
 

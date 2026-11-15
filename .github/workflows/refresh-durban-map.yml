@@ -2,6 +2,12 @@ name: Refresh Durban offline map data
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/fetch-places.mjs'
+      - 'scripts/build-data.mjs'
+      - '.github/workflows/refresh-durban-map.yml'
 
 permissions:
   contents: write
@@ -25,9 +31,12 @@ jobs:
       - name: Validate data scripts
         run: |
           node --check scripts/fetch-osm.mjs
+          node --check scripts/fetch-places.mjs
           node --check scripts/build-data.mjs
       - name: Download all 12 Durban road zones and coastline
         run: node scripts/fetch-osm.mjs
+      - name: Download real land-cover polygons and place labels
+        run: node scripts/fetch-places.mjs
       - name: Build compact offline game map
         run: node scripts/build-data.mjs
       - name: Run project checks
@@ -36,7 +45,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/data/durban-osm.json src/data/durban-game.json
+          git add src/data/durban-osm.json src/data/durban-game.json src/data/places-raw.json src/data/cache/landcover-v2.json
           if git diff --cached --quiet; then
             echo "Map data is already up to date."
           else

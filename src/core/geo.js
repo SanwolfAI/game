@@ -231,7 +231,7 @@ export function osmDistricts(places, landuse) {
   }
 
   const areas = (Array.isArray(landuse) ? landuse : [])
-    .filter((l) => Array.isArray(l.p) && l.p.length >= 4 && l.a > 150000)
+    .filter((l) => ['residential', 'informal'].includes(l.u) && Array.isArray(l.p) && l.p.length >= 4 && l.a > 150000)
     .sort((a, b) => b.a - a.a)
     .slice(0, 15);
   for (const l of areas) {
