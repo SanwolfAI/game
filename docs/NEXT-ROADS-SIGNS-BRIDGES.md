@@ -10,6 +10,8 @@ Written 15 Nov 2026 for the next AI helper (ChatGPT/OpenCode). Read all of it be
 - Minimap: roads are drawn as sharp vectors in `src/ui/minimap.js`.
 - Touch layout: the `@media (pointer: coarse)` block at the end of the `<style>` in `index.html`. Keep the pedals, wheel, gear, HORN/RUN and the top buttons from overlapping. The phone is about 800 x 360 CSS px in landscape.
 
+**All models, sign pictures and textures are already in the repo. See `src/assets/ASSETS-README.md` for where each file is.**
+
 ## 2. Rules
 
 1. Make one feature per commit, and run `npm test` before every push. Each push to `main` builds the APK.
