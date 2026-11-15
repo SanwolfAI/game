@@ -6,3 +6,9 @@ __pycache__/
 android/.gradle/
 android/app/build/
 android/build/
+
+# Signing keys / keystores - never commit
+*.p12
+*.jks
+*.keystore
+*.pem
