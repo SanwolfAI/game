@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   apk:
@@ -60,7 +60,6 @@ jobs:
             --notes "Built from ${{ github.sha }}" --target ${{ github.sha }}
 
   website:
-    # Free GitHub Pages only works on a public repo.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     environment:
