@@ -31,10 +31,16 @@ export async function buildSuburbanDetails(city,hf,rng){
   const group=new THREE.Group();
   group.name='durban-suburban-fences-driveways-details';
   const loader=new GLTFLoader();
-  const loaded=await Promise.all(FILES.map(async([name,url])=>{
-    try{return{name,parts:prepare((await loader.loadAsync(url)).scene)};}
-    catch(error){console.warn('Suburban detail model unavailable',url,error);return{name,parts:[]};}
-  }));
+  const loaded=[];
+  for(const [name,url] of FILES){
+    try{
+      const gltf=await loader.loadAsync(url);
+      loaded.push({name,parts:prepare(gltf.scene)});
+    }catch(error){
+      console.warn('Suburban detail model unavailable',url,error);
+      loaded.push({name,parts:[]});
+    }
+  }
   const models=new Map(loaded.map(m=>[m.name,m]));
   const items=new Map(FILES.map(([name])=>[name,[]]));
   const houses=(city.buildings||[]).filter(b=>b.kind==='house').slice(0,420);

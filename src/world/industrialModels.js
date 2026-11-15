@@ -13,7 +13,16 @@ function inside(x,z,r){let v=false;for(let i=0,j=r.length-1;i<r.length;j=i++){co
 function prep(scene){scene.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(scene),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),parts=[];scene.traverse(o=>{if(!o.isMesh||!o.geometry||!o.material)return;const g=o.geometry.clone();g.applyMatrix4(o.matrixWorld);g.translate(-c.x,-b.min.y,-c.z);g.scale(1/Math.max(s.x,.001),1/Math.max(s.y,.001),1/Math.max(s.z,.001));g.computeBoundingSphere();parts.push({geometry:g,material:Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone()});});return parts;}
 export async function buildIndustrialModels(data,hf,roads,city,rng){
  const group=new THREE.Group();group.name='durban-industrial-models';const loader=new GLTFLoader();
- const loaded=await Promise.all(FILES.map(async name=>{try{const g=await loader.loadAsync('./src/assets/industrialkit/'+name+'.glb');return{name,parts:prep(g.scene)};}catch(e){console.warn('Industrial asset unavailable',name,e);return null;}}));
+ const loaded=[];
+ for(const name of FILES){
+  try{
+   const gltf=await loader.loadAsync('./src/assets/industrialkit/'+name+'.glb');
+   loaded.push({name,parts:prep(gltf.scene)});
+  }catch(e){
+   console.warn('Industrial asset unavailable',name,e);
+   loaded.push(null);
+  }
+ }
  const models=loaded.filter(m=>m&&m.parts.length);if(!models.length)return{group,update(){},count:0};
  const chunks=new Map();let count=0;
  for(const area of data.landuse||[]){
