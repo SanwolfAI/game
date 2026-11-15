@@ -21,6 +21,11 @@ export function roadClass(cls) {
 
 const KEY_SCALE = 4; // 4 m node snapping
 
+function smooth01(t) {
+  t = clamp(t, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 export class RoadNetwork {
   constructor(data, hf) {
     this.hf = hf;
@@ -143,6 +148,9 @@ export class RoadNetwork {
 
     const asphalt = new THREE.MeshLambertMaterial({ vertexColors: true });
     const dashMat = new THREE.MeshBasicMaterial({ color: 0xf2e9c8, side: THREE.DoubleSide });
+    const bridgeRailMat = new THREE.MeshLambertMaterial({ color: 0x777d82 });
+    const bridgePostMat = new THREE.MeshLambertMaterial({ color: 0x62696f });
+    const bridgePierMat = new THREE.MeshLambertMaterial({ color: 0x77736b });
 
     for (const road of this.roads) {
       const positions = [];
@@ -152,6 +160,19 @@ export class RoadNetwork {
       const n = road.pts.length;
       const half = road.width / 2;
       const lift = road.bridge ? 6.5 : 0;
+      const cumulative = [0];
+      for (let i = 1; i < n; i++) {
+        const a = road.pts[i - 1];
+        const b = road.pts[i];
+        cumulative.push(cumulative[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+      }
+      const bridgeLiftAt = (i) => {
+        if (!road.bridge) return 0;
+        const rampLength = 36;
+        const from = smooth01(cumulative[i] / rampLength);
+        const to = smooth01((road.len - cumulative[i]) / rampLength);
+        return lift * Math.min(from, to);
+      };
 
       for (let i = 0; i < n; i++) {
         const p = road.pts[i];
@@ -164,7 +185,7 @@ export class RoadNetwork {
         dz /= len;
         const lx = -dz;
         const lz = dx;
-        const y = this.hf.heightAt(p[0], p[1]) + (road.bridge ? lift : 0.28);
+        const y = this.hf.heightAt(p[0], p[1]) + (road.bridge ? bridgeLiftAt(i) : 0.28);
         positions.push(p[0] + lx * half, y, p[1] + lz * half);
         positions.push(p[0] - lx * half, y, p[1] - lz * half);
         colors.push(base.r, base.g, base.b, base.r, base.g, base.b);
@@ -175,8 +196,68 @@ export class RoadNetwork {
         indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
       }
 
-      // Split the ribbon into 2km chunks so frustum culling can drop most of the map.
-      for (let i = 0; i < n - 1; i += 2) {
+      // Add a visible deck edge, safety rails and support piers to every OSM-tagged bridge.
+      if (road.bridge && n > 1) {
+        const railOffset = half + 0.72;
+        for (const side of [-1, 1]) {
+          const railPoints = [];
+          for (let i = 0; i < n; i++) {
+            const p = road.pts[i];
+            const a = road.pts[Math.max(0, i - 1)];
+            const b = road.pts[Math.min(n - 1, i + 1)];
+            let dx = b[0] - a[0];
+            let dz = b[1] - a[1];
+            const len = Math.hypot(dx, dz) || 1;
+            dx /= len;
+            dz /= len;
+            const lx = -dz;
+            const lz = dx;
+            const x = p[0] + lx * railOffset * side;
+            const z = p[1] + lz * railOffset * side;
+            const y = this.hf.heightAt(p[0], p[1]) + bridgeLiftAt(i);
+            railPoints.push(new THREE.Vector3(x, y + 1.05, z));
+            if (i === 0 || cumulative[i] - cumulative[i - 1] >= 11) {
+              const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.05, 0.18), bridgePostMat);
+              post.position.set(x, y + 0.53, z);
+              post.castShadow = false;
+              this.group.add(post);
+            }
+          }
+          if (railPoints.length > 1) {
+            const curve = new THREE.CatmullRomCurve3(railPoints);
+            const rail = new THREE.Mesh(
+              new THREE.TubeGeometry(curve, Math.max(8, (n - 1) * 3), 0.12, 6, false),
+              bridgeRailMat
+            );
+            rail.name = 'bridgeSafetyRail';
+            this.group.add(rail);
+          }
+        }
+
+        // Concrete piers descend to the terrain/waterbed beneath longer spans.
+        for (let d = 28; d < road.len - 12; d += 34) {
+          let seg = 1;
+          while (seg < cumulative.length - 1 && cumulative[seg] < d) seg++;
+          const span = cumulative[seg] - cumulative[seg - 1] || 1;
+          const t = (d - cumulative[seg - 1]) / span;
+          const a = road.pts[seg - 1];
+          const b = road.pts[seg];
+          const x = a[0] + (b[0] - a[0]) * t;
+          const z = a[1] + (b[1] - a[1]) * t;
+          const deckY = this.hf.heightAt(x, z) + lift;
+          const bedY = this.hf.heightAt(x, z);
+          const h = deckY - bedY - 0.45;
+          if (h < 1) continue;
+          const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.92, h, 8), bridgePierMat);
+          pier.position.set(x, bedY + h / 2, z);
+          pier.name = 'bridgePier';
+          this.group.add(pier);
+        }
+      }
+
+      // Split every segment into its own safe chunk quad. The old two-segment
+      // stride skipped the final quad on odd point counts, leaving visible cracks.
+      for (let i = 0; i < n - 1; i++) {
         const mid = road.pts[i];
         const chunk = chunkFor(mid[0], mid[1]);
         const base0 = chunk.positions.length / 3;
