@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { buildVehicleMesh, vehicleType, VEHICLE_TYPES } from './models.js';
 
@@ -22,6 +22,8 @@ export class Vehicle {
     this.steer = 0;
     this.lateral = 0;
     this.driftTilt = 0;
+    this.y = null;
+    this.vy = 0;
 
     this.group = new THREE.Group();
     this.group.name = 'player-vehicle';
@@ -56,23 +58,64 @@ export class Vehicle {
     return !!ahead;
   }
 
-  #place() {
-    const ground = this.hf.heightAt(this.x, this.z);
+  #place(dt = 0) {
     const fx = Math.sin(this.yaw);
     const fz = Math.cos(this.yaw);
     const rx = Math.cos(this.yaw);
     const rz = -Math.sin(this.yaw);
 
-    const hF = this.hf.heightAt(this.x + fx * 1.9, this.z + fz * 1.9);
-    const hB = this.hf.heightAt(this.x - fx * 1.9, this.z - fz * 1.9);
-    const hR = this.hf.heightAt(this.x + rx * 0.95, this.z + rz * 0.95);
-    const hL = this.hf.heightAt(this.x - rx * 0.95, this.z - rz * 0.95);
+    // Road-aware surface (bridges, embankments, kerbs). The previous height
+    // picks the layer, so driving under a bridge keeps you on the ground.
+    const prev = this.y;
+    const surf = this.roads.surfaceAt(this.x, this.z, prev);
+    let target = surf.y;
+    this.onDeck = surf.deck;
+    if (prev === null || dt === 0) {
+      this.y = target;
+      this.vy = 0;
+    } else if (target < prev - 0.35) {
+      // simple gravity when leaving a ledge
+      this.vy -= 22 * dt;
+      this.y = Math.max(target, prev + this.vy * dt);
+    } else {
+      this.vy = 0;
+      this.y = target;
+    }
+    const base = this.y;
+    const h = (x, z) => this.roads.surfaceAt(x, z, base).y;
+    const hF = h(this.x + fx * 1.9, this.z + fz * 1.9);
+    const hB = h(this.x - fx * 1.9, this.z - fz * 1.9);
+    const hR = h(this.x + rx * 0.95, this.z + rz * 0.95);
+    const hL = h(this.x - rx * 0.95, this.z - rz * 0.95);
 
-    this.group.position.set(this.x, ground, this.z);
+    this.group.position.set(this.x, this.y, this.z);
     this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.yaw;
-    this.group.rotation.x = Math.atan2(hB - hF, 3.8) * 0.7;
-    this.group.rotation.z = Math.atan2(hR - hL, 1.9) * 0.7 + this.driftTilt;
+    this.group.rotation.x = clamp(Math.atan2(hB - hF, 3.8), -0.35, 0.35) * 0.7;
+    this.group.rotation.z = clamp(Math.atan2(hR - hL, 1.9), -0.3, 0.3) * 0.7 + this.driftTilt;
+  }
+
+  // Keep the car between the parapets while on a bridge deck.
+  #bridgeRails() {
+    const surf = this.roads.surfaceAt(this.x, this.z, this.y);
+    if (!surf.deck || !surf.pc || !surf.pc.bridge) return;
+    const lim = surf.hw - 1.0;
+    if (Math.abs(surf.lateral) <= lim) return;
+    // push back toward the deck centre line
+    const s = surf.pc.s;
+    void s;
+    const over = Math.abs(surf.lateral) - lim;
+    const near = this.roads.nearestRoad(this.x, this.z, surf.hw + 4, (r) => r === surf.pc.road);
+    if (!near) return;
+    const dl = Math.hypot(near.dirX, near.dirZ) || 1;
+    // left normal of the road direction
+    const nx = near.dirZ / dl;
+    const nz = -near.dirX / dl;
+    const sign = surf.lateral > 0 ? 1 : -1;
+    this.x -= nx * sign * over;
+    this.z -= nz * sign * over;
+    this.speed *= 0.9;
+    this.lateral *= 0.2;
   }
 
   update(dt) {
@@ -139,7 +182,8 @@ export class Vehicle {
     this.z = clamp(this.z, this.hf.minZ + margin, this.hf.minZ + (this.hf.rows - 1) * this.hf.cell - margin);
 
     this.#resolveCollisions();
-    this.#place();
+    this.#bridgeRails();
+    this.#place(dt);
   }
 
   #resolveCollisions() {

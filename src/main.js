@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
 import { GameClock, seasonForDate, solarState } from './core/time.js';
@@ -103,6 +103,7 @@ function buildStars() {
 }
 
 async function main() {
+  window.__izkStarted = true;
   setLoad(6, 'Loading OpenStreetMap data…');
   const res = await fetch('./src/data/durban-game.json');
   if (!res.ok) throw new Error(`Could not load map data (HTTP ${res.status})`);
@@ -121,6 +122,7 @@ async function main() {
   setLoad(40, 'Paving the ground…');
   await nextFrame();
   const terrain = buildTerrain(hf, coastXZ, 2);
+  hf.renderStep = 2; // roads sample the rendered (decimated) terrain too
   const landuse = buildLanduse(hf, data.landuse);
 
   setLoad(58, 'Laying 19 000 roads…');
@@ -151,7 +153,8 @@ async function main() {
   scene.background = skyDay.clone();
   scene.fog = new THREE.Fog(0x9fc6e2, 750, 5200);
 
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.5, 16000);
+  // near=1 m doubles depth precision vs 0.5 (no road/marking z-fighting at range)
+  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 1.0, 16000);
 
   const hemi = new THREE.HemisphereLight(0xd8ecff, 0x4b5a42, 1.6);
   scene.add(hemi);
@@ -184,12 +187,14 @@ async function main() {
 
   const [vx, vz] = vehicle.forward;
   const player = new Player(hf, city, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
+  player.roads = roads;
   scene.add(player.group);
 
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
   scene.add(traffic.group);
 
   const pedestrians = new Pedestrians(hf, city, mulberry32(40421), vehicle.x, vehicle.z);
+  pedestrians.roads = roads;
   scene.add(pedestrians.group);
 
   const hud = new HUD();
@@ -249,7 +254,7 @@ async function main() {
       hud.toast('No room to get out here', 1.6);
       return;
     }
-    player.placeAt(ex, ez, vehicle.yaw + Math.PI / 2);
+    player.placeAt(ex, ez, vehicle.yaw + Math.PI / 2, vehicle.y);
     player.group.visible = true;
     vehicle.speed = 0;
     vehicle.lateral = 0;
@@ -329,14 +334,21 @@ async function main() {
     const look = inVehicle ? mode.look : 1.35;
     const [fx, fz] = ent.forward;
 
-    desiredPos.set(ent.x - fx * dist, hf.heightAt(ent.x, ent.z) + height, ent.z - fz * dist);
-    desiredLook.set(ent.x + fx * ahead, hf.heightAt(ent.x, ent.z) + look, ent.z + fz * ahead);
+    const baseY = ent.group.position.y;
+    desiredPos.set(ent.x - fx * dist, baseY + height, ent.z - fz * dist);
+    desiredLook.set(ent.x + fx * ahead, baseY + look, ent.z + fz * ahead);
 
     const t = snap ? 1 : 1 - Math.exp(-7 * dt);
     camPos.lerp(desiredPos, t);
     camLook.lerp(desiredLook, snap ? 1 : 1 - Math.exp(-10 * dt));
     camera.position.copy(camPos);
     camera.lookAt(camLook);
+    // Debug/screenshot override: window.__izkCam = { pos: [x, y, z], look: [x, y, z] }
+    const ov = window.__izkCam;
+    if (ov) {
+      camera.position.set(ov.pos[0], ov.pos[1], ov.pos[2]);
+      camera.lookAt(ov.look[0], ov.look[1], ov.look[2]);
+    }
   }
 
   function onResize() {
@@ -409,6 +421,7 @@ async function main() {
     if (arrival) hud.toast(`Arrived at ${arrival.name}`, 3);
 
     traffic.update(dt, ent.x, ent.z);
+    roads.update(camera.position.x, camera.position.z);
     pedestrians.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
@@ -444,6 +457,7 @@ async function main() {
   const now = gameClock.now();
   updateEnvironment(now);
   updateCamera(0, true);
+  roads.update(camera.position.x, camera.position.z, 1e9); // build nearby road detail up front
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
   window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic };
@@ -457,8 +471,11 @@ function formatSeasonTime(now) {
   return h < 6 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 20 ? 'evening' : 'night';
 }
 
-main().catch((err) => {
+main().then(() => {
+  window.__izkBooted = true;
+}).catch((err) => {
   console.error(err);
+  if (window.__izkShowError) window.__izkShowError(err && err.message ? err.message : String(err));
   setLoad(100, `Failed: ${err.message}`);
   loadFill.style.background = '#ff6b57';
 });

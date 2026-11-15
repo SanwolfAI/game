@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 
 const SAND = new THREE.Color('#e6d3a3');

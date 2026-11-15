@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { VEHICLE_TYPES, buildVehicleMesh } from './models.js';
 
@@ -105,7 +105,7 @@ export class Traffic {
       dir: edge.reverse && this.rng() > 0.5 ? -1 : 1,
       dist: this.rng() * edge.road.len,
       speed: clamp(edge.road.speed * (0.28 + this.rng() * 0.18), 3.5, 13),
-      lane: LANE + this.rng() * 0.6,
+      lane: this.roads.laneOffset ? this.roads.laneOffset(edge.road, this.rng) : LANE + this.rng() * 0.6,
       checkpoint: mid
     };
   }
@@ -141,6 +141,7 @@ export class Traffic {
     car.dir = next[1];
     car.dist = Math.max(0, car.dist - edge.road.len);
     car.speed = clamp(car.edge.road.speed * (0.28 + this.rng() * 0.18), 3.5, 13);
+    if (car.edge.road !== edge.road && this.roads.laneOffset) car.lane = this.roads.laneOffset(car.edge.road, this.rng);
   }
 
   update(dt, px, pz) {
@@ -166,8 +167,11 @@ export class Traffic {
         }
 
         const pp = pointAlong(car.edge.road, car.dir, car.dist);
-        const y = this.hf.heightAt(pp.x, pp.z);
-        this.pos.set(pp.x + pp.fz * car.lane, y, pp.z - pp.fx * car.lane);
+        const cx = pp.x + pp.fz * car.lane;
+        const cz = pp.z - pp.fx * car.lane;
+        const along = car.dir > 0 ? car.dist : car.edge.road.len - car.dist;
+        const y = this.roads.roadHeightAt ? this.roads.roadHeightAt(car.edge.road, along, cx, cz) : this.hf.heightAt(pp.x, pp.z);
+        this.pos.set(cx, y, cz);
         this.quat.setFromAxisAngle(this.axis, Math.atan2(pp.fx, pp.fz));
         this.matrix.compose(this.pos, this.quat, this.scale);
         mesh.setMatrixAt(i, this.matrix);

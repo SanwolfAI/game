@@ -28,7 +28,8 @@ export class Player {
     this.#place();
   }
 
-  placeAt(x, z, yaw) {
+  placeAt(x, z, yaw, y = null) {
+    this.y = y;
     this.x = x;
     this.z = z;
     if (yaw !== undefined) this.yaw = yaw;
@@ -36,8 +37,16 @@ export class Player {
     this.#place();
   }
 
+  // Walkable height: roads/bridges/sidewalks when the road network is attached.
+  #groundY() {
+    if (!this.roads) return this.hf.heightAt(this.x, this.z);
+    const prev = this.y ?? null;
+    this.y = this.roads.surfaceAt(this.x, this.z, prev).y;
+    return this.y;
+  }
+
   #place() {
-    this.group.position.set(this.x, this.hf.heightAt(this.x, this.z), this.z);
+    this.group.position.set(this.x, this.#groundY(), this.z);
     this.group.rotation.y = this.yaw;
   }
 
@@ -101,7 +110,7 @@ export class Player {
     this.shoeR.rotation.x = -swing;
     this.armL.rotation.x = -swing * 0.7;
     this.armR.rotation.x = swing * 0.7;
-    this.group.position.y = this.hf.heightAt(this.x, this.z) + bob;
+    this.group.position.y = this.#groundY() + bob;
   }
 
   get forward() {

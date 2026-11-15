@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
+import * as THREE from '../../vendor/three/three.module.js';
+import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 
 function paint(geo, color) {
   const c = new THREE.Color(color);

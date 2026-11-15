@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { buildPedestrianGeometry } from './models.js';
 
 const COUNT = 120;
@@ -89,7 +89,7 @@ export class Pedestrians {
     for (let i = 0; i < this.people.length; i++) {
       const p = this.people[i];
       const bob = Math.abs(Math.sin(p.phase)) * 0.05;
-      this.pos.set(p.x, this.hf.heightAt(p.x, p.z) + bob, p.z);
+      this.pos.set(p.x, (this.roads ? this.roads.surfaceHeightAt(p.x, p.z, this.hf.heightAt(p.x, p.z)) : this.hf.heightAt(p.x, p.z)) + bob, p.z);
       this.quat.setFromAxisAngle(this.axis, p.yaw);
       this.scale.set(p.scale, p.scale, p.scale);
       this.matrix.compose(this.pos, this.quat, this.scale);

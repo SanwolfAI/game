@@ -356,6 +356,39 @@
       <div id="load-status">Starting engine…</div>
     </div>
 
+    <script>
+      // Classic (non-module) boot guard: shows any startup error on the loading
+      // screen instead of hanging at "Starting engine…" (Android WebView).
+      (function () {
+        var status = document.getElementById('load-status');
+        var fill = document.getElementById('load-fill');
+        window.__izkBooted = false;
+        function show(msg) {
+          if (!status || window.__izkBooted) return;
+          status.textContent = 'Failed: ' + msg;
+          status.style.color = '#ffb4a8';
+          status.style.whiteSpace = 'normal';
+          if (fill) { fill.style.width = '100%'; fill.style.background = '#ff6b57'; }
+        }
+        window.__izkShowError = show;
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.src || t.href)) { show('could not load ' + (t.src || t.href)); return; }
+          show((e.message || 'script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          show(r && r.message ? r.message : String(r));
+        });
+        // Watchdog: if main.js never started (module not supported / import failed).
+        setTimeout(function () {
+          if (!window.__izkStarted) show('game modules did not start. This WebView may be too old (needs ES modules) or a script failed to load.');
+        }, 20000);
+      })();
+    </script>
+    <script nomodule>
+      document.getElementById('load-status').textContent = 'Failed: this browser/WebView does not support ES modules. Please update Android System WebView or Chrome.';
+    </script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
