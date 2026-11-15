@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
 import { durbanNow, seasonForDate, solarState } from './core/time.js';
-import { Heightfield } from './world/heightfield.js';
+import { Heightfield, loadDurbanDEM } from './world/heightfield.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
 import { RoadNetwork } from './world/roads.js';
@@ -116,9 +116,15 @@ async function main() {
   const coastXZ = extendCoast(data.coast.map(([lon, lat]) => toXZ(lon, lat)));
   const bounds = worldBounds(coastXZ, data);
 
-  setLoad(26, 'Carving hills and coastline…');
+  setLoad(26, 'Loading real Durban elevation…');
   await nextFrame();
-  const hf = new Heightfield(coastXZ, bounds, 80);
+  let dem = null;
+  try {
+    dem = await loadDurbanDEM();
+  } catch (error) {
+    console.warn('Real Durban DEM unavailable; using fallback terrain:', error);
+  }
+  const hf = new Heightfield(coastXZ, bounds, 80, dem);
 
   setLoad(40, 'Paving the ground…');
   await nextFrame();
@@ -379,6 +385,7 @@ async function main() {
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
+    if (terrain.ocean?.material?.uniforms?.time) terrain.ocean.material.uniforms.time.value += dt;
     const now = durbanNow();
     const { season, solar } = updateEnvironment(now);
     const ent = entity();

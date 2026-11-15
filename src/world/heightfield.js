@@ -1,7 +1,29 @@
-import { toXZ } from '../core/geo.js';
+import { toXZ, toLonLat } from '../core/geo.js';
 import { clamp, smoothstep } from '../core/utils.js';
 
-// Low-poly hills placed on their real KZN locations.
+
+// Load the bundled Terrarium DEM locally; no network tile requests are made.
+export async function loadDurbanDEM() {
+  const metaResponse = await fetch('./src/assets/terrain/durban-dem.json');
+  if (!metaResponse.ok) throw new Error('Durban elevation metadata unavailable');
+  const meta = await metaResponse.json();
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Durban elevation image could not be loaded'));
+    image.src = './src/assets/terrain/durban-dem-terrarium-z12.png';
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Elevation canvas is unavailable');
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  return { meta, pixels, width: canvas.width, height: canvas.height };
+}
+
+// Fallback hills are used only if the bundled DEM cannot be read.
 const HILLS = [
   { lon: 31.0055, lat: -29.862, amp: 95, sigma: 1400, name: 'Berea' },
   { lon: 30.928, lat: -29.912, amp: 150, sigma: 2600, name: 'Cato Ridge' },
@@ -23,8 +45,9 @@ const FLATS = [
 ];
 
 export class Heightfield {
-  constructor(coastXZ, bounds, cell = 80) {
+  constructor(coastXZ, bounds, cell = 80, dem = null) {
     this.cell = cell;
+    this.dem = dem;
     this.minX = bounds.minX;
     this.minZ = bounds.minZ;
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / cell) + 1;
@@ -152,6 +175,29 @@ export class Heightfield {
     return h;
   }
 
+  #sampleDem(x, z) {
+    const dem = this.dem;
+    if (!dem?.meta || !dem.pixels || !dem.width || !dem.height) return NaN;
+    const [lon, lat] = toLonLat(x, z);
+    const m = dem.meta;
+    if (lon < m.west || lon > m.east || lat < m.south || lat > m.north) return NaN;
+    const mercator = (value) => Math.log(Math.tan(Math.PI / 4 + value * Math.PI / 360));
+    const northY = mercator(m.north);
+    const southY = mercator(m.south);
+    const px = clamp(((lon - m.west) / (m.east - m.west)) * (dem.width - 1), 0, dem.width - 1);
+    const py = clamp(((northY - mercator(lat)) / (northY - southY)) * (dem.height - 1), 0, dem.height - 1);
+    const x0 = Math.floor(px), y0 = Math.floor(py);
+    const x1 = Math.min(dem.width - 1, x0 + 1), y1 = Math.min(dem.height - 1, y0 + 1);
+    const read = (ix, iy) => {
+      const k = (iy * dem.width + ix) * 4;
+      return dem.pixels[k] * 256 + dem.pixels[k + 1] + dem.pixels[k + 2] / 256 - 32768;
+    };
+    const tx = px - x0, ty = py - y0;
+    const top = read(x0, y0) * (1 - tx) + read(x1, y0) * tx;
+    const bottom = read(x0, y1) * (1 - tx) + read(x1, y1) * tx;
+    return top * (1 - ty) + bottom * ty;
+  }
+
   #buildHeight() {
     const { cols, rows, water, dist, height } = this;
     for (let iz = 0; iz < rows; iz++) {
@@ -160,20 +206,26 @@ export class Heightfield {
         const x = this.minX + ix * this.cell;
         const i = this.idx(ix, iz);
         const d = water[i] ? -dist[i] : dist[i];
-        let h = this.#profile(d);
-        for (const hill of this.hills) {
-          const dx = x - hill.x;
-          const dz = z - hill.z;
-          const q = (dx * dx + dz * dz) / (2 * hill.sigma * hill.sigma);
-          if (q < 12) h += hill.amp * Math.exp(-q);
-        }
-        for (const flat of this.flats) {
-          const dx = x - flat.x;
-          const dz = z - flat.z;
-          const r = Math.hypot(dx, dz);
-          if (r > flat.r) continue;
-          const w = 1 - smoothstep(flat.inner, flat.r, r);
-          h = h * (1 - w) + flat.h * w;
+        let h = this.#sampleDem(x, z);
+        if (!Number.isFinite(h)) {
+          h = this.#profile(d);
+          for (const hill of this.hills) {
+            const dx = x - hill.x;
+            const dz = z - hill.z;
+            const q = (dx * dx + dz * dz) / (2 * hill.sigma * hill.sigma);
+            if (q < 12) h += hill.amp * Math.exp(-q);
+          }
+          for (const flat of this.flats) {
+            const dx = x - flat.x;
+            const dz = z - flat.z;
+            const r = Math.hypot(dx, dz);
+            if (r > flat.r) continue;
+            const w = 1 - smoothstep(flat.inner, flat.r, r);
+            h = h * (1 - w) + flat.h * w;
+          }
+        } else if (d >= 0) {
+          // DEM land elevations are kept real; the sea remains below the water plane.
+          h = Math.max(0, h);
         }
         if (d < 0) h = Math.min(h, -0.4);
         height[i] = h;

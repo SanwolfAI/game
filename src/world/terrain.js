@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Water } from 'three/addons/objects/Water.js';
 import { clamp } from '../core/utils.js';
 
 const SAND = new THREE.Color('#e6d3a3');
@@ -21,6 +22,7 @@ export function buildTerrain(hf, coastXZ, step = 2) {
   const positions = [];
   const colors = [];
   const indices = [];
+  const uvs = [];
 
   const heightAt = (ix, iz) => hf.height[hf.idx(Math.min(ix, hf.cols - 1), Math.min(iz, hf.rows - 1))];
   const waterAt = (ix, iz) => hf.water[hf.idx(Math.min(ix, hf.cols - 1), Math.min(iz, hf.rows - 1))];
@@ -45,6 +47,7 @@ export function buildTerrain(hf, coastXZ, step = 2) {
       const d = hf.signedCoastDistance(x, z);
       const water = waterAt(gx, gz);
       positions.push(x, h, z);
+      uvs.push(x / 32, z / 32);
       const c = colorFor(x, z, h, d, water);
       colors.push(c.r, c.g, c.b);
     }
@@ -70,21 +73,34 @@ export function buildTerrain(hf, coastXZ, step = 2) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const groundTexture = new THREE.TextureLoader().load('./src/assets/textures/sparse_grass_512.jpg');
+  groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+  groundTexture.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshLambertMaterial({ map: groundTexture, vertexColors: true, flatShading: true });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'terrainMesh';
   mesh.receiveShadow = false;
   group.add(mesh);
 
   // Ocean
-  const oceanGeo = new THREE.PlaneGeometry(400000, 400000, 1, 1);
-  const oceanMat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#1d6f9e') });
-  const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+  const waterNormals = new THREE.TextureLoader().load('./src/assets/textures/waternormals.jpg');
+  waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+  const ocean = new Water(new THREE.PlaneGeometry(400000, 400000), {
+    textureWidth: 128,
+    textureHeight: 128,
+    waterNormals,
+    sunDirection: new THREE.Vector3(0.35, 0.85, 0.25).normalize(),
+    sunColor: 0xffffff,
+    waterColor: 0x126b8c,
+    distortionScale: 3.2,
+    fog: true
+  });
   ocean.rotation.x = -Math.PI / 2;
-  ocean.position.set(0, -0.55, 0);
+  ocean.position.set(0, -0.35, 0);
   ocean.renderOrder = -1;
   ocean.name = 'ocean';
   group.add(ocean);
