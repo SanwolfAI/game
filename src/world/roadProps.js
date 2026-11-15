@@ -49,17 +49,19 @@ export async function buildRoadProps(roads, hf) {
   const loader = new GLTFLoader();
   let models;
   try {
-    const [lightModel, barrierModel] = await Promise.all([
+    const [lightModel, barrierModel, pillarModel] = await Promise.all([
       loader.loadAsync('./src/assets/roadkit/light-curved.glb'),
-      loader.loadAsync('./src/assets/roadkit/road-straight-barrier.glb')
+      loader.loadAsync('./src/assets/roadkit/road-straight-barrier.glb'),
+      loader.loadAsync('./src/assets/roadkit/bridge-pillar.glb')
     ]);
     models = [
       prepareModel(lightModel.scene),
-      prepareModel(barrierModel.scene)
+      prepareModel(barrierModel.scene),
+      prepareModel(pillarModel.scene)
     ];
   } catch (error) {
     console.warn('Roadside 3D props unavailable; retaining the basic road furniture:', error);
-    return { group, update() {}, streetlightCount: 0, bridgeBarrierCount: 0 };
+    return { group, update() {}, streetlightCount: 0, bridgeBarrierCount: 0, pillarCount: 0 };
   }
 
   const chunks = new Map();
@@ -67,7 +69,7 @@ export async function buildRoadProps(roads, hf) {
     const cx = Math.floor(item.x / CHUNK_SIZE);
     const cz = Math.floor(item.z / CHUNK_SIZE);
     const key = `${cx},${cz}`;
-    if (!chunks.has(key)) chunks.set(key, { cx, cz, items: [[], []] });
+    if (!chunks.has(key)) chunks.set(key, { cx, cz, items: [[], [], []] });
     chunks.get(key).items[type].push(item);
   };
 
@@ -117,6 +119,18 @@ export async function buildRoadProps(roads, hf) {
     }
   }
 
+  let pillarCount = 0;
+  for (const pillar of roads.pillars || []) {
+    add(2, {
+      x: pillar.x,
+      y: pillar.y,
+      z: pillar.z,
+      yaw: 0,
+      scale: [1.8, pillar.height, 1.8]
+    });
+    pillarCount++;
+  }
+
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
@@ -155,6 +169,7 @@ export async function buildRoadProps(roads, hf) {
 
   group.userData.streetlightCount = lightCount;
   group.userData.bridgeBarrierCount = barrierCount;
+  group.userData.pillarCount = pillarCount;
   function update(x, z) {
     for (const chunk of chunkGroups) {
       const dx = chunk.userData.centerX - x;
@@ -162,5 +177,5 @@ export async function buildRoadProps(roads, hf) {
       chunk.visible = dx * dx + dz * dz < 900 * 900;
     }
   }
-  return { group, update, streetlightCount: lightCount, bridgeBarrierCount: barrierCount };
+  return { group, update, streetlightCount: lightCount, bridgeBarrierCount: barrierCount, pillarCount };
 }

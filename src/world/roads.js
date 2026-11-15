@@ -41,6 +41,7 @@ export class RoadNetwork {
     this.hf = hf;
     this.roads = [];
     this.rail = [];
+    this.pillars = [];
     this.group = new THREE.Group();
     this.group.name = 'roads';
 
@@ -269,25 +270,48 @@ export class RoadNetwork {
 
         }
 
-        // Concrete piers descend to the terrain/waterbed beneath longer spans.
-        for (let d = 28; d < road.len - 12; d += 34) {
-          let seg = 1;
-          while (seg < cumulative.length - 1 && cumulative[seg] < d) seg++;
-          const span = cumulative[seg] - cumulative[seg - 1] || 1;
-          const t = (d - cumulative[seg - 1]) / span;
-          const a = road.pts[seg - 1];
-          const b = road.pts[seg];
-          const x = a[0] + (b[0] - a[0]) * t;
-          const z = a[1] + (b[1] - a[1]) * t;
-          const ramp = Math.min(smooth01(d / 36), smooth01((road.len - d) / 36));
-          const bedY = this.hf.heightAt(x, z);
-          const deckY = Math.max(bedY, 1.2) + lift * ramp;
-          const h = deckY - bedY - 0.45;
-          if (h < 1) continue;
-          const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.92, h, 8), bridgePierMat);
-          pier.position.set(x, bedY + h / 2, z);
-          pier.name = 'bridgePier';
-          this.group.add(pier);
+        // Add supports only where a mapped road actually passes beneath this bridge.
+        // Place them just outside the lower road's carriageway, never in its lanes.
+        if (road.major && road.len > 60) {
+          let lastSupportDistance = -1000;
+          for (let d = 20; d < road.len - 20; d += 12) {
+            let seg = 1;
+            while (seg < cumulative.length - 1 && cumulative[seg] < d) seg++;
+            const span = cumulative[seg] - cumulative[seg - 1] || 1;
+            const t = (d - cumulative[seg - 1]) / span;
+            const a = road.pts[seg - 1];
+            const b = road.pts[seg];
+            const x = a[0] + (b[0] - a[0]) * t;
+            const z = a[1] + (b[1] - a[1]) * t;
+            const under = this.nearestRoad(
+              x, z, 18,
+              (candidate) => candidate.id !== road.id && !candidate.bridge && candidate.width >= 4
+            );
+            if (!under || under.dist > under.road.width * 0.5 + 4 || d - lastSupportDistance < 28) continue;
+            const lowerLength = Math.hypot(under.dirX, under.dirZ) || 1;
+            const nx = -under.dirZ / lowerLength;
+            const nz = under.dirX / lowerLength;
+            const offset = under.road.width * 0.5 + 0.8;
+            const ramp = Math.min(smooth01(d / 36), smooth01((road.len - d) / 36));
+            const deckY = Math.max(this.hf.heightAt(x, z), 1.2) + lift * ramp;
+            let added = 0;
+            for (const side of [-1, 1]) {
+              const px = under.x + nx * offset * side;
+              const pz = under.z + nz * offset * side;
+              const bridgeAt = this.nearestRoad(px, pz, 12, (candidate) => candidate.id === road.id);
+              if (!bridgeAt) continue;
+              const blocked = this.nearestRoad(px, pz, 4, (candidate) =>
+                candidate.id !== road.id && candidate.id !== under.road.id
+              );
+              if (blocked && blocked.dist < blocked.road.width * 0.5 + 0.5) continue;
+              const bedY = this.hf.heightAt(px, pz);
+              const height = deckY - bedY - 0.45;
+              if (height < 1.5) continue;
+              this.pillars.push({ x: px, z: pz, y: bedY, height });
+              added++;
+            }
+            if (added) lastSupportDistance = d;
+          }
         }
       }
 
