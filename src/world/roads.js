@@ -75,6 +75,7 @@ export class RoadNetwork {
         oneway: !!r.o,
         bridge: !!r.b,
         lanes: Math.max(1, Number(r.w) || 0),
+        maxspeed: r.s || '',
         lanesTagged: Number(r.w) > 0,
         width: Number(r.w) > 0 ? Math.max(info.width, Number(r.w) * (roadClass(r.h).major ? 3.7 : 3.4)) : info.width,
         speed: info.speed,

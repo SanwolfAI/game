@@ -6,6 +6,7 @@ import { Heightfield } from './world/heightfield.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
 import { RoadNetwork } from './world/roads.js';
+import { Roadside } from './world/roadside.js';
 import { City } from './world/city.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
@@ -128,6 +129,7 @@ async function main() {
   setLoad(58, `Paving ${data.roads.length.toLocaleString()} roads and building ${mappedBridgeCount.toLocaleString()} bridges…`);
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
+  const roadside = new Roadside(data, roads, hf);
 
   setLoad(72, 'Raising the city…');
   await nextFrame();
@@ -181,6 +183,7 @@ async function main() {
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
+  scene.add(roadside.group);
   scene.add(cityGroup);
   scene.add(landmarks);
 
@@ -422,6 +425,7 @@ async function main() {
     if (arrival) hud.toast(`Arrived at ${arrival.name}`, 3);
 
     traffic.update(dt, ent.x, ent.z);
+    roadside.update(ent.x, ent.z, dt);
     pedestrians.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
