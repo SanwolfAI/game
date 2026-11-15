@@ -13,6 +13,7 @@ import { City } from './world/city.js';
 import { buildCityModels } from './world/buildingModels.js';
 import { buildTrains } from './game/trains.js';
 import { buildHarbour } from './world/harbour.js';
+import { buildRailTracks } from './world/railTracks.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
 import { loadDownloadedVehicles, applyVehicleEnvironment } from './game/sketchfabModels.js';
@@ -144,6 +145,9 @@ async function main() {
   setLoad(62, 'Placing streetlights and bridge barriers…');
   await nextFrame();
   const roadProps = await buildRoadProps(roads, hf);
+  setLoad(65, 'Laying mapped railway tracks…');
+  await nextFrame();
+  const railTracks = await buildRailTracks(roads, hf);
   const roadside = new Roadside(data, roads, hf);
 
   setLoad(72, 'Raising the city…');
@@ -216,6 +220,7 @@ async function main() {
   scene.add(roads.group);
   scene.add(roadside.group);
   scene.add(roadProps.group);
+  scene.add(railTracks.group);
   scene.add(cityGroup);
   scene.add(cityModels.group);
   scene.add(trains.group);
@@ -464,6 +469,7 @@ async function main() {
     traffic.update(dt, ent.x, ent.z);
     roadside.update(ent.x, ent.z, dt);
     roadProps.update(ent.x, ent.z);
+    railTracks.update(ent.x, ent.z);
     pedestrians.update(dt, ent.x, ent.z);
     nature.update(ent.x, ent.z);
     cityModels.update(ent.x, ent.z);
