@@ -36,9 +36,20 @@ export class RoadNetwork {
 
     for (const r of data.roads) {
       const info = roadClass(r.h);
+      const sourcePts = r.p.map((p) => toXZ(p[0], p[1]));
       const pts = [];
-      for (const p of r.p) {
-        pts.push(toXZ(p[0], p[1]));
+      if (sourcePts.length) pts.push(sourcePts[0]);
+      for (let i = 1; i < sourcePts.length; i++) {
+        const a = sourcePts[i - 1];
+        const b = sourcePts[i];
+        const distance = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        // Straight OSM bridge ways often have only two endpoints. Add samples
+        // so the raised deck, approach ramps and rails have real geometry.
+        const steps = r.b ? Math.max(1, Math.ceil(distance / 10)) : 1;
+        for (let step = 1; step <= steps; step++) {
+          const t = step / steps;
+          pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
       }
       if (pts.length < 2) continue;
       let len = 0;
@@ -185,7 +196,8 @@ export class RoadNetwork {
         dz /= len;
         const lx = -dz;
         const lz = dx;
-        const y = this.hf.heightAt(p[0], p[1]) + (road.bridge ? bridgeLiftAt(i) : 0.28);
+        const groundY = this.hf.heightAt(p[0], p[1]);
+        const y = road.bridge ? Math.max(groundY, 1.2) + bridgeLiftAt(i) : groundY + 0.28;
         positions.push(p[0] + lx * half, y, p[1] + lz * half);
         positions.push(p[0] - lx * half, y, p[1] - lz * half);
         colors.push(base.r, base.g, base.b, base.r, base.g, base.b);
@@ -215,7 +227,7 @@ export class RoadNetwork {
             const lz = dx;
             const x = p[0] + lx * railOffset * side;
             const z = p[1] + lz * railOffset * side;
-            const y = this.hf.heightAt(p[0], p[1]) + bridgeLiftAt(i);
+            const y = Math.max(this.hf.heightAt(p[0], p[1]), 1.2) + bridgeLiftAt(i);
             railPoints.push(new THREE.Vector3(x, y + 1.05, z));
             if (cumulative[i] - lastPostAt >= 10 || i === n - 1) {
               lastPostAt = cumulative[i];
@@ -247,8 +259,8 @@ export class RoadNetwork {
           const x = a[0] + (b[0] - a[0]) * t;
           const z = a[1] + (b[1] - a[1]) * t;
           const ramp = Math.min(smooth01(d / 36), smooth01((road.len - d) / 36));
-          const deckY = this.hf.heightAt(x, z) + lift * ramp;
           const bedY = this.hf.heightAt(x, z);
+          const deckY = Math.max(bedY, 1.2) + lift * ramp;
           const h = deckY - bedY - 0.45;
           if (h < 1) continue;
           const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.92, h, 8), bridgePierMat);
@@ -289,7 +301,13 @@ export class RoadNetwork {
           const lz = dx;
           const mx = (p[0] + q[0]) / 2;
           const mz = (p[1] + q[1]) / 2;
-          const my = this.hf.heightAt(mx, mz) + (road.bridge ? lift : 0.33);
+          const midDistance = cumulative[i - 1] + segLen * 0.5;
+          const dashRamp = road.bridge
+            ? lift * Math.min(smooth01(midDistance / 36), smooth01((road.len - midDistance) / 36))
+            : 0;
+          const my = road.bridge
+            ? Math.max(this.hf.heightAt(mx, mz), 1.2) + dashRamp + 0.05
+            : this.hf.heightAt(mx, mz) + 0.33;
           const hl = 2.2;
           const hw = 0.16;
           const b0 = dashChunk.dashPos.length / 3;
