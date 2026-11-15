@@ -33,7 +33,6 @@ jobs:
           mkdir -p $A/src/data
           cp index.html $A/
           cp -r vendor $A/
-          if [ -d src/assets ]; then cp -r src/assets $A/; fi
           rsync -a --exclude data src/ $A/src/
           cp src/data/durban-game.json $A/src/data/
       - uses: actions/setup-java@v4
@@ -74,7 +73,6 @@ jobs:
           mkdir -p site/src/data
           cp index.html site/
           cp -r vendor site/
-          if [ -d src/assets ]; then cp -r src/assets site/; fi
           rsync -a --exclude data src/ site/src/
           cp src/data/durban-game.json site/src/data/
           touch site/.nojekyll
