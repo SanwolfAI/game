@@ -42,3 +42,25 @@ You only write code. Do not download or add models yourself. Load files with rel
 ## Order of work
 Follow `docs/NEXT-ROADS-SIGNS-BRIDGES.md`. Do task A, the bridge deck height, first. Then do markings, then signs from this folder, then props from `roadkit/`.
 Run `npm test` before each push, and keep one feature per commit.
+
+## 5. Loaders and water (added 15 Nov 2026)
+- GLTFLoader for three r169: `vendor/three/loaders/GLTFLoader.js`. It's offline, and its helper import points to `vendor/three/BufferGeometryUtils.js`. Import it with `import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';` (the import map already maps `three/addons/` to `./vendor/three/`).
+- Ocean: `vendor/three/objects/Water.js` (three r169, MIT) with `src/assets/textures/waternormals.jpg`. Import it with `import { Water } from 'three/addons/objects/Water.js';`. Use it for the Indian Ocean east of the beachfront and for the harbour basin.
+- Railway sign: `signs/w318.png`, W318 "Railway crossing ahead", public domain, https://commons.wikimedia.org/wiki/File:SADC_road_sign_W318.svg. Place it about 100 to 150 m before OSM `railway=level_crossing`, on the left side.
+
+## 6. Trains, harbour and industry (Kenney, CC0)
+- `trainkit/`: locomotives (`train-diesel-*`, `train-locomotive-*`), Metrorail-style electric sets (`train-electric-city-*`), container wagons (`train-carriage-container-*`), tank and box wagons, and track pieces (`track*.glb`, `railroad-*.glb`). Run trains along OSM `railway=rail` lines.
+- `harbourkit/`: container ships (`ship-cargo-a/b/c`), tugboats (`boat-tug-*`), the ocean liner (`ship-ocean-liner*`), containers (`cargo-container-*`, `cargo-pile-*`), buoys, small boats and the rest. Put these in the Port of Durban basin (OSM `harbour`/`landuse=port`, at the Point and the Bluff).
+- `industrialkit/`: shipping containers (`shipping-container-a/b/c`), tanks, chimneys, warehouses (`building-a` to `building-t`) and water towers. Use them for the container terminal stacks and the industrial areas in the south.
+- Every Kenney kit keeps its own `Textures/` folder next to the GLBs, so keep the folder there.
+
+## 7. Freeway rules: match the real map, not guesses
+Everything you place must match real Durban as it is today (current OSM data and real layout). Don't invent anything.
+- **Median type**: read it from OSM. Where a freeway is drawn as two one-way carriageways (`oneway=yes`, separate ways), measure the gap between them:
+  - Gap under about 3 m: concrete Jersey barrier in the middle. Use `roadkit/road-straight-barrier.glb` or `construction-barrier.glb`, or build a 0.8 m grey wedge.
+  - Gap of about 3 m or more: grass median. Use a green ground strip, with a guard rail on both edges if the gap is under 10 m.
+  - If OSM has a `barrier=*` way between them (`jersey_barrier`, `guard_rail`), use that.
+- **Pillars in the middle**: only where a bridge (`bridge=yes`) crosses over a road. Put `roadkit/bridge-pillar.glb` / `bridge-pillar-wide.glb` in the median or the gap under the deck, spaced about 25 to 35 m.
+- **Guard rails**: on freeway edges where OSM has `barrier=guard_rail`, on bridge edges, on embankments, and on the outside of sharp bends. Use the barrier models in `roadkit/` (`road-*-barrier.glb`) or a simple steel W-beam mesh (grey, about 0.75 m high, posts every 2 m). Use InstancedMesh.
+- **Pedestrian bridges** (like the walkway over Brickfield Road): use OSM `highway=footway` + `bridge=yes`. Draw them as a narrow deck about 3 m wide with railings, at deck height, and never let cars drive on them.
+- Trains only run on real OSM railway lines, ships only sit in the real harbour water, and water only shows where OSM has `natural=water`, coastline or the harbour.
