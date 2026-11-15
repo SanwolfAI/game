@@ -101,6 +101,7 @@ export class City {
     this.hash = new SpatialHash(40);
     this.colliders = [];
     this.buildings = [];
+    this.buildingMeshes = { house: [], hotel: [], tower: [] };
     this.spots = [];
   }
 
@@ -201,6 +202,7 @@ export class City {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshLambertMaterial({ vertexColors: false });
     const mesh = this.#makeInstanced(boxGeo, mat, d.buildings.count, true);
+    this.buildingMeshes.tower.push(mesh);
     const roads = this.#roadsIn(d.x, d.z, d.r, ['secondary', 'primary', 'tertiary', 'trunk', 'residential', 'unclassified']);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -253,7 +255,7 @@ export class City {
             mesh.setColorAt(count, col);
             count++;
             this.#addCollider(cx, cz, Math.max(w, dp) * 0.42);
-            this.buildings.push({ x: cx, z: cz, h, w, dp });
+            this.buildings.push({ x: cx, z: cz, h, w, dp, yaw, kind: 'tower' });
           }
         }
       }
@@ -265,6 +267,7 @@ export class City {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshLambertMaterial({ vertexColors: false });
     const mesh = this.#makeInstanced(boxGeo, mat, d.buildings.count, true);
+    this.buildingMeshes.hotel.push(mesh);
     const roads = this.#roadsIn(d.x, d.z, d.r, null);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -310,6 +313,7 @@ export class City {
           col.set(d.palette[Math.floor(this.rng() * d.palette.length)]);
           mesh.setColorAt(count, col);
           count++;
+          this.buildings.push({ x: cx, z: cz, h, w, dp, yaw, kind: 'hotel' });
           this.#addCollider(cx, cz, Math.max(w, dp) * 0.42);
         }
       }
@@ -324,6 +328,7 @@ export class City {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const bodyMesh = this.#makeInstanced(body, mat, d.buildings.count, true);
     const roofMesh = this.#makeInstanced(roof, new THREE.MeshLambertMaterial({ color: 0x7a4a3c }), d.buildings.count, false);
+    this.buildingMeshes.house.push(bodyMesh, roofMesh);
 
     const roads = this.#roadsIn(d.x, d.z, d.r, ['residential', 'tertiary', 'unclassified', 'living_street', 'secondary']);
     const m = new THREE.Matrix4();
@@ -378,6 +383,7 @@ export class City {
           m.compose(v, q, s);
           roofMesh.setMatrixAt(count, m);
           count++;
+          this.buildings.push({ x: cx, z: cz, h, w: unitW, dp: depth, yaw, kind: 'house' });
           this.#addCollider(cx, cz, 3.4);
         }
       }
@@ -456,6 +462,7 @@ export class City {
     const roof = prism(1, 1, 1, 0, 0, 0);
     const bodyMesh = this.#makeInstanced(body, new THREE.MeshLambertMaterial({ vertexColors: true }), d.buildings.count, true);
     const roofMesh = this.#makeInstanced(roof, new THREE.MeshLambertMaterial({ color: 0x8c4a3a }), d.buildings.count, false);
+    this.buildingMeshes.house.push(bodyMesh, roofMesh);
     const roads = this.#roadsIn(d.x, d.z, d.r, ['residential', 'tertiary', 'unclassified', 'living_street']);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -502,6 +509,7 @@ export class City {
         m.compose(v, q, s);
         roofMesh.setMatrixAt(count, m);
         count++;
+        this.buildings.push({ x: cx, z: cz, h, w, dp, yaw, kind: 'house' });
         this.#addCollider(cx, cz, 4.5);
       }
     }
