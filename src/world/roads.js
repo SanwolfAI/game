@@ -471,7 +471,12 @@ export class RoadNetwork {
         .map((id) => this.edges[id].road)
         .filter((road) => !road.bridge);
       if (connected.length < 2) continue;
-      const radius = Math.max(...connected.map((road) => road.width * 0.5)) + 0.45;
+      let widestHalf = 0;
+      for (const road of connected) {
+        const halfWidth = road.width * 0.5;
+        if (halfWidth > widestHalf) widestHalf = halfWidth;
+      }
+      const radius = widestHalf + 0.45;
       const y = this.hf.heightAt(node.x, node.z) + 0.36;
       const base = junctionPositions.length / 3;
       const steps = 12;
