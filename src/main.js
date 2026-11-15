@@ -5,6 +5,7 @@ import { durbanNow, seasonForDate, solarState } from './core/time.js';
 import { Heightfield, loadDurbanDEM } from './world/heightfield.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
+import { buildNature } from './world/nature.js';
 import { RoadNetwork } from './world/roads.js';
 import { Roadside } from './world/roadside.js';
 import { City } from './world/city.js';
@@ -142,7 +143,11 @@ async function main() {
   const city = new City(hf, roads, mulberry32(20241113));
   const cityGroup = city.build(districtsWorld(data));
 
-  setLoad(82, 'Building Durban landmarks…');
+  setLoad(78, 'Planting Durban trees and palms…');
+  await nextFrame();
+  const nature = await buildNature(data, roads, city, hf, coastXZ, mulberry32(15112026));
+
+  setLoad(84, 'Building Durban landmarks…');
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
 
@@ -192,6 +197,7 @@ async function main() {
   scene.add(roadside.group);
   scene.add(cityGroup);
   scene.add(landmarks);
+  scene.add(nature.group);
 
   const input = new Input();
   const vehicle = new Vehicle(hf, roads, city, input, 'gusheshe-3d');
@@ -434,6 +440,7 @@ async function main() {
     traffic.update(dt, ent.x, ent.z);
     roadside.update(ent.x, ent.z, dt);
     pedestrians.update(dt, ent.x, ent.z);
+    nature.update(ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
