@@ -66,31 +66,6 @@ function buildRailIndex(lines) {
   };
 }
 
-function buildRailIndex(lines) {
-  const cell = 18;
-  const cells = new Set();
-  for (const line of lines || []) {
-    for (let i = 1; i < line.pts.length; i++) {
-      const a = line.pts[i - 1], b = line.pts[i];
-      const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      const steps = Math.max(1, Math.ceil(length / 10));
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        cells.add(`${Math.floor((a[0] + (b[0] - a[0]) * t) / cell)},${Math.floor((a[1] + (b[1] - a[1]) * t) / cell)}`);
-      }
-    }
-  }
-  return (x, z) => {
-    const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (cells.has(`${cx + dx},${cz + dz}`)) return true;
-      }
-    }
-    return false;
-  };
-}
-
 export async function buildNature(data, roads, city, hf, coastXZ, rng) {
   const group = new THREE.Group();
   group.name = 'durban-natural-vegetation';
