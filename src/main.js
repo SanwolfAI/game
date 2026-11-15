@@ -337,7 +337,7 @@ async function main() {
     const [fx, fz] = ent.forward;
     const rx = fz;
     const rz = -fx;
-    const ground = hf.heightAt(ent.x, ent.z);
+    const ground = inVehicle ? vehicle.group.position.y : hf.heightAt(ent.x, ent.z);
 
     if (!inVehicle) {
       desiredPos.set(ent.x - fx * 5.6, ground + 2.5, ent.z - fz * 5.6);
