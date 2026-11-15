@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
-import { durbanNow, seasonForDate, solarState } from './core/time.js';
+import { GameClock, seasonForDate, solarState } from './core/time.js';
 import { Heightfield } from './world/heightfield.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
@@ -347,14 +347,25 @@ async function main() {
   addEventListener('resize', onResize);
 
   const clock = new THREE.Clock();
+  // 24 in-game hours = 4 real hours. Fresh sessions start at 08:00; ?time=HH
+  // overrides the start hour and ?resume=1 continues the last saved clock.
+  const params = new URLSearchParams(location.search);
+  const startHour = params.has('time') ? Number(params.get('time')) || 0 : 8;
+  const gameClock = params.get('resume') === '1' ? GameClock.load({ startHour }) : new GameClock({ startHour });
   let helpTimer = 0;
+  let clockSaveTimer = 0;
 
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
-    const now = durbanNow();
+    const now = gameClock.tick();
     const { season, solar } = updateEnvironment(now);
     const ent = entity();
+    clockSaveTimer += dt;
+    if (clockSaveTimer > 10) {
+      clockSaveTimer = 0;
+      gameClock.save();
+    }
 
     if (input.takePressed('camera')) {
       camMode = (camMode + 1) % CAM_MODES.length;
@@ -430,10 +441,12 @@ async function main() {
 
   setLoad(100, 'Ready');
   document.getElementById('loading').classList.add('done');
-  updateEnvironment(durbanNow());
+  const now = gameClock.now();
+  updateEnvironment(now);
   updateCamera(0, true);
   cameraReady = true;
-  const now = durbanNow();
+  // Small debug handle for automated checks / console tinkering.
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
