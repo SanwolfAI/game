@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0d1620" />
+    <link rel="icon" href="data:," />
     <title>Izinja zase Kasi (IZK) — Durban</title>
     <style>
       :root {
@@ -505,7 +506,11 @@
         window.__izkShowError = show;
         window.addEventListener('error', function (e) {
           var t = e.target;
-          if (t && t !== window && (t.src || t.href)) { show('could not load ' + (t.src || t.href)); return; }
+          if (t && t !== window && (t.src || t.href)) {
+            var u = String(t.src || t.href);
+            show(/main\.js$/.test(u) ? 'could not load the game scripts (src/main.js or one of the files it imports). Reinstall/update the app.' : 'could not load ' + u);
+            return;
+          }
           show((e.message || 'script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
         }, true);
         window.addEventListener('unhandledrejection', function (e) {
