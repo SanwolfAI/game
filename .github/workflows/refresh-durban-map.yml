@@ -2,12 +2,6 @@ name: Refresh Durban offline map data
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/fetch-places.mjs'
-      - 'scripts/build-data.mjs'
-      - '.github/workflows/refresh-durban-map.yml'
 
 permissions:
   contents: write

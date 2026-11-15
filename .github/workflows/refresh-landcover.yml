@@ -1,0 +1,52 @@
+name: Refresh Durban land-cover data
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/fetch-places.mjs'
+      - 'scripts/build-data.mjs'
+      - '.github/workflows/refresh-landcover.yml'
+      - '.github/workflows/refresh-durban-map.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-durban-landcover
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate land-cover data scripts
+        run: |
+          node --check scripts/fetch-places.mjs
+          node --check scripts/build-data.mjs
+      - name: Download Durban land-cover polygons and place labels
+        run: node scripts/fetch-places.mjs
+      - name: Rebuild the offline game map using existing road data
+        run: node scripts/build-data.mjs
+      - name: Run project checks
+        run: npm test
+      - name: Commit refreshed land-cover data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/data/durban-game.json src/data/places-raw.json src/data/cache/landcover-v2.json
+          if git diff --cached --quiet; then
+            echo "Land-cover data is already up to date."
+          else
+            git commit -m "Refresh Durban parks, forests and farmland data"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
