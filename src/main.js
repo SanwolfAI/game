@@ -11,6 +11,7 @@ import { Roadside } from './world/roadside.js';
 import { buildRoadProps } from './world/roadProps.js';
 import { City } from './world/city.js';
 import { buildCityModels } from './world/buildingModels.js';
+import { buildTrains } from './game/trains.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
 import { loadDownloadedVehicles, applyVehicleEnvironment } from './game/sketchfabModels.js';
@@ -152,7 +153,11 @@ async function main() {
   await nextFrame();
   const cityModels = await buildCityModels(city, hf, mulberry32(15112027));
 
-  setLoad(82, 'Planting Durban trees and palms…');
+  setLoad(79, 'Loading Durban freight trains…');
+  await nextFrame();
+  const trains = await buildTrains(roads, hf);
+
+  setLoad(83, 'Planting Durban trees and palms…');
   await nextFrame();
   const nature = await buildNature(data, roads, city, hf, coastXZ, mulberry32(15112026));
 
@@ -207,6 +212,7 @@ async function main() {
   scene.add(roadProps.group);
   scene.add(cityGroup);
   scene.add(cityModels.group);
+  scene.add(trains.group);
   scene.add(landmarks);
   scene.add(nature.group);
 
@@ -454,6 +460,7 @@ async function main() {
     pedestrians.update(dt, ent.x, ent.z);
     nature.update(ent.x, ent.z);
     cityModels.update(ent.x, ent.z);
+    trains.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
