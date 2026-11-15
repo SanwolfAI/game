@@ -189,9 +189,27 @@ async function main() {
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  // Mobile-first WebGL settings: avoid MSAA and excessive device-pixel rendering.
+  // These reduce GPU memory and fill-rate pressure on entry-level Android phones.
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      alpha: false,
+      depth: true,
+      stencil: false,
+      powerPreference: 'low-power',
+      failIfMajorPerformanceCaveat: false
+    });
+  } catch (error) {
+    throw new Error(`Graphics could not start. Your device may not have enough WebGL support or memory. Details: ${error?.message || error}`);
+  }
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1));
+  renderer.domElement.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    setLoad(100, 'Graphics stopped. Please close and reopen the game.');
+  }, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
