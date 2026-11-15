@@ -468,6 +468,36 @@
       <div id="load-status">Starting engine…</div>
     </div>
 
+    <script>
+      (() => {
+        const status = document.getElementById('load-status');
+        const showStartupError = (message) => {
+          if (!status) return;
+          status.textContent = 'Startup error: ' + String(message).slice(0, 900);
+          status.style.color = '#ff8b78';
+          status.style.letterSpacing = '0.2px';
+          status.style.whiteSpace = 'pre-wrap';
+          status.style.maxWidth = 'min(90vw, 760px)';
+          status.style.maxHeight = '35vh';
+          status.style.overflow = 'auto';
+        };
+
+        window.addEventListener('error', (event) => {
+          const detail = event.error && event.error.stack
+            ? event.error.stack
+            : (event.message || 'Unknown JavaScript error');
+          showStartupError(detail);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+          const reason = event.reason;
+          const detail = reason && (reason.stack || reason.message)
+            ? (reason.stack || reason.message)
+            : String(reason ?? 'Unknown promise rejection');
+          showStartupError(detail);
+        });
+      })();
+    </script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
