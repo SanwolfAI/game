@@ -71,6 +71,9 @@ const roads = raw.roads.map(r => {
     last = q;
   }
   const simp = rdp(pts, simplify);
+  // OSM oneway=-1 means traffic travels opposite to the stored way geometry.
+  // Reverse the geometry so the road graph's forward edge follows legal traffic.
+  const directed = r.tags.oneway === '-1' ? simp.reverse() : simp;
   return {
     id: r.id,
     h: hw,
@@ -79,7 +82,7 @@ const roads = raw.roads.map(r => {
     w: Number(r.tags.lanes) || 0,
     o: r.tags.oneway === 'yes' || r.tags.oneway === '1' || r.tags.oneway === '-1' ? 1 : 0,
     b: r.tags.bridge === 'yes' ? 1 : 0,
-    p: simp
+    p: directed
   };
 });
 
