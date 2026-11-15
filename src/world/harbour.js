@@ -146,9 +146,13 @@ export async function buildHarbour(data, roads, city, hf, rng) {
   let tugCount = 0;
   for (const area of portAreas.slice(0, 3)) {
     const ring = area.p.map(([lon, lat]) => toXZ(lon, lat));
-    const xs = ring.map((p) => p[0]), zs = ring.map((p) => p[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
     const desired = Math.min(150, Math.max(10, Math.round((area.a || 30000) / 2800)));
     let placed = 0;
     for (let attempt = 0; attempt < desired * 24 && placed < desired && containerCount < MAX_CONTAINERS; attempt++) {

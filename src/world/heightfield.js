@@ -184,10 +184,13 @@ export class Heightfield {
     for (const area of areas || []) {
       if (!Array.isArray(area.p) || area.p.length < 4 || (area.a && area.a > 120000000)) continue;
       const ring = area.p.map(([lon, lat]) => toXZ(lon, lat));
-      const xs = ring.map((p) => p[0]);
-      const zs = ring.map((p) => p[1]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const [x, z] of ring) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+      }
       const ix0 = clamp(Math.floor((minX - this.minX) / this.cell), 0, this.cols - 1);
       const ix1 = clamp(Math.ceil((maxX - this.minX) / this.cell), 0, this.cols - 1);
       const iz0 = clamp(Math.floor((minZ - this.minZ) / this.cell), 0, this.rows - 1);

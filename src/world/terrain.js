@@ -84,7 +84,7 @@ export function buildTerrain(hf, coastXZ, step = 2) {
     const surfaceIndices = indicesBySurface[materialIndex];
     if (!surfaceIndices.length) continue;
     groups.push({ start: groupStart, count: surfaceIndices.length, materialIndex });
-    indices.push(...surfaceIndices);
+    for (const index of surfaceIndices) indices.push(index);
     groupStart += surfaceIndices.length;
   }
   geo.setIndex(indices);

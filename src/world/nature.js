@@ -149,9 +149,13 @@ export async function buildNature(data, roads, city, hf, coastXZ, rng) {
     const rule = rules[area.u];
     if (!rule || !Array.isArray(area.p) || area.p.length < 4 || planted >= MAX_VEGETATION) continue;
     const ring = area.p.map(([lon, lat]) => toXZ(lon, lat));
-    const xs = ring.map((p) => p[0]), zs = ring.map((p) => p[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
     if (maxX - minX < 12 || maxZ - minZ < 12) continue;
     const desired = Math.min(rule.max, Math.max(rule.min, Math.round((area.a || 12000) / rule.density)));
     let added = 0;
