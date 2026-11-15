@@ -9,6 +9,7 @@ import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
+import { loadDownloadedVehicles } from './game/sketchfabModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
@@ -137,6 +138,8 @@ async function main() {
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
 
+  setLoad(88, 'Loading downloaded 3D vehicles…');
+  await loadDownloadedVehicles();
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
@@ -180,7 +183,7 @@ async function main() {
   scene.add(landmarks);
 
   const input = new Input();
-  const vehicle = new Vehicle(hf, roads, city, input);
+  const vehicle = new Vehicle(hf, roads, city, input, 'gusheshe-3d');
   scene.add(vehicle.group);
 
   const [vx, vz] = vehicle.forward;
