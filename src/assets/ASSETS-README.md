@@ -62,5 +62,5 @@ Everything you place must match real Durban as it is today (current OSM data and
   - If OSM has a `barrier=*` way between them (`jersey_barrier`, `guard_rail`), use that.
 - **Pillars in the middle**: only where a bridge (`bridge=yes`) crosses over a road. Put `roadkit/bridge-pillar.glb` / `bridge-pillar-wide.glb` in the median or the gap under the deck, spaced about 25 to 35 m.
 - **Guard rails**: on freeway edges where OSM has `barrier=guard_rail`, on bridge edges, on embankments, and on the outside of sharp bends. Use the barrier models in `roadkit/` (`road-*-barrier.glb`) or a simple steel W-beam mesh (grey, about 0.75 m high, posts every 2 m). Use InstancedMesh.
-- **Pedestrian bridges** (like the walkway over Brickfield Road): use OSM `highway=footway` + `bridge=yes`. Draw them as a narrow deck about 3 m wide with railings, at deck height, and never let cars drive on them.
+- **Pedestrian bridges**: use OSM `highway=footway` + `bridge=yes`. Draw them as a narrow deck about 3 m wide with railings, at deck height, and never let cars drive on them.
 - Trains only run on real OSM railway lines, ships only sit in the real harbour water, and water only shows where OSM has `natural=water`, coastline or the harbour.
