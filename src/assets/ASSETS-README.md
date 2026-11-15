@@ -88,3 +88,17 @@ Everything you place must match real Durban as it is today (current OSM data and
 - Never place vegetation within road width plus 2 m of any road or footway, on junctions, in building footprints, on driveways, on rail lines or in water. Test every point against the road and building data before you place it.
 - Use seeded random (a fixed seed), so trees stay in the same place every time you play.
 - Performance: one `InstancedMesh` per model type, only draw within about 600 m (grass tufts within 120 m), and keep it to roughly 15 tree types at most.
+
+## 9. People, buildings, shacks and street names (added 15 Nov 2026)
+**People / pedestrians**: `characterkit/` (Kenney Mini Characters 2.0, CC0). It has animated `character-male-a` to `g`, `character-female-a` to `f` and `character-worker`, plus wheelchairs, canes and luggage. The animations are inside each GLB, so use `THREE.AnimationMixer` with the clips from `gltf.animations` (walk or idle). Vary the clothing colours by tinting the material per instance, so people in Durban look varied. The style is low-poly, not photoreal.
+
+**Buildings**: use OSM building footprints first. Extrude them using `building:levels` × 3.2 m (default 2 levels for houses and 4 in the CBD), and only use these models where a footprint fits.
+- `suburbankit/` (CC0): houses `building-type-a` to `u`, fences, driveways, paths, planters. Use them for suburbs like Berea, Westville, Umhlanga and Chatsworth.
+- `commercialkit/` (CC0): shops and offices `building-a` to `n`, skyscrapers `building-skyscraper-a` to `e` (for the CBD and Umhlanga Ridge), awnings and parasols. Use `low-detail-building-*` for distant LOD.
+- `industrialkit/` (already added): factories and warehouses, for the south, Prospecton, Jacobs and Mobeni.
+- **Schools**: OSM `amenity=school`. Use a commercial low-rise block, a fence (`suburbankit/fence-*`) and a sports field (green rectangle with white lines).
+- **Shacks / informal settlements**: there's no free model, so generate them in code. Make small boxes about 3 x 3 x 2.4 m with slightly tilted roofs, textured with `textures/corrugated_iron_512.jpg` (CC0, Poly Haven), tinted rust, blue or grey. Only place them where OSM tags informal housing (`residential=informal` or `place=*` areas known to be informal, such as parts of Umlazi, KwaMashu and Inanda). Never put them on roads.
+
+**Corner street name signs**: road names are the `n` field in `durban-game.json` roads. At junctions (where two named roads share a node), put a pole with a name plate at the corner, using `roadkit/road-sign-street.glb` or a pole and thin box. Draw the name with a `CanvasTexture`: white text on a dark green or blue plate, the same style as Durban's metro signs. Cache one texture per street name. Only show these within about 150 m of the player.
+
+**Steering wheel, pedals, gear (UI)**: none of the free CC0 packs have realistic HUD art. Draw them as SVG in `index.html`: a leather-look wheel with a radial gradient and a centre hub; aluminium pedals with rubber grip lines; a gear stick with a P-R-N-D gate or 5-speed H-pattern. Don't add copyrighted brand logos.
