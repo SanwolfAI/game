@@ -73,13 +73,19 @@ function polygonDirection(ring) {
   return { dirX, dirZ };
 }
 
-function findWaterPoint(center, hf) {
+function findWaterPoint(center, hf, direction, waterRings) {
   let best = null;
   for (let radius = 80; radius <= 1000; radius += 40) {
     for (let angle = 0; angle < Math.PI * 2; angle += 0.16) {
       const x = center[0] + Math.cos(angle) * radius;
       const z = center[1] + Math.sin(angle) * radius;
       if (!hf.isWater(x, z) || hf.signedCoastDistance(x, z) > -1) continue;
+      if (waterRings.length && !waterRings.some((ring) => pointInRing(x, z, ring))) continue;
+      const bowX = x + direction.dirX * 55, bowZ = z + direction.dirZ * 55;
+      const sternX = x - direction.dirX * 55, sternZ = z - direction.dirZ * 55;
+      if (!hf.isWater(bowX, bowZ) || !hf.isWater(sternX, sternZ)) continue;
+      if (waterRings.length && (!waterRings.some((ring) => pointInRing(bowX, bowZ, ring)) ||
+          !waterRings.some((ring) => pointInRing(sternX, sternZ, ring)))) continue;
       if (!best || radius < best.radius) best = { x, z, radius };
     }
     if (best && best.radius <= radius) break;
@@ -110,6 +116,10 @@ export async function buildHarbour(data, roads, city, hf, rng) {
     console.warn('Durban harbour models could not be loaded:', error);
     return { group, update() {}, counts: { ships: 0, tugs: 0, containers: 0 } };
   }
+
+  const waterRings = (data.landuse || []).filter((area) => area.u === 'water' || area.u === 'riverbank')
+    .filter((area) => Array.isArray(area.p) && area.p.length >= 4)
+    .map((area) => area.p.map(([lon, lat]) => toXZ(lon, lat)));
 
   const containerChunks = new Map();
   const occupied = new Map();
@@ -161,9 +171,9 @@ export async function buildHarbour(data, roads, city, hf, rng) {
     }
 
     const center = polygonCenter(ring);
-    const water = findWaterPoint(center, hf);
+    const direction = polygonDirection(ring);
+    const water = findWaterPoint(center, hf, direction, waterRings);
     if (water && ships.length < 2) {
-      const direction = polygonDirection(ring);
       const yaw = Math.atan2(direction.dirX, direction.dirZ);
       const shipGroup = prepareShip(shipTemplate, 130);
       shipGroup.position.set(water.x, -0.75, water.z);
