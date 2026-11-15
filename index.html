@@ -225,6 +225,11 @@
       }
       #load-status { font-size: 11px; color: var(--dim); letter-spacing: 1px; min-height: 14px; }
 
+      #model-credits { position: absolute; right: 14px; bottom: 14px; z-index: 12; pointer-events: auto; max-width: min(330px, 46vw); font-size: 10px; color: var(--dim); }
+      #model-credits summary { cursor: pointer; list-style: none; padding: 9px 12px; border: 1px solid var(--edge); border-radius: 10px; background: rgba(10,18,26,.82); color: var(--ink); letter-spacing: .7px; font-weight: 700; }
+      #model-credits summary::-webkit-details-marker { display: none; }
+      #model-credits .credits-body { margin-top: 6px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: 10px; background: rgba(10,18,26,.94); line-height: 1.55; max-height: 38vh; overflow: auto; }
+      #model-credits a { color: var(--accent); }
       #touch { position: absolute; inset: 0; pointer-events: none; display: none; }
       #touch .tbtn {
         position: absolute;
@@ -336,6 +341,19 @@
         <b>W/S</b> drive &nbsp; <b>A/D</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>F</b> enter/exit &nbsp; <b>C</b> camera &nbsp; <b>V</b> vehicle &nbsp; <b>G</b> GPS
       </div>
     </div>
+
+    <details id="model-credits">
+      <summary>3D MODEL CREDITS · SKETCHFAB</summary>
+      <div class="credits-body">
+        <b>1991 BMW 325i (E30) — Pink Slip Kings</b><br>
+        micorlov · <a href="https://sketchfab.com/3d-models/1991-bmw-325i-e30-pink-slip-kings-f0399f2b18394643bf57d20ba3b72a98" target="_blank" rel="noopener">Sketchfab source</a><br>
+        <b>Low-Poly BMW</b><br>
+        Luka.Fox · <a href="https://sketchfab.com/3d-models/low-poly-bmw-8dd6a439eed349b9a4d073ca20166ac3" target="_blank" rel="noopener">Sketchfab source</a><br>
+        <b>Toyota HiAce 2004</b><br>
+        Abdelrahman Elbaqsawi · <a href="https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1" target="_blank" rel="noopener">Sketchfab source</a><br>
+        All three models are licensed CC BY 4.0. Commercial use is permitted with attribution. <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">License details</a>.
+      </div>
+    </details>
 
     <div id="touch">
       <div id="t-stick"><div id="t-knob"></div></div>
