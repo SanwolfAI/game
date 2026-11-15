@@ -199,6 +199,32 @@ export class RoadNetwork {
         chunk.indices.push(base0, base0 + 2, base0 + 1, base0 + 1, base0 + 2, base0 + 3);
       }
 
+      // South African-style yellow edge line along the left side of each mapped way.
+      // The line follows the actual road geometry and stays slightly above the asphalt.
+      for (let i = 1; i < n; i++) {
+        const a = road.pts[i - 1];
+        const b = road.pts[i];
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const len = Math.hypot(dx, dz);
+        if (len < 0.5) continue;
+        const lx = -dz / len;
+        const lz = dx / len;
+        const offset = half - 0.22;
+        const yA = this.hf.heightAt(a[0], a[1]) + (road.bridge ? lift : 0.36);
+        const yB = this.hf.heightAt(b[0], b[1]) + (road.bridge ? lift : 0.36);
+        const chunk = chunkFor((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5);
+        const baseEdge = chunk.edgePos.length / 3;
+        const edgeHalf = 0.075;
+        chunk.edgePos.push(
+          a[0] + lx * (offset - edgeHalf), yA, a[1] + lz * (offset - edgeHalf),
+          a[0] + lx * (offset + edgeHalf), yA, a[1] + lz * (offset + edgeHalf),
+          b[0] + lx * (offset - edgeHalf), yB, b[1] + lz * (offset - edgeHalf),
+          b[0] + lx * (offset + edgeHalf), yB, b[1] + lz * (offset + edgeHalf)
+        );
+        chunk.edgeIdx.push(baseEdge, baseEdge + 2, baseEdge + 1, baseEdge + 1, baseEdge + 2, baseEdge + 3);
+      }
+
       // Centre dashes on the arterial roads.
       if (road.major) {
         const dashChunk = chunkFor(road.pts[0][0], road.pts[0][1]);
