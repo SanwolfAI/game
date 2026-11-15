@@ -2,13 +2,6 @@ name: Refresh Durban land-cover data
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/fetch-places.mjs'
-      - 'scripts/build-data.mjs'
-      - '.github/workflows/refresh-landcover.yml'
-      - '.github/workflows/refresh-durban-map.yml'
 
 permissions:
   contents: write
@@ -48,5 +41,17 @@ jobs:
             echo "Land-cover data is already up to date."
           else
             git commit -m "Refresh Durban parks, forests and farmland data"
-            git push origin HEAD:${{ github.ref_name }}
+            # Rebase generated data onto main if development commits landed during downloads.
+            for attempt in 1 2 3 4 5; do
+              git fetch origin "${{ github.ref_name }}"
+              git rebase "origin/${{ github.ref_name }}"
+              if git push origin HEAD:${{ github.ref_name }}; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "Could not publish refreshed land-cover data after 5 attempts."
+                exit 1
+              fi
+              sleep $((attempt * 3))
+            done
           fi

@@ -44,5 +44,17 @@ jobs:
             echo "Map data is already up to date."
           else
             git commit -m "Refresh complete Durban offline road map data"
-            git push origin HEAD:${{ github.ref_name }}
+            # Rebase generated map data onto main if code commits landed during downloads.
+            for attempt in 1 2 3 4 5; do
+              git fetch origin "${{ github.ref_name }}"
+              git rebase "origin/${{ github.ref_name }}"
+              if git push origin HEAD:${{ github.ref_name }}; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "Could not publish refreshed map data after 5 attempts."
+                exit 1
+              fi
+              sleep $((attempt * 3))
+            done
           fi
