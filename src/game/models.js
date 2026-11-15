@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 import { EXTRA_VEHICLES } from './catalog.js';
+import { getDownloadedVehicle } from './sketchfabModels.js';
 
 function paint(geo, color) {
   const c = new THREE.Color(color);
@@ -170,6 +171,9 @@ function catalogVehicle(spec) {
 for(const spec of EXTRA_VEHICLES) BUILDERS[spec.id]=()=>catalogVehicle(spec);
 
 export const VEHICLE_TYPES = [
+  { id: 'gusheshe-3d', name: 'BMW 325i E30 Gusheshe — detailed 3D', max: 54, boost: 76, handling: 1.55 },
+  { id: 'bmw-lowpoly-3d', name: 'BMW — low-poly 3D', max: 54, boost: 76, handling: 1.55 },
+  { id: 'hiace-3d', name: 'Toyota HiAce 2004 — 3D minibus', max: 42, boost: 58, handling: 1.15 },
   { id: 'gusheshe', name: 'BMW 325i Gusheshe', max: 54, boost: 76, handling: 1.55 },
   { id: 'quantum', name: 'Toyota Quantum taxi', max: 44, boost: 62, handling: 1.35 },
   { id: 'polo', name: 'VW Polo Vivo', max: 48, boost: 68, handling: 1.7 },
@@ -187,12 +191,21 @@ function firstPaint(id) {
     quantum: '#f4f4ef',
     polo: '#2f6fb5',
     gusheshe: '#b7332c',
+    'gusheshe-3d': '#b7332c',
+    'bmw-lowpoly-3d': '#b7332c',
+    'hiace-3d': '#e8e6df',
     hilux: '#e8e6df',
     saps: '#f1f3f5'
   }[id] || EXTRA_VEHICLES.find((v) => v.id === id)?.color || '#e7e7e2';
 }
 
 export function buildVehicleMesh(id) {
+  const downloaded = getDownloadedVehicle(id);
+  if (downloaded) {
+    const model = downloaded.clone(true);
+    model.name = `vehicle-${id}`;
+    return model;
+  }
   const geo = BUILDERS[id] ? BUILDERS[id]() : BUILDERS.gusheshe();
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const mesh = new THREE.Mesh(geo, mat);
