@@ -201,6 +201,7 @@ export class RoadNetwork {
         const railOffset = half + 0.72;
         for (const side of [-1, 1]) {
           const railPoints = [];
+          let lastPostAt = -Infinity;
           for (let i = 0; i < n; i++) {
             const p = road.pts[i];
             const a = road.pts[Math.max(0, i - 1)];
@@ -216,7 +217,8 @@ export class RoadNetwork {
             const z = p[1] + lz * railOffset * side;
             const y = this.hf.heightAt(p[0], p[1]) + bridgeLiftAt(i);
             railPoints.push(new THREE.Vector3(x, y + 1.05, z));
-            if (i === 0 || cumulative[i] - cumulative[i - 1] >= 11) {
+            if (cumulative[i] - lastPostAt >= 10 || i === n - 1) {
+              lastPostAt = cumulative[i];
               const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.05, 0.18), bridgePostMat);
               post.position.set(x, y + 0.53, z);
               post.castShadow = false;
@@ -244,7 +246,8 @@ export class RoadNetwork {
           const b = road.pts[seg];
           const x = a[0] + (b[0] - a[0]) * t;
           const z = a[1] + (b[1] - a[1]) * t;
-          const deckY = this.hf.heightAt(x, z) + lift;
+          const ramp = Math.min(smooth01(d / 36), smooth01((road.len - d) / 36));
+          const deckY = this.hf.heightAt(x, z) + lift * ramp;
           const bedY = this.hf.heightAt(x, z);
           const h = deckY - bedY - 0.45;
           if (h < 1) continue;
