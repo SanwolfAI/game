@@ -64,3 +64,27 @@ Everything you place must match real Durban as it is today (current OSM data and
 - **Guard rails**: on freeway edges where OSM has `barrier=guard_rail`, on bridge edges, on embankments, and on the outside of sharp bends. Use the barrier models in `roadkit/` (`road-*-barrier.glb`) or a simple steel W-beam mesh (grey, about 0.75 m high, posts every 2 m). Use InstancedMesh.
 - **Pedestrian bridges**: use OSM `highway=footway` + `bridge=yes`. Draw them as a narrow deck about 3 m wide with railings, at deck height, and never let cars drive on them.
 - Trains only run on real OSM railway lines, ships only sit in the real harbour water, and water only shows where OSM has `natural=water`, coastline or the harbour.
+
+## 8. Real terrain, vegetation and ground (added 15 Nov 2026)
+**Elevation (real DEM)**: `src/assets/terrain/durban-dem-terrarium-z12.png` with `durban-dem.json`.
+- It covers west 30.674 to east 31.201, north -29.612 to south -30.069. That's the whole map, from Inchanga to the coast and from Umhlanga to Amanzimtoti.
+- It's 1536 x 1536 px, Web Mercator zoom 12, about 33 m per pixel. Decode each pixel with: `height_m = R*256 + G + B/256 - 32768`. Load it into a canvas, read the pixels with `getImageData`, convert lon/lat to pixel, and sample it bilinearly.
+- Source: AWS Terrain Tiles (Mapzen), which mostly use SRTM. Add the credit "Terrain: Mapzen / AWS Terrain Tiles (SRTM, NASA)" to the credits panel. See https://github.com/tilezen/joerd/blob/master/docs/attribution.md
+- `src/world/heightfield.js` uses made-up Gaussian hills (the HILLS and FLATS lists). Replace those with this DEM, and keep the water and wall logic.
+- **Roads must win**: after sampling, flatten the terrain under each road corridor (road width plus 3 m shoulders) to a smoothed road profile. Cut or fill the ground so roads never sink or float. Don't let the ground go above bridge decks or tunnels.
+- The DEM includes some building and tree height noise in the CBD. Smooth it with a small blur, and clamp the sea to 0 m.
+
+**Trees, bushes, grass, rocks**: `src/assets/naturekit/` (Kenney Nature Kit 2.1, CC0, about 130 GLBs, no textures needed). See `naturekit/preview.png`.
+- KZN coastal look: palms (`tree_palm*.glb`) along the beachfront and Umhlanga; flat-top acacia/thorn (`tree_plateau*.glb`); broad bush trees (`tree_default`, `tree_fat`, `tree_oak`, `tree_detailed`, `tree_simple`, `tree_small`, `tree_tall`, `tree_thin`, and their `_dark` variants).
+- Bush and coastal scrub: `plant_bush*.glb`, `plant_flat*.glb`. Grass tufts: `grass*.glb`. Flowers: `flower_*.glb`.
+- Sugarcane fields (north, around Verulam and Tongaat, and inland): use `crops_cornStageC/D.glb` scaled about 2 m tall, in dense rows, only on OSM `landuse=farmland`. `crops_bambooStageB.glb` is an alternative.
+- Rocks and stones: `rock_*.glb`, `stone_*.glb`, `cliff_block*.glb` if present. Logs and stumps: `log*.glb`, `stump_old*.glb`.
+
+**Ground textures** (512 px JPG, CC0 Poly Haven, mobile-friendly) in `src/assets/textures/`:
+- `sparse_grass_512.jpg` for parks and verges, `aerial_grass_rock_512.jpg` for hillsides, `dry_ground_01_512.jpg` for dry veld and dirt, `brown_mud_512.jpg` for soil and farm edges, `rocky_terrain_02_512.jpg` for steep slopes (blend in above about 25 degrees), and `coast_sand_01_512.jpg` for beaches.
+
+**Placement rules (must match the real map)**:
+- Use the OSM `landuse`/`natural`/`leisure` polygons already in `durban-game.json`. Dense trees go in `natural=wood`, `landuse=forest`, `leisure=park`, `natural=scrub` and nature reserves. Scattered trees go in residential gardens (back of plots only). Cane goes in farmland. Use none in `landuse=industrial/commercial/retail`, in the port, or on beaches (palms only at the beach edge).
+- Never place vegetation within road width plus 2 m of any road or footway, on junctions, in building footprints, on driveways, on rail lines or in water. Test every point against the road and building data before you place it.
+- Use seeded random (a fixed seed), so trees stay in the same place every time you play.
+- Performance: one `InstancedMesh` per model type, only draw within about 600 m (grass tufts within 120 m), and keep it to roughly 15 tree types at most.

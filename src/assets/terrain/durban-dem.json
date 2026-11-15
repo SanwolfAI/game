@@ -1,0 +1,14 @@
+{
+ "file": "durban-dem-terrarium-z12.png",
+ "encoding": "terrarium: height_m = R*256 + G + B/256 - 32768",
+ "projection": "Web Mercator (EPSG:3857) tiles, zoom 12, about 33 m per pixel at Durban",
+ "west": 30.673828125,
+ "east": 31.201171875,
+ "north": -29.611670115197384,
+ "south": -30.06909396443886,
+ "width": 1536,
+ "height": 1536,
+ "source": "AWS Terrain Tiles (Mapzen terrain, Registry of Open Data on AWS), s3://elevation-tiles-prod/terrarium",
+ "attribution": "Terrain data: Mapzen / AWS Terrain Tiles; includes SRTM (NASA/USGS, public domain) and other open sources. See https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+ "license": "Open data; credit required (see attribution link)"
+}
