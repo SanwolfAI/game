@@ -12,6 +12,7 @@ import { buildRoadProps } from './world/roadProps.js';
 import { City } from './world/city.js';
 import { buildCityModels } from './world/buildingModels.js';
 import { buildTrains } from './game/trains.js';
+import { buildHarbour } from './world/harbour.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
 import { loadDownloadedVehicles, applyVehicleEnvironment } from './game/sketchfabModels.js';
@@ -128,7 +129,8 @@ async function main() {
   } catch (error) {
     console.warn('Real Durban DEM unavailable; using fallback terrain:', error);
   }
-  const hf = new Heightfield(coastXZ, bounds, 80, dem);
+  const waterAreas = (data.landuse || []).filter((area) => area.u === 'water' || area.u === 'riverbank');
+  const hf = new Heightfield(coastXZ, bounds, 80, dem, waterAreas);
 
   setLoad(40, 'Paving the ground…');
   await nextFrame();
@@ -157,7 +159,11 @@ async function main() {
   await nextFrame();
   const trains = await buildTrains(roads, hf);
 
-  setLoad(83, 'Planting Durban trees and palms…');
+  setLoad(81, 'Building Durban harbour…');
+  await nextFrame();
+  const harbour = await buildHarbour(data, roads, city, hf, mulberry32(15112028));
+
+  setLoad(85, 'Planting Durban trees and palms…');
   await nextFrame();
   const nature = await buildNature(data, roads, city, hf, coastXZ, mulberry32(15112026));
 
@@ -213,6 +219,7 @@ async function main() {
   scene.add(cityGroup);
   scene.add(cityModels.group);
   scene.add(trains.group);
+  scene.add(harbour.group);
   scene.add(landmarks);
   scene.add(nature.group);
 
@@ -461,6 +468,7 @@ async function main() {
     nature.update(ent.x, ent.z);
     cityModels.update(ent.x, ent.z);
     trains.update(dt, ent.x, ent.z);
+    harbour.update(ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {

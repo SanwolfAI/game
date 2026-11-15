@@ -44,8 +44,18 @@ const FLATS = [
   { lon: 30.9255, lat: -29.9205, r: 1100, inner: 500, h: 54 }
 ];
 
+function pointInRingXZ(x, z, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    const crosses = (a[1] > z) !== (b[1] > z);
+    if (crosses && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+
 export class Heightfield {
-  constructor(coastXZ, bounds, cell = 80, dem = null) {
+  constructor(coastXZ, bounds, cell = 80, dem = null, waterAreas = []) {
     this.cell = cell;
     this.dem = dem;
     this.minX = bounds.minX;
@@ -71,8 +81,10 @@ export class Heightfield {
     this.#rasteriseCoast(coastXZ);
     this.#distanceTransform();
     this.#floodOcean();
+    this.#rasteriseWaterAreas(waterAreas);
     this.#buildHeight();
     this.#smooth(this.dem ? 1 : 2);
+    for (let i = 0; i < this.water.length; i++) if (this.water[i]) this.height[i] = Math.min(this.height[i], -0.4);
   }
 
   idx(ix, iz) {
@@ -168,6 +180,30 @@ export class Heightfield {
     }
   }
 
+  #rasteriseWaterAreas(areas) {
+    for (const area of areas || []) {
+      if (!Array.isArray(area.p) || area.p.length < 4 || (area.a && area.a > 120000000)) continue;
+      const ring = area.p.map(([lon, lat]) => toXZ(lon, lat));
+      const xs = ring.map((p) => p[0]);
+      const zs = ring.map((p) => p[1]);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+      const ix0 = clamp(Math.floor((minX - this.minX) / this.cell), 0, this.cols - 1);
+      const ix1 = clamp(Math.ceil((maxX - this.minX) / this.cell), 0, this.cols - 1);
+      const iz0 = clamp(Math.floor((minZ - this.minZ) / this.cell), 0, this.rows - 1);
+      const iz1 = clamp(Math.ceil((maxZ - this.minZ) / this.cell), 0, this.rows - 1);
+      for (let iz = iz0; iz <= iz1; iz++) {
+        const z = this.minZ + iz * this.cell;
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const i = this.idx(ix, iz);
+          if (this.dist[i] > 3500) continue;
+          const x = this.minX + ix * this.cell;
+          if (pointInRingXZ(x, z, ring)) this.water[i] = 1;
+        }
+      }
+    }
+  }
+
   #profile(d) {
     if (d < 0) return -Math.min(28, 5 + -d * 0.014);
     let h = 1.2 + 0.0105 * Math.max(0, d - 45);
@@ -205,7 +241,7 @@ export class Heightfield {
       for (let ix = 0; ix < cols; ix++) {
         const x = this.minX + ix * this.cell;
         const i = this.idx(ix, iz);
-        const d = water[i] ? -dist[i] : dist[i];
+        const d = water[i] ? -Math.max(1, dist[i]) : dist[i];
         let h = this.#sampleDem(x, z);
         if (!Number.isFinite(h)) {
           h = this.#profile(d);
@@ -266,13 +302,13 @@ export class Heightfield {
     const iz = Math.floor(fz);
     if (ix < 0 || iz < 0 || ix >= this.cols - 1 || iz >= this.rows - 1) {
       const i = this.idx(clamp(ix, 0, this.cols - 1), clamp(iz, 0, this.rows - 1));
-      return this.water[i] ? -this.dist[i] : this.dist[i];
+      return this.water[i] ? -Math.max(1, this.dist[i]) : this.dist[i];
     }
     const tx = fx - ix;
     const tz = fz - iz;
     const d = (a, b) => {
       const i = this.idx(a, b);
-      return this.water[i] ? -this.dist[i] : this.dist[i];
+      return this.water[i] ? -Math.max(1, this.dist[i]) : this.dist[i];
     };
     const d00 = d(ix, iz);
     const d10 = d(ix + 1, iz);

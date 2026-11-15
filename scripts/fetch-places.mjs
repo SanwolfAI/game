@@ -75,18 +75,24 @@ way["place"~"${PLACE_RE}"](${BBOX.join(',')});
 relation["place"~"${PLACE_RE}"](${BBOX.join(',')});
 );out geom tags;`;
 
-const landuseQ = `[out:json][timeout:200];(
-way["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard)$"](${BBOX.join(',')});
-relation["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard)$"](${BBOX.join(',')});
-way["natural"~"^(wood|scrub|heath|grassland)$"](${BBOX.join(',')});
-relation["natural"~"^(wood|scrub|heath|grassland)$"](${BBOX.join(',')});
+const landuseQ = `[out:json][timeout:240];(
+way["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard|port|industrial|commercial|retail)$"](${BBOX.join(',')});
+relation["landuse"~"^(residential|informal|forest|farmland|meadow|grass|orchard|vineyard|port|industrial|commercial|retail)$"](${BBOX.join(',')});
+way["natural"~"^(wood|scrub|heath|grassland|bare_rock|water)$"](${BBOX.join(',')});
+relation["natural"~"^(wood|scrub|heath|grassland|bare_rock|water)$"](${BBOX.join(',')});
 way["leisure"~"^(park|nature_reserve|garden|golf_course)$"](${BBOX.join(',')});
 relation["leisure"~"^(park|nature_reserve|garden|golf_course)$"](${BBOX.join(',')});
+way["waterway"="riverbank"](${BBOX.join(',')});
+relation["waterway"="riverbank"](${BBOX.join(',')});
+way["industrial"="port"](${BBOX.join(',')});
+relation["industrial"="port"](${BBOX.join(',')});
+way["harbour"](${BBOX.join(',')});
+relation["harbour"](${BBOX.join(',')});
 );out geom tags;`;
 
 const labels = await cached('places', placeQ);
 const geoms = await cached('places-geom', geomQ);
-const landuse = await cached('landcover-v2', landuseQ);
+const landuse = await cached('landcover-v3', landuseQ);
 
 function centerOf(el) {
   if (el.type === 'node') return [el.lon, el.lat];
@@ -159,6 +165,9 @@ await fs.writeFile(new URL('../src/data/places-raw.json', import.meta.url), JSON
       landuse: el.tags?.landuse || '',
       natural: el.tags?.natural || '',
       leisure: el.tags?.leisure || '',
+      waterway: el.tags?.waterway || '',
+      harbour: el.tags?.harbour || '',
+      industrial: el.tags?.industrial || '',
       ring: rings.sort((a, b) => b.length - a.length)[0] || null
     };
   }).filter((l) => l.ring && l.ring.length > 2)
