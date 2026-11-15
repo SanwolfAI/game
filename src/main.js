@@ -130,7 +130,7 @@ async function main() {
 
   setLoad(40, 'Paving the ground…');
   await nextFrame();
-  const terrain = buildTerrain(hf, coastXZ, 2);
+  const terrain = buildTerrain(hf, coastXZ, 1);
   const landuse = buildLanduse(hf, data.landuse);
 
   const mappedBridgeCount = data.roads.reduce((count, road) => count + (road.b ? 1 : 0), 0);

@@ -170,13 +170,16 @@ export class RoadNetwork {
       const k = ckey(Math.floor(x / chunkSize), Math.floor(z / chunkSize));
       let chunk = chunks.get(k);
       if (!chunk) {
-        chunk = { positions: [], colors: [], indices: [], dashPos: [], dashIdx: [], edgePos: [], edgeIdx: [] };
+        chunk = { positions: [], colors: [], uvs: [], indices: [], dashPos: [], dashIdx: [], edgePos: [], edgeIdx: [] };
         chunks.set(k, chunk);
       }
       return chunk;
     };
 
-    const asphalt = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const asphaltTexture = new THREE.TextureLoader().load('./src/assets/textures/asphalt_02_diff_1k.jpg');
+    asphaltTexture.wrapS = asphaltTexture.wrapT = THREE.RepeatWrapping;
+    asphaltTexture.colorSpace = THREE.SRGBColorSpace;
+    const asphalt = new THREE.MeshLambertMaterial({ map: asphaltTexture, vertexColors: true });
     const dashMat = new THREE.MeshBasicMaterial({ color: 0xf2e9c8, side: THREE.DoubleSide });
     const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffd52a, side: THREE.DoubleSide });
     const bridgeRailMat = new THREE.MeshLambertMaterial({ color: 0x777d82 });
@@ -187,7 +190,7 @@ export class RoadNetwork {
       const positions = [];
       const colors = [];
       const indices = [];
-      const base = new THREE.Color(roadClass(road.cls).color);
+      const base = new THREE.Color(roadClass(road.cls).color).lerp(new THREE.Color(0xffffff), 0.68);
       const n = road.pts.length;
       const half = road.width / 2;
       const lift = road.bridge ? 6.5 : 0;
@@ -225,7 +228,7 @@ export class RoadNetwork {
 
       // Add a visible deck edge, safety rails and support piers to every OSM-tagged bridge.
       if (road.bridge && n > 1) {
-        if (!road.major) {
+        if (!road.major || road.len <= 90) {
         const railOffset = half + 0.72;
         for (const side of [-1, 1]) {
           const railPoints = [];
@@ -297,6 +300,7 @@ export class RoadNetwork {
         for (let k = i * 2; k <= i * 2 + 3; k++) {
           chunk.positions.push(positions[k * 3], positions[k * 3 + 1], positions[k * 3 + 2]);
           chunk.colors.push(colors[k * 3], colors[k * 3 + 1], colors[k * 3 + 2]);
+          chunk.uvs.push(positions[k * 3] / 4, positions[k * 3 + 2] / 4);
         }
         chunk.indices.push(base0, base0 + 2, base0 + 1, base0 + 1, base0 + 2, base0 + 3);
       }
@@ -474,6 +478,7 @@ export class RoadNetwork {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(chunk.positions, 3));
       geo.setAttribute('color', new THREE.Float32BufferAttribute(chunk.colors, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(chunk.uvs, 2));
       geo.setIndex(chunk.indices);
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, asphalt);

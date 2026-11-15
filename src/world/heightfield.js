@@ -72,7 +72,7 @@ export class Heightfield {
     this.#distanceTransform();
     this.#floodOcean();
     this.#buildHeight();
-    this.#smooth(2);
+    this.#smooth(this.dem ? 1 : 2);
   }
 
   idx(ix, iz) {
