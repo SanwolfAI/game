@@ -19,6 +19,10 @@ export class Vehicle {
     let yaw = spawn ? Math.atan2(spawn.dirX, spawn.dirZ) : 0;
     if (spawn && !this.#roadForwardOk(spawn, yaw)) yaw += Math.PI;
     this.yaw = yaw;
+    const spawnGround = this.hf.heightAt(this.x, this.z);
+    this.surfaceY = spawn?.road.bridge
+      ? this.roads.deckHeightAt(this.x, this.z, spawnGround + 6.5)
+      : spawnGround;
     this.speed = 0;
     this.steer = 0;
     this.lateral = 0;
@@ -58,18 +62,19 @@ export class Vehicle {
   }
 
   #place() {
-    const ground = this.hf.heightAt(this.x, this.z);
+    const surface = this.roads.deckHeightAt(this.x, this.z, this.surfaceY);
+    this.surfaceY = surface;
     const fx = Math.sin(this.yaw);
     const fz = Math.cos(this.yaw);
     const rx = Math.cos(this.yaw);
     const rz = -Math.sin(this.yaw);
 
-    const hF = this.hf.heightAt(this.x + fx * 1.9, this.z + fz * 1.9);
-    const hB = this.hf.heightAt(this.x - fx * 1.9, this.z - fz * 1.9);
-    const hR = this.hf.heightAt(this.x + rx * 0.95, this.z + rz * 0.95);
-    const hL = this.hf.heightAt(this.x - rx * 0.95, this.z - rz * 0.95);
+    const hF = this.roads.deckHeightAt(this.x + fx * 1.9, this.z + fz * 1.9, surface);
+    const hB = this.roads.deckHeightAt(this.x - fx * 1.9, this.z - fz * 1.9, surface);
+    const hR = this.roads.deckHeightAt(this.x + rx * 0.95, this.z + rz * 0.95, surface);
+    const hL = this.roads.deckHeightAt(this.x - rx * 0.95, this.z - rz * 0.95, surface);
 
-    this.group.position.set(this.x, ground, this.z);
+    this.group.position.set(this.x, surface, this.z);
     this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.yaw;
     this.group.rotation.x = Math.atan2(hB - hF, 3.8) * 0.7;
