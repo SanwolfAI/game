@@ -225,6 +225,7 @@ export class RoadNetwork {
 
       // Add a visible deck edge, safety rails and support piers to every OSM-tagged bridge.
       if (road.bridge && n > 1) {
+        if (!road.major) {
         const railOffset = half + 0.72;
         for (const side of [-1, 1]) {
           const railPoints = [];
@@ -261,6 +262,8 @@ export class RoadNetwork {
             rail.name = 'bridgeSafetyRail';
             this.group.add(rail);
           }
+        }
+
         }
 
         // Concrete piers descend to the terrain/waterbed beneath longer spans.

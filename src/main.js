@@ -8,6 +8,7 @@ import { buildLanduse } from './world/landuse.js';
 import { buildNature } from './world/nature.js';
 import { RoadNetwork } from './world/roads.js';
 import { Roadside } from './world/roadside.js';
+import { buildRoadProps } from './world/roadProps.js';
 import { City } from './world/city.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
@@ -136,6 +137,9 @@ async function main() {
   setLoad(58, `Paving ${data.roads.length.toLocaleString()} roads and building ${mappedBridgeCount.toLocaleString()} bridges…`);
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
+  setLoad(62, 'Placing streetlights and bridge barriers…');
+  await nextFrame();
+  const roadProps = await buildRoadProps(roads, hf);
   const roadside = new Roadside(data, roads, hf);
 
   setLoad(72, 'Raising the city…');
@@ -195,6 +199,7 @@ async function main() {
   scene.add(landuse);
   scene.add(roads.group);
   scene.add(roadside.group);
+  scene.add(roadProps.group);
   scene.add(cityGroup);
   scene.add(landmarks);
   scene.add(nature.group);
@@ -439,6 +444,7 @@ async function main() {
 
     traffic.update(dt, ent.x, ent.z);
     roadside.update(ent.x, ent.z, dt);
+    roadProps.update(ent.x, ent.z);
     pedestrians.update(dt, ent.x, ent.z);
     nature.update(ent.x, ent.z);
 
