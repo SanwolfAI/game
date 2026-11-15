@@ -21,12 +21,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check the JavaScript
         run: npm test
+      - name: Prepare downloaded Sketchfab vehicles
+        run: |
+          mkdir -p src/assets/vehicles
+          [ ! -f models/import/gusheshe.zip ] || unzip -oq models/import/gusheshe.zip -d src/assets/vehicles/gusheshe
+          [ ! -f models/import/bmw-lowpoly.zip ] || unzip -oq models/import/bmw-lowpoly.zip -d src/assets/vehicles/bmw-lowpoly
+          [ ! -f models/import/hiace.zip ] || unzip -oq models/import/hiace.zip -d src/assets/vehicles/hiace
       - name: Copy the game into the app
         run: |
           A=android/app/src/main/assets
           mkdir -p $A/src/data
           cp index.html $A/
           cp -r vendor $A/
+          if [ -d src/assets ]; then cp -r src/assets $A/; fi
           rsync -a --exclude data src/ $A/src/
           cp src/data/durban-game.json $A/src/data/
       - uses: actions/setup-java@v4
@@ -67,6 +74,7 @@ jobs:
           mkdir -p site/src/data
           cp index.html site/
           cp -r vendor site/
+          if [ -d src/assets ]; then cp -r src/assets site/; fi
           rsync -a --exclude data src/ site/src/
           cp src/data/durban-game.json site/src/data/
           touch site/.nojekyll
