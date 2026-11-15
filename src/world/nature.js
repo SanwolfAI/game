@@ -13,7 +13,16 @@ const VEGETATION_MODELS = [
   { file: 'crops_bambooStageB.glb', height: 2.4 },
   { file: 'rock_largeA.glb', height: 1.8 },
   { file: 'flower_yellowA.glb', height: 0.62 },
-  { file: 'grass_large.glb', height: 0.88 }
+  { file: 'grass_large.glb', height: 0.88 },
+  { file: 'tree_oak.glb', height: 7.4 },
+  { file: 'tree_fat.glb', height: 6.8 },
+  { file: 'tree_palmBend.glb', height: 8.4 },
+  { file: 'plant_bushLarge.glb', height: 2.1 },
+  { file: 'plant_flatTall.glb', height: 1.5 },
+  { file: 'flower_redA.glb', height: 0.7 },
+  { file: 'crops_cornStageC.glb', height: 2.1 },
+  { file: 'rock_smallA.glb', height: 0.8 },
+  { file: 'cliff_block_rock.glb', height: 2.8 }
 ];
 
 function pointInRing(x, z, ring) {
@@ -126,22 +135,22 @@ export async function buildNature(data, roads, city, hf, coastXZ, rng) {
 
   // Land-cover categories come from the refreshed OpenStreetMap place/landuse query.
   const rules = {
-    residential: { types: [0, 1], density: 22000, max: 12, spacing: 13, min: 1 },
-    forest: { types: [0, 1, 3], density: 1200, max: 200, spacing: 7, min: 12 },
-    wood: { types: [0, 1, 3], density: 1200, max: 200, spacing: 7, min: 12 },
-    park: { types: [0, 1, 3, 7], density: 4000, max: 60, spacing: 8, min: 4 },
-    nature_reserve: { types: [0, 1, 3], density: 2500, max: 120, spacing: 7, min: 8 },
+    residential: { types: [0, 1, 9, 10, 12], density: 22000, max: 12, spacing: 13, min: 1 },
+    forest: { types: [0, 1, 3, 9, 10, 12], density: 1200, max: 200, spacing: 7, min: 12 },
+    wood: { types: [0, 1, 3, 9, 10, 12], density: 1200, max: 200, spacing: 7, min: 12 },
+    park: { types: [0, 1, 3, 7, 9, 10, 12, 14], density: 4000, max: 60, spacing: 8, min: 4 },
+    nature_reserve: { types: [0, 1, 3, 9, 10, 12], density: 2500, max: 120, spacing: 7, min: 8 },
     garden: { types: [0, 3, 7], density: 5000, max: 35, spacing: 8, min: 3 },
     golf_course: { types: [0, 1, 3], density: 7000, max: 45, spacing: 10, min: 4 },
-    scrub: { types: [3, 6], density: 1000, max: 100, spacing: 5, min: 5 },
-    heath: { types: [3, 6], density: 1000, max: 100, spacing: 5, min: 5 },
+    scrub: { types: [3, 6, 12, 13, 14, 16], density: 1000, max: 100, spacing: 5, min: 5 },
+    heath: { types: [3, 6, 12, 13, 14, 16], density: 1000, max: 100, spacing: 5, min: 5 },
     grassland: { types: [4, 8, 7], density: 500, max: 250, spacing: 2.6, min: 8 },
     meadow: { types: [4, 8, 7], density: 500, max: 250, spacing: 2.6, min: 8 },
     grass: { types: [4, 8], density: 500, max: 250, spacing: 2.6, min: 8 },
-    farmland: { types: [5], density: 140, max: 500, spacing: 2.8, min: 12 },
+    farmland: { types: [5, 15], density: 140, max: 500, spacing: 2.8, min: 12 },
     orchard: { types: [0, 1], density: 1800, max: 160, spacing: 8, min: 6 },
-    vineyard: { types: [5], density: 180, max: 400, spacing: 2.8, min: 12 },
-    bare_rock: { types: [6], density: 1000, max: 80, spacing: 8, min: 6 }
+    vineyard: { types: [5, 15], density: 180, max: 400, spacing: 2.8, min: 12 },
+    bare_rock: { types: [6, 16, 17], density: 1000, max: 80, spacing: 8, min: 6 }
   };
 
   let planted = 0;

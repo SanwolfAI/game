@@ -9,15 +9,12 @@ const MODEL_SETS = {
     './src/assets/suburbankit/building-type-q.glb'
   ],
   hotel: [
+    ...'abcdefghijklmn'.split('').map(c => `./src/assets/commercialkit/building-${c}.glb`),
+    ...'abcdefghijklmn'.split('').map(c => `./src/assets/commercialkit/low-detail-building-${c}.glb`),
     './src/assets/commercialkit/low-detail-building-wide-a.glb',
-    './src/assets/commercialkit/low-detail-building-wide-b.glb',
-    './src/assets/commercialkit/low-detail-building-c.glb'
+    './src/assets/commercialkit/low-detail-building-wide-b.glb'
   ],
-  tower: [
-    './src/assets/commercialkit/building-skyscraper-a.glb',
-    './src/assets/commercialkit/building-skyscraper-c.glb',
-    './src/assets/commercialkit/building-skyscraper-e.glb'
-  ]
+  tower: 'abcde'.split('').map(c => `./src/assets/commercialkit/building-skyscraper-${c}.glb`)
 };
 
 function prepareModel(scene) {

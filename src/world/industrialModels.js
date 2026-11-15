@@ -4,7 +4,9 @@ import {toXZ} from '../core/geo.js';
 const FILES=[
   ...'abcdefghijklmnopqrst'.split('').map(c=>'building-'+c),
   'detail-tank','detail-tank-large','chimney-basic','chimney-small','chimney-medium','chimney-large',
-  'water-tower','windmill-low','windmill','solar-panel-flat','solar-panel-landscape','solar-panel-portrait'
+  'shipping-container-a','shipping-container-b','shipping-container-c',
+  'water-tower','windmill-low','windmill','solar-panel-flat','solar-panel-landscape','solar-panel-portrait',
+  'solar-panel-landscape-group','solar-panel-portrait-group'
 ];
 const CHUNK=700;
 function inside(x,z,r){let v=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>z)!==(b[1]>z)&&x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0])v=!v;}return v;}
@@ -31,7 +33,7 @@ export async function buildIndustrialModels(data,hf,roads,city,rng){
    if(!chunks.has(key))chunks.set(key,{cx:Math.floor(x/CHUNK),cz:Math.floor(z/CHUNK),items:new Map()});
    const c=chunks.get(key);if(!c.items.has(model.name))c.items.set(model.name,[]);
    c.items.get(model.name).push({x,z,y:hf.heightAt(x,z),yaw:rng()*Math.PI*2,
-    scale:detail?[7+rng()*5,16+rng()*22,7+rng()*5]:
+    scale:/shipping-container/.test(model.name)?[12.2,2.6,2.45]:detail?[7+rng()*5,16+rng()*22,7+rng()*5]:
       [Math.min(70,Math.max(22,w*.22)),Math.min(30,Math.max(12,16+rng()*10)),Math.min(58,Math.max(18,d*.24))]});
    count++;n++;if(n===3)break;
   }
