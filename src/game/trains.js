@@ -40,8 +40,12 @@ function prepareCarriage(scene, targetLength) {
   const factor = targetLength / sourceLength;
   const clone = scene.clone(true);
   clone.scale.setScalar(factor);
-  clone.position.set(-center.x * factor, -bounds.min.y * factor, -center.z * factor);
   if (longAxis === 'x') clone.rotation.y = -Math.PI / 2;
+  clone.position.set(0, 0, 0);
+  clone.updateMatrixWorld(true);
+  const normalizedBounds = new THREE.Box3().setFromObject(clone);
+  const normalizedCenter = normalizedBounds.getCenter(new THREE.Vector3());
+  clone.position.set(-normalizedCenter.x, -normalizedBounds.min.y, -normalizedCenter.z);
   const pivot = new THREE.Group();
   pivot.add(clone);
   return pivot;
@@ -81,12 +85,14 @@ export async function buildTrains(roads, hf) {
     const length = cumulative[cumulative.length - 1];
     let distance = Math.min(length - 70, Math.max(70, length * 0.35));
     const speed = 5.2;
+    let direction = 1;
     function update(dt, px, pz) {
-      distance += speed * dt;
-      if (distance > length - 70) distance = 70;
+      distance += speed * dt * direction;
+      if (distance > length - 70) { distance = length - 70; direction = -1; }
+      else if (distance < 70) { distance = 70; direction = 1; }
       const p = sampleLine(pts, cumulative, distance);
       train.position.set(p.x, hf.heightAt(p.x, p.z) + 0.35, p.z);
-      train.rotation.y = Math.atan2(p.dirX, p.dirZ);
+      train.rotation.y = Math.atan2(p.dirX * direction, p.dirZ * direction);
       train.visible = Math.hypot(p.x - px, p.z - pz) < 3600;
     }
     group.userData.trainCount = 1;
