@@ -83,7 +83,8 @@ const out = {
   roads: [],
   rail: [],
   coastline: [],
-  beaches: []
+  beaches: [],
+  features: []
 };
 
 const coastQuery = `[out:json][timeout:180];(
@@ -108,10 +109,21 @@ for (const zone of zones) {
   const query = `[out:json][timeout:180];(
     way["highway"~"${highwayPattern}"](${south},${west},${north},${east});
     way["railway"="rail"](${south},${west},${north},${east});
+    node["highway"~"^(stop|give_way|traffic_signals|crossing|motorway_junction)$"](${south},${west},${north},${east});
+    node["railway"="level_crossing"](${south},${west},${north},${east});
+    node["traffic_sign"](${south},${west},${north},${east});
   );out geom;`;
-  const elements = await cached(zone.name, query);
+  // Versioned cache key: old zone caches contain roads only, not sign/crossing nodes.
+  const elements = await cached(`${zone.name}-road-features-v2`, query);
 
   for (const element of elements) {
+    if (element.type === 'node' && Number.isFinite(element.lon) && Number.isFinite(element.lat)) {
+      const tags = element.tags || {};
+      if (tags.highway || tags.railway === 'level_crossing' || tags.traffic_sign) {
+        out.features.push({ id: element.id, tags, point: [element.lon, element.lat] });
+      }
+      continue;
+    }
     if (!element.geometry || element.geometry.length < 2) continue;
     const points = element.geometry.map(point => [point.lon, point.lat]);
     if (element.tags?.railway === 'rail') {
@@ -123,10 +135,12 @@ for (const zone of zones) {
 
   const uniqueRoads = new Map(out.roads.map(road => [road.id, road]));
   const uniqueRail = new Map(out.rail.map(line => [line.id, line]));
+  const uniqueFeatures = new Map(out.features.map(feature => [feature.id, feature]));
   out.roads = [...uniqueRoads.values()];
   out.rail = [...uniqueRail.values()];
+  out.features = [...uniqueFeatures.values()];
   await fs.writeFile(new URL('../src/data/durban-osm.json', import.meta.url), JSON.stringify(out));
-  console.log('saved checkpoint', zone.name, 'roads', out.roads.length);
+  console.log('saved checkpoint', zone.name, 'roads', out.roads.length, 'road features', out.features.length);
   await sleep(1000);
 }
 
@@ -137,5 +151,6 @@ console.log(
   out.roads.length, 'roads,',
   out.roads.reduce((sum, road) => sum + road.points.length, 0), 'road points,',
   out.rail.length, 'rail lines,',
+  out.features.length, 'road features,',
   (output.length / 1024 / 1024).toFixed(2), 'MB'
 );
