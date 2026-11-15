@@ -322,6 +322,40 @@ export class RoadNetwork {
       }
     }
 
+    // Fill small gaps where separately mapped OSM road ways meet.
+    const junctionPositions = [];
+    const junctionIndices = [];
+    for (const node of this.nodes) {
+      const connected = node.edges
+        .map((id) => this.edges[id].road)
+        .filter((road) => !road.bridge);
+      if (connected.length < 2) continue;
+      const radius = Math.max(...connected.map((road) => road.width * 0.5)) + 0.45;
+      const y = this.hf.heightAt(node.x, node.z) + 0.36;
+      const base = junctionPositions.length / 3;
+      const steps = 12;
+      junctionPositions.push(node.x, y, node.z);
+      for (let i = 0; i <= steps; i++) {
+        const angle = (i / steps) * Math.PI * 2;
+        junctionPositions.push(node.x + Math.cos(angle) * radius, y, node.z + Math.sin(angle) * radius);
+      }
+      for (let i = 0; i < steps; i++) {
+        junctionIndices.push(base, base + i + 1, base + i + 2);
+      }
+    }
+    if (junctionPositions.length) {
+      const junctionGeo = new THREE.BufferGeometry();
+      junctionGeo.setAttribute('position', new THREE.Float32BufferAttribute(junctionPositions, 3));
+      junctionGeo.setIndex(junctionIndices);
+      junctionGeo.computeVertexNormals();
+      const junctionMesh = new THREE.Mesh(
+        junctionGeo,
+        new THREE.MeshLambertMaterial({ color: 0x55555a, side: THREE.DoubleSide })
+      );
+      junctionMesh.name = 'roadJunctionPatches';
+      this.group.add(junctionMesh);
+    }
+
     for (const [, chunk] of chunks) {
       if (!chunk.positions.length) continue;
       const geo = new THREE.BufferGeometry();
