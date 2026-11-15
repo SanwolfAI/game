@@ -82,7 +82,7 @@ export class Vehicle {
     const brake = input.isDown('brake');
     const boost = input.isDown('boost');
     const handbrake = input.isDown('handbrake');
-    const steerTarget = (input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0);
+    const steerTarget = input.stick?.active ? clamp(-input.stick.x, -1, 1) : (input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0);
 
     const maxSpeed = boost ? this.spec.boost : this.spec.max;
     if (gas) {
