@@ -17,7 +17,7 @@ import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
 import { Input } from './game/input.js';
-import { honk, unlockAudio, tick } from './game/audio.js';
+import { honk, unlockAudio, tick, updateEngine, toggleMute } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
@@ -454,6 +454,11 @@ async function main() {
   let helpTimer = 0;
   let clockSaveTimer = 0;
 
+  // Audio needs a user gesture before it can start (Android WebView too).
+  const unlockOnce = () => unlockAudio();
+  addEventListener('pointerdown', unlockOnce, { passive: true });
+  addEventListener('keydown', unlockOnce);
+
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
@@ -541,6 +546,9 @@ async function main() {
     hud.updateDestination(gps);
     minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
     bigmap.update(dt, ent.x, ent.z, ent.yaw);
+
+    if (input.takePressed('mute')) hud.toast(toggleMute() ? 'Sound off' : 'Sound on', 1.1);
+    updateEngine(dt, inVehicle ? vehicle.speedKmh : 0, inVehicle ? vehicle.throttleNow || 0 : 0, inVehicle, traffic.nearest(ent.x, ent.z, 3));
 
     newRoadTimer += dt;
     if (newRoadTimer > 0.5) {

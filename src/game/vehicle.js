@@ -187,6 +187,7 @@ export class Vehicle {
     const boost = input.isDown('boost');
     const handbrake = input.isDown('handbrake');
     const throttle = input.throttle ?? (input.isDown('gas') ? 1 : 0);
+    this.throttleNow = throttle;
     const brakeIn = input.brake ?? (input.isDown('brake') ? 1 : 0);
     const gear = input.gear || 'D';
     const ph = this.phys;

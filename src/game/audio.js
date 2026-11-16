@@ -48,3 +48,102 @@ export function tick(on = true) {
   osc.start(t);
   osc.stop(t + 0.03);
 }
+
+// ---- Engine sound (synth): player engine + up to 3 nearby traffic hums ----
+let engine = null;
+let muted = false;
+try {
+  muted = localStorage.getItem('izk-mute') === '1';
+} catch {
+  muted = false;
+}
+
+function makeVoice(audio, out, type, sub) {
+  const osc = audio.createOscillator();
+  osc.type = type;
+  const osc2 = audio.createOscillator();
+  osc2.type = sub;
+  const filter = audio.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 600;
+  filter.Q.value = 2;
+  const gain = audio.createGain();
+  gain.gain.value = 0;
+  const g2 = audio.createGain();
+  g2.gain.value = 0.6;
+  osc.connect(filter);
+  osc2.connect(g2).connect(filter);
+  filter.connect(gain).connect(out);
+  osc.start();
+  osc2.start();
+  return { osc, osc2, filter, gain };
+}
+
+function ensureEngine() {
+  if (engine) return engine;
+  const audio = context();
+  if (!audio || audio.state !== 'running') return null;
+  const master = audio.createGain();
+  master.gain.value = muted ? 0 : 1;
+  master.connect(audio.destination);
+  const player = makeVoice(audio, master, 'sawtooth', 'square');
+  const traffic = [];
+  for (let i = 0; i < 3; i++) traffic.push(makeVoice(audio, master, 'triangle', 'sawtooth'));
+  engine = { audio, master, player, traffic, gear: 1, shift: 0 };
+  return engine;
+}
+
+export function isMuted() {
+  return muted;
+}
+
+export function toggleMute() {
+  muted = !muted;
+  try {
+    localStorage.setItem('izk-mute', muted ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+  if (engine) engine.master.gain.setTargetAtTime(muted ? 0 : 1, engine.audio.currentTime, 0.05);
+  return muted;
+}
+
+const GEAR_TOP = [0, 22, 45, 72, 105, 145, 999]; // km/h per gear
+
+// kmh: player speed, throttle 0..1, running: engine on (in a vehicle),
+// cars: [{d, v}] nearest traffic (distance m, speed m/s), at most 3.
+export function updateEngine(dt, kmh, throttle, running, cars) {
+  const e = ensureEngine();
+  if (!e) return;
+  const t = e.audio.currentTime;
+  const v = Math.abs(kmh);
+  let g = 1;
+  while (g < GEAR_TOP.length - 1 && v > GEAR_TOP[g]) g++;
+  if (g !== e.gear) {
+    if (g > e.gear) e.shift = 0.18; // brief dip on upshift
+    e.gear = g;
+  }
+  if (e.shift > 0) e.shift -= dt;
+  const lo = GEAR_TOP[g - 1];
+  const hi = Math.min(GEAR_TOP[g], 180);
+  const frac = Math.max(0, Math.min(1, (v - lo) / Math.max(hi - lo, 1)));
+  let rpm = 850 + frac * 4600 + throttle * 600;
+  if (v < 2) rpm = 850 + throttle * 2800; // revving at standstill
+  if (e.shift > 0) rpm *= 0.82;
+  const f = (rpm / 60) * 2; // 4-cylinder firing frequency
+  const p = e.player;
+  p.osc.frequency.setTargetAtTime(f, t, 0.05);
+  p.osc2.frequency.setTargetAtTime(f / 2, t, 0.05);
+  p.filter.frequency.setTargetAtTime(380 + throttle * 1300 + frac * 500, t, 0.08);
+  p.gain.gain.setTargetAtTime(running ? 0.05 + throttle * 0.07 + frac * 0.02 : 0, t, 0.08);
+  for (let i = 0; i < 3; i++) {
+    const tv = e.traffic[i];
+    const c = cars && i < cars.length ? cars[i] : null;
+    const gain = c ? 0.045 * Math.max(0, 1 - c.d / 60) : 0;
+    const tf = 45 + Math.min(c ? c.v : 0, 20) * 4;
+    tv.osc.frequency.setTargetAtTime(tf, t, 0.2);
+    tv.osc2.frequency.setTargetAtTime(tf / 2, t, 0.2);
+    tv.filter.frequency.setTargetAtTime(320, t, 0.2);
+    tv.gain.gain.setTargetAtTime(gain * gain * 20, t, 0.15);
+  }
+}

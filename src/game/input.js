@@ -42,7 +42,8 @@ const PRESS_ACTIONS = {
   Comma: 'indLeft',
   Period: 'indRight',
   KeyK: 'hazard',
-  KeyM: 'map'
+  KeyM: 'map',
+  KeyU: 'mute'
 };
 
 export const WHEEL_LOCK_DEG = 450; // ±450° = 900° lock-to-lock

@@ -210,6 +210,26 @@ export class Traffic {
     if (car.edge.road !== edge.road && this.roads.laneOffset) car.lane = this.roads.laneOffset(car.edge.road, this.rng);
   }
 
+  // Nearest n cars to (px, pz) as [{d, v}] (engine sounds). Reuses arrays.
+  nearest(px, pz, n = 3) {
+    const out = this._near || (this._near = []);
+    out.length = 0;
+    for (const bucket of this.buckets) {
+      for (const car of bucket) {
+        if (car.px === undefined) continue;
+        const d = Math.hypot(car.px - px, car.pz - pz);
+        if (d > 60) continue;
+        let k = out.length;
+        if (k >= n && d >= out[n - 1].d) continue;
+        const item = { d, v: car.v || 0 };
+        while (k > 0 && out[k - 1].d > d) k--;
+        out.splice(k, 0, item);
+        if (out.length > n) out.length = n;
+      }
+    }
+    return out;
+  }
+
   update(dt, px, pz) {
     const night = WORLD.night.value > 0.15;
     let li = 0;
