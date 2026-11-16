@@ -59,6 +59,15 @@ export class CarLights {
     this.headMat = new THREE.SpriteMaterial({ map: glow, color: 0xfff2d6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false });
     this.tailMat = new THREE.SpriteMaterial({ map: glow, color: 0xff2a1a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false });
     this.revMat = new THREE.SpriteMaterial({ map: glow, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false });
+    this.ambMat = new THREE.SpriteMaterial({ map: glow, color: 0xffa020, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false });
+    // indicator lamps: front-left, rear-left, front-right, rear-right (left = +X)
+    this.ambers = [new THREE.Sprite(this.ambMat), new THREE.Sprite(this.ambMat), new THREE.Sprite(this.ambMat), new THREE.Sprite(this.ambMat)];
+    for (const a of this.ambers) {
+      a.visible = false;
+      a.renderOrder = 5;
+      a.scale.set(0.75, 0.55, 1);
+      this.group.add(a);
+    }
     this.heads = [new THREE.Sprite(this.headMat), new THREE.Sprite(this.headMat)];
     this.tails = [new THREE.Sprite(this.tailMat), new THREE.Sprite(this.tailMat)];
     this.revs = [new THREE.Sprite(this.revMat), new THREE.Sprite(this.revMat)];
@@ -112,15 +121,26 @@ export class CarLights {
     this.tails[1].position.set(-tx, ty, tzz - 0.05);
     this.revs[0].position.set(tx * 0.55, ty - 0.08, tzz - 0.06);
     this.revs[1].position.set(-tx * 0.55, ty - 0.08, tzz - 0.06);
+    const ax = width / 2 - 0.08;
+    this.ambers[0].position.set(ax, hy, hzz);
+    this.ambers[1].position.set(ax, ty, tzz);
+    this.ambers[2].position.set(-ax, hy, hzz);
+    this.ambers[3].position.set(-ax, ty, tzz);
     this.spot.position.set(0, hy + 0.1, hzz);
     this.spot.target.position.set(0, -1.5, hzz + 30);
     this.pool.position.set(0, 0.05, hzz + 0.6);
     this.pool.scale.set(9, 1, 34);
   }
 
-  update(night, braking, reversing, camDist = 10) {
-    const on = night > 0.15;
-    const k = Math.min(1, night * 1.4);
+  // mode: 'auto' | 'on' | 'high' | 'off'; blink: { left, right } lamp states this frame
+  update(night, braking, reversing, camDist = 10, mode = 'auto', blink = null) {
+    const on = mode === 'on' || mode === 'high' || (mode === 'auto' && night > 0.15);
+    const high = mode === 'high';
+    const k = mode === 'auto' ? Math.min(1, night * 1.4) : Math.max(0.55, Math.min(1, night * 1.4));
+    if (blink) {
+      this.ambers[0].visible = this.ambers[1].visible = !!blink.left;
+      this.ambers[2].visible = this.ambers[3].visible = !!blink.right;
+    }
     const hs = on ? 1.1 + k * 0.5 : 0;
     for (const s of this.heads) {
       s.visible = on;
@@ -139,9 +159,12 @@ export class CarLights {
       s.scale.set(0.55, 0.4, 1);
     }
     this.revMat.opacity = 0.9;
-    this.spot.intensity = on ? 38 * k : 0;
+    this.spot.intensity = on ? (high ? 75 : 38) * Math.max(k, night) : 0;
+    this.spot.distance = high ? 170 : 85;
+    this.spot.angle = high ? 0.42 : 0.55;
+    this.pool.scale.set(high ? 11 : 9, 1, high ? 60 : 34);
     this.pool.visible = on;
-    this.pool.material.opacity = 0.42 * k;
+    this.pool.material.opacity = (high ? 0.5 : 0.42) * Math.max(night, 0.15) * (on ? 1 : 0);
     void camDist;
   }
 }

@@ -389,6 +389,14 @@ export class Props {
           if (f.k === 'signals') {
             if (best._robots) continue;
             best._robots = true;
+            // phase groups: arms roughly in line with the first arm share a group
+            const e0 = best.ends[0];
+            const sig = { x: best.x, z: best.z, r: best.r || 8, arms: [] };
+            for (const e of best.ends) {
+              const grp = Math.abs(e.dx * e0.dx + e.dz * e0.dz) > 0.6 ? 0 : 1;
+              sig.arms.push({ dx: e.dx, dz: e.dz, grp });
+            }
+            this.#registerSignal(best.key, sig);
             let arm = 0;
             for (const e of best.ends) {
               const pc = e.pc;
@@ -409,7 +417,8 @@ export class Props {
               // face the arriving traffic (looking away from the junction)
               const yaw = Math.atan2(e.dx, e.dz);
               add('robot', x, y, z, yaw, 1, 1);
-              robots.push(x + e.dx * 0.25, y + 3.55, z + e.dz * 0.25, arm % 2, x, z, e.dx, e.dz);
+              const grp = Math.abs(e.dx * e0.dx + e.dz * e0.dz) > 0.6 ? 0 : 1;
+              robots.push(x + e.dx * 0.25, y + 3.55, z + e.dz * 0.25, grp, x, z, e.dx, e.dz);
               arm++;
               // W301 not needed at the robot itself; stop line is painted by roads.js
             }
@@ -458,6 +467,70 @@ export class Props {
     this.chunks.set(key, chunk);
     this.dirty = true;
     return chunk;
+  }
+
+  // ---- signal registry (AI traffic stops at red) --------------------------------
+  #registerSignal(key, sig) {
+    if (!this.signals) this.signals = new Map();
+    if (!this.sigKeys) this.sigKeys = new Set();
+    if (this.sigKeys.has(key)) return;
+    this.sigKeys.add(key);
+    const k = Math.floor(sig.x / 50) * 100000 + Math.floor(sig.z / 50);
+    let l = this.signals.get(k);
+    if (!l) this.signals.set(k, (l = []));
+    l.push(sig);
+  }
+
+  // Current phase: 0 = group A green, 1 = A amber, 2 = B green, 3 = B amber.
+  get phase() {
+    const t = this.time % 34;
+    return t < 14 ? 0 : t < 17 ? 1 : t < 31 ? 2 : 3;
+  }
+
+  static stateFor(grp, phase) {
+    if (grp === 0) return phase === 0 ? 2 : phase === 1 ? 1 : 0;
+    return phase === 2 ? 2 : phase === 3 ? 1 : 0;
+  }
+
+  // Signal a vehicle at (x, z) heading (fx, fz) is approaching within `ahead` m:
+  // returns { state (0 red, 1 amber, 2 green), dist (to the junction edge) } or null.
+  signalAhead(x, z, fx, fz, ahead = 30) {
+    if (!this.signals) return null;
+    const gx = Math.floor(x / 50);
+    const gz = Math.floor(z / 50);
+    let best = null;
+    let bestD = Infinity;
+    for (let a = gz - 1; a <= gz + 1; a++) {
+      for (let b = gx - 1; b <= gx + 1; b++) {
+        const l = this.signals.get(b * 100000 + a);
+        if (!l) continue;
+        for (const sg of l) {
+          const dx = sg.x - x;
+          const dz = sg.z - z;
+          const along = dx * fx + dz * fz;
+          if (along < 0 || along > ahead + sg.r) continue;
+          const side = Math.abs(dx * fz - dz * fx);
+          if (side > sg.r + 4) continue;
+          if (along < bestD) {
+            bestD = along;
+            best = sg;
+          }
+        }
+      }
+    }
+    if (!best) return null;
+    // arm we arrive on: its outward direction points back at us (-f)
+    let arm = null;
+    let ad = -2;
+    for (const a of best.arms) {
+      const d = -(a.dx * fx + a.dz * fz);
+      if (d > ad) {
+        ad = d;
+        arm = a;
+      }
+    }
+    if (!arm || ad < 0.5) return null;
+    return { state: Props.stateFor(arm.grp, this.phase), dist: bestD - best.r };
   }
 
   // ---- streaming ---------------------------------------------------------------
@@ -624,9 +697,7 @@ export class Props {
 
   // Signal phases: arms alternate between two groups, 14 s green, 3 s amber.
   #robotGlow(force) {
-    const cycle = 34;
-    const t = this.time % cycle;
-    const phase = t < 14 ? 0 : t < 17 ? 1 : t < 31 ? 2 : 3; // 0: A green, 1: A amber, 2: B green, 3: B amber
+    const phase = this.phase;
     if (!force && phase === this.lastPhase) return;
     this.lastPhase = phase;
     let gi = 0;

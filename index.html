@@ -92,6 +92,7 @@
         min-width: 150px;
       }
       #dest.show { display: flex; }
+      #dest-arrow.turn { font-size: 26px; transition: none; }
       #dest-arrow {
         width: 30px;
         height: 30px;
@@ -118,6 +119,10 @@
         letter-spacing: 1px;
         color: var(--dim);
         font-variant-numeric: tabular-nums;
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       #speedo {
@@ -247,6 +252,14 @@
       }
       #touch .tbtn.active { background: rgba(255, 207, 92, 0.34); }
       #touch .tbtn.small { width: 52px; height: 52px; font-size: 11px; letter-spacing: 0.5px; }
+      #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
+      #touch #t-signals .tbtn { position: relative; width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
+      #touch #t-signals #t-lights { width: 50px; font-size: 10px; }
+      #touch #t-signals .tbtn.on { background: rgba(255, 160, 32, 0.55); border-color: #ffb347; }
+      #touch #t-lights.on { background: rgba(120, 190, 255, 0.4); border-color: #9fd0ff; }
+      #touch #t-lights.high { background: rgba(80, 150, 255, 0.7); }
+      #t-lights-mode { position: absolute; right: 3px; bottom: 1px; font-size: 9px; color: var(--accent); }
+      #t-haz { color: #ff6b57; }
       /* ---- Steering wheel (SVG, rotates with the finger) ---- */
       #t-wheel {
         position: absolute;
@@ -353,6 +366,23 @@
         text-align: center;
       }
       #speed-gear:empty { display: none; }
+      #bigmap { position: fixed; inset: 0; z-index: 40; display: none; background: #183d55; touch-action: none; }
+      #bigmap.show { display: block; }
+      #bigmap canvas { position: absolute; inset: 0; touch-action: none; }
+      #bigmap-top { position: absolute; left: 10px; top: 10px; padding: 7px 12px; font-size: 13px; display: flex; gap: 10px; align-items: baseline; pointer-events: none; }
+      #bigmap-hint { font-size: 10px; color: var(--dim); letter-spacing: 0.3px; }
+      #bigmap-info { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 7px 14px; font-size: 12px; display: none; pointer-events: none; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+      #bigmap-info.show { display: block; }
+      #bigmap-btns { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
+      #bigmap-btns button { min-width: 46px; height: 40px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(10, 18, 26, 0.82); color: var(--ink); font: 700 15px "Trebuchet MS", sans-serif; padding: 0 10px; }
+      #bigmap-btns #bm-close { background: #ffcf5c; color: #10202c; font-size: 12px; }
+      #bigmap-btns #bm-clear { font-size: 11px; }
+      #map-box { cursor: pointer; pointer-events: auto; }
+      #model-credits { position: absolute; left: 10px; bottom: 44px; max-width: min(360px, 60vw); font-size: 10px; color: var(--dim); }
+      #model-credits summary { cursor: pointer; list-style: none; padding: 6px 10px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(10,18,26,.82); color: var(--ink); font-weight: 700; font-size: 10px; display: inline-block; }
+      #model-credits summary::-webkit-details-marker { display: none; }
+      #model-credits .credits-body { margin-top: 5px; padding: 9px 11px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(10,18,26,.94); line-height: 1.5; max-height: 45vh; overflow: auto; }
+      #model-credits a { color: var(--accent); }
       @media (pointer: coarse) {
         #touch { display: block; }
         #help { display: none; }
@@ -362,7 +392,9 @@
         #place { left: 150px; top: 10px; padding: 7px 12px; min-width: 0; }
         #place-name { font-size: 15px; }
         #clock-box { top: 10px; right: 10px; padding: 7px 11px; }
-        #dest { top: 10px; }
+        #dest { top: 92px; max-width: 236px; padding: 6px 10px 6px 8px; }
+        #dest-name, #dest-distance { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #dest-distance { letter-spacing: 0.3px; }
         #toast { top: 150px; }
         #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 128px; padding: 7px 12px 8px; }
         #speed-val { font-size: 30px; }
@@ -378,6 +410,7 @@
         #t-cam { right: 66px; top: 92px; }
         #t-cycle { right: 120px; top: 92px; }
         #t-gps { right: 174px; top: 92px; }
+        #t-map { right: 228px; top: 92px; }
       }
       @media (max-width: 560px) {
         #place { left: 14px; top: 198px; }
@@ -431,7 +464,7 @@
 
       <div id="toast" class="panel"></div>
       <div id="help" class="panel">
-        <b>W/S</b> gas/brake &nbsp; <b>R/N</b> gear &nbsp; <b>A/D</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>F</b> enter/exit &nbsp; <b>C</b> camera &nbsp; <b>V</b> vehicle &nbsp; <b>G</b> GPS
+        <b>W/S</b> gas/brake &nbsp; <b>R/N</b> gear &nbsp; <b>A/D</b> steer &nbsp; <b>Space</b> drift &nbsp; <b>L</b> lights &nbsp; <b>Q/.</b> indicators &nbsp; <b>K</b> hazards &nbsp; <b>M</b> map &nbsp; <b>F</b> in/out &nbsp; <b>C</b> cam &nbsp; <b>V</b> car
       </div>
     </div>
 
@@ -480,6 +513,13 @@
       <div class="tbtn small" id="t-cam" data-action="camera" data-press="true">CAM</div>
       <div class="tbtn small" id="t-cycle" data-action="cycle" data-press="true">CAR</div>
       <div class="tbtn small" id="t-gps" data-action="destination" data-press="true">GPS</div>
+      <div class="tbtn small" id="t-map" data-action="map" data-press="true">MAP</div>
+      <div id="t-signals">
+        <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator">◀</div>
+        <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards">▲</div>
+        <div class="tbtn sig" id="t-ind-r" data-action="indRight" data-press="true" aria-label="Right indicator">▶</div>
+        <div class="tbtn sig" id="t-lights" data-action="lights" data-press="true" aria-label="Headlights">LIGHT<span id="t-lights-mode">A</span></div>
+      </div>
     </div>
 
     <div id="loading">

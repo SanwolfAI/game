@@ -48,6 +48,7 @@ export class Heightfield {
     this.#rasteriseCoast(coastXZ);
     this.#distanceTransform();
     this.#floodOcean();
+    this.#coastDistance(coastXZ);
     this.#buildHeight();
     this.#smooth(2);
   }
@@ -58,17 +59,40 @@ export class Heightfield {
 
   #rasteriseCoast(coastXZ) {
     if (!coastXZ || coastXZ.length === 0) return;
-    for (const [x, z] of coastXZ) {
-      const ix = Math.round((x - this.minX) / this.cell);
-      const iz = Math.round((z - this.minZ) / this.cell);
-      if (ix < 0 || iz < 0 || ix >= this.cols || iz >= this.rows) continue;
-      const i = this.idx(ix, iz);
-      this.wall[i] = 1;
+    // rasterise every coastline segment (not just its vertices) so the wall is
+    // gap-free, and run both ends on to the map edge so the sea can't leak round
+    coastXZ = coastXZ.slice();
+    const far = 4 * (this.cols + this.rows) * this.cell;
+    const ext = (p, q) => {
+      const dx = p[0] - q[0];
+      const dz = p[1] - q[1];
+      const l = Math.hypot(dx, dz) || 1;
+      return [p[0] + (dx / l) * far, p[1] + (dz / l) * far];
+    };
+    if (coastXZ.length > 1) {
+      coastXZ.unshift(ext(coastXZ[0], coastXZ[1]));
+      coastXZ.push(ext(coastXZ[coastXZ.length - 1], coastXZ[coastXZ.length - 2]));
+    }
+    for (let k = 0; k < coastXZ.length; k++) {
+      const a = coastXZ[k];
+      const b = coastXZ[Math.min(coastXZ.length - 1, k + 1)];
+      const steps = Math.min(200000, Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (this.cell * 0.5))));
+      for (let t = 0; t <= steps; t++) {
+        const x = a[0] + ((b[0] - a[0]) * t) / steps;
+        const z = a[1] + ((b[1] - a[1]) * t) / steps;
+        const ix = Math.round((x - this.minX) / this.cell);
+        const iz = Math.round((z - this.minZ) / this.cell);
+        if (ix < 0 || iz < 0 || ix >= this.cols || iz >= this.rows) continue;
+        this.wall[this.idx(ix, iz)] = 1;
+      }
     }
     // A wall thicker than one cell so the flood fill cannot leak through diagonal gaps.
+    // Dilate from a copy: dilating in place cascaded right/down and turned
+    // most of the map (including the sea off the Golden Mile) into "wall".
+    const src = this.wall.slice();
     for (let iz = 0; iz < this.rows; iz++) {
       for (let ix = 0; ix < this.cols; ix++) {
-        if (!this.wall[this.idx(ix, iz)]) continue;
+        if (!src[this.idx(ix, iz)]) continue;
         for (let dz = -1; dz <= 1; dz++) {
           for (let dx = -1; dx <= 1; dx++) {
             const nx = ix + dx;
@@ -114,6 +138,61 @@ export class Heightfield {
       }
     }
     for (let i = 0; i < dist.length; i++) dist[i] *= this.cell;
+  }
+
+  // True distance (metres) to the coastline polyline. The legacy `dist` field
+  // (used for the height profile, unchanged so roads/bridges keep their tuned
+  // heights) comes from an over-dilated wall and is 0 over most of the land;
+  // signedCoastDistance() uses this field instead.
+  #coastDistance(coastXZ) {
+    const { cols, rows } = this;
+    const n = cols * rows;
+    const cd = new Float32Array(n).fill(1e9);
+    if (coastXZ && coastXZ.length > 1) {
+      for (let k = 1; k < coastXZ.length; k++) {
+        const a = coastXZ[k - 1];
+        const b = coastXZ[k];
+        const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (this.cell * 0.5)));
+        for (let t = 0; t <= steps; t++) {
+          const x = a[0] + ((b[0] - a[0]) * t) / steps;
+          const z = a[1] + ((b[1] - a[1]) * t) / steps;
+          const ix = Math.round((x - this.minX) / this.cell);
+          const iz = Math.round((z - this.minZ) / this.cell);
+          if (ix < 0 || iz < 0 || ix >= cols || iz >= rows) continue;
+          cd[iz * cols + ix] = 0;
+        }
+      }
+    }
+    const d1 = 1;
+    const d2 = Math.SQRT2;
+    for (let iz = 0; iz < rows; iz++) {
+      for (let ix = 0; ix < cols; ix++) {
+        const i = iz * cols + ix;
+        let d = cd[i];
+        if (ix > 0 && cd[i - 1] + d1 < d) d = cd[i - 1] + d1;
+        if (iz > 0) {
+          if (cd[i - cols] + d1 < d) d = cd[i - cols] + d1;
+          if (ix > 0 && cd[i - cols - 1] + d2 < d) d = cd[i - cols - 1] + d2;
+          if (ix < cols - 1 && cd[i - cols + 1] + d2 < d) d = cd[i - cols + 1] + d2;
+        }
+        cd[i] = d;
+      }
+    }
+    for (let iz = rows - 1; iz >= 0; iz--) {
+      for (let ix = cols - 1; ix >= 0; ix--) {
+        const i = iz * cols + ix;
+        let d = cd[i];
+        if (ix < cols - 1 && cd[i + 1] + d1 < d) d = cd[i + 1] + d1;
+        if (iz < rows - 1) {
+          if (cd[i + cols] + d1 < d) d = cd[i + cols] + d1;
+          if (ix < cols - 1 && cd[i + cols + 1] + d2 < d) d = cd[i + cols + 1] + d2;
+          if (ix > 0 && cd[i + cols - 1] + d2 < d) d = cd[i + cols - 1] + d2;
+        }
+        cd[i] = d;
+      }
+    }
+    for (let i = 0; i < n; i++) cd[i] *= this.cell;
+    this.cdist = cd;
   }
 
   #floodOcean() {
@@ -214,13 +293,13 @@ export class Heightfield {
     const iz = Math.floor(fz);
     if (ix < 0 || iz < 0 || ix >= this.cols - 1 || iz >= this.rows - 1) {
       const i = this.idx(clamp(ix, 0, this.cols - 1), clamp(iz, 0, this.rows - 1));
-      return this.water[i] ? -this.dist[i] : this.dist[i];
+      return this.water[i] ? -this.cdist[i] : this.cdist[i];
     }
     const tx = fx - ix;
     const tz = fz - iz;
     const d = (a, b) => {
       const i = this.idx(a, b);
-      return this.water[i] ? -this.dist[i] : this.dist[i];
+      return this.water[i] ? -this.cdist[i] : this.cdist[i];
     };
     const d00 = d(ix, iz);
     const d10 = d(ix + 1, iz);

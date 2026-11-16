@@ -36,7 +36,13 @@ const PRESS_ACTIONS = {
   KeyG: 'destination',
   KeyX: 'clearDest',
   KeyR: 'gearR',
-  KeyN: 'gearN'
+  KeyN: 'gearN',
+  KeyL: 'lights',
+  KeyQ: 'indLeft',
+  Comma: 'indLeft',
+  Period: 'indRight',
+  KeyK: 'hazard',
+  KeyM: 'map'
 };
 
 export const WHEEL_LOCK_DEG = 450; // ±450° = 900° lock-to-lock

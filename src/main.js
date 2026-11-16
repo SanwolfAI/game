@@ -17,10 +17,12 @@ import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
 import { Input } from './game/input.js';
-import { honk, unlockAudio } from './game/audio.js';
+import { honk, unlockAudio, tick } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
+import { Router } from './game/router.js';
+import { BigMap } from './ui/bigmap.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xd97a4d);
@@ -228,6 +230,7 @@ async function main() {
   scene.add(player.group);
 
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
+  traffic.props = props;
   scene.add(traffic.group);
 
   const pedestrians = new Pedestrians(hf, city, mulberry32(40421), vehicle.x, vehicle.z);
@@ -238,6 +241,23 @@ async function main() {
   input.gearListeners.push((g) => hud.toast(g === 'D' ? 'Drive' : g === 'R' ? 'Reverse' : 'Neutral', 0.9));
   const minimap = createMinimap(hf, roads);
   const gps = new GPS();
+  gps.router = new Router(roads);
+  const bigmap = new BigMap({
+    hf,
+    roads,
+    minimap,
+    gps,
+    onDestination: (x, z, name) => {
+      gps.setDestination(x, z, name);
+      const e = entity();
+      gps.update(e.x, e.z, e.yaw);
+      hud.toast(gps.route ? `Route set: ${name}` : `Destination set: ${name}`, 2);
+    }
+  });
+  document.getElementById('map-box')?.addEventListener('click', () => {
+    const e = entity();
+    bigmap.show(e.x, e.z, e.yaw);
+  });
 
   let inVehicle = true;
   let camMode = 0;
@@ -264,6 +284,29 @@ async function main() {
   const sunColor = new THREE.Color();
   const hemiSky = new THREE.Color();
   const hemiGround = new THREE.Color();
+
+  vehicle.onBlink = (on) => tick(on);
+  const sigEls = {
+    l: document.getElementById('t-ind-l'),
+    r: document.getElementById('t-ind-r'),
+    h: document.getElementById('t-haz'),
+    lights: document.getElementById('t-lights'),
+    mode: document.getElementById('t-lights-mode')
+  };
+  let sigKey = '';
+  function updateSignalButtons() {
+    const ind = vehicle.indicator;
+    const blink = vehicle.blinkOn;
+    const key = `${ind}|${blink}|${vehicle.lightMode}`;
+    if (key === sigKey || !sigEls.l) return;
+    sigKey = key;
+    sigEls.l.classList.toggle('on', blink && (ind === 'left' || ind === 'hazard'));
+    sigEls.r.classList.toggle('on', blink && (ind === 'right' || ind === 'hazard'));
+    sigEls.h.classList.toggle('on', ind === 'hazard' && blink);
+    sigEls.lights.classList.toggle('on', vehicle.lightMode === 'on' || vehicle.lightMode === 'high');
+    sigEls.lights.classList.toggle('high', vehicle.lightMode === 'high');
+    sigEls.mode.textContent = { auto: 'A', on: '', high: 'H', off: 'off' }[vehicle.lightMode];
+  }
 
   function entity() {
     return inVehicle ? vehicle : player;
@@ -432,6 +475,21 @@ async function main() {
       honk();
       hud.toast('Beep beep!', 0.9);
     }
+    if (input.takePressed('map')) {
+      bigmap.toggle(ent.x, ent.z, ent.yaw);
+    }
+    if (input.takePressed('lights')) {
+      unlockAudio();
+      const m = vehicle.cycleLights();
+      hud.toast({ auto: 'Lights: auto', on: 'Headlights on', high: 'High beam', off: 'Lights off' }[m], 1.1);
+    }
+    for (const [act, which] of [['indLeft', 'left'], ['indRight', 'right'], ['hazard', 'hazard']]) {
+      if (input.takePressed(act)) {
+        unlockAudio();
+        vehicle.setIndicator(which);
+      }
+    }
+    updateSignalButtons();
     if (input.takePressed('cycle')) {
       const name = vehicle.cycleType();
       hud.toast(`Now driving a ${name}`, 2);
@@ -481,7 +539,8 @@ async function main() {
     hud.updateTime(now, season, solar.night > 0.5);
     hud.update(dt, ent);
     hud.updateDestination(gps);
-    minimap.update(ent.x, ent.z, ent.yaw, gps.dest);
+    minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
+    bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
     newRoadTimer += dt;
     if (newRoadTimer > 0.5) {
@@ -510,7 +569,7 @@ async function main() {
   props.update(camera.position.x, camera.position.z, 0, 12);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, gps, bigmap };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();

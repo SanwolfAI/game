@@ -67,6 +67,12 @@ export class Vehicle {
     this.group.name = 'player-vehicle';
     this.mesh = null;
     this.delta = 0;
+    this.lightMode = 'auto'; // auto -> on -> high -> off
+    this.indicator = null; // 'left' | 'right' | 'hazard' | null
+    this.blinkT = 0;
+    this.blinkOn = false;
+    this.turnAccum = 0;
+    this.onBlink = null; // callback(on) for the relay tick
     this.lights = new CarLights();
     this.group.add(this.lights.group);
     this.setType(typeId);
@@ -271,7 +277,12 @@ export class Vehicle {
     this.#bridgeRails();
     this.#place(dt);
     animateWheels(this.mesh, this.speed, this.delta, dt);
-    this.lights.update(WORLD.night.value, brakeIn > 0.1 || handbrake, gear === 'R');
+    this.#indicators(dt);
+    const bl = this.blinkOn && this.indicator;
+    this.lights.update(WORLD.night.value, brakeIn > 0.1 || handbrake, gear === 'R', 10, this.lightMode, {
+      left: bl && (this.indicator === 'left' || this.indicator === 'hazard'),
+      right: bl && (this.indicator === 'right' || this.indicator === 'hazard')
+    });
   }
 
   #resolveCollisions() {
@@ -298,6 +309,45 @@ export class Vehicle {
       this.z += dz * push;
       this.speed *= -0.18;
       this.lateral *= 0.3;
+    }
+  }
+
+  cycleLights() {
+    const order = ['auto', 'on', 'high', 'off'];
+    this.lightMode = order[(order.indexOf(this.lightMode) + 1) % order.length];
+    return this.lightMode;
+  }
+
+  // Toggle an indicator ('left' | 'right' | 'hazard'); pressing it again cancels.
+  setIndicator(which) {
+    this.indicator = this.indicator === which ? null : which;
+    this.turnAccum = 0;
+    this.blinkT = 0;
+    this.blinkOn = !!this.indicator;
+    if (this.onBlink) this.onBlink(this.blinkOn);
+    return this.indicator;
+  }
+
+  #indicators(dt) {
+    if (!this.indicator) {
+      this.blinkOn = false;
+      return;
+    }
+    this.blinkT += dt;
+    if (this.blinkT >= 0.38) {
+      this.blinkT = 0;
+      this.blinkOn = !this.blinkOn;
+      if (this.onBlink) this.onBlink(this.blinkOn);
+    }
+    // auto-cancel like a real stalk: after a turn of 45°+ in the signalled
+    // direction, once the wheel comes back near the centre
+    if (this.indicator === 'hazard') return;
+    const sgn = this.indicator === 'left' ? 1 : -1;
+    this.turnAccum += this.yawRate * dt * sgn;
+    if (this.turnAccum > 0.78 && Math.abs(this.steer) < 0.12) {
+      this.indicator = null;
+      this.blinkOn = false;
+      this.turnAccum = 0;
     }
   }
 

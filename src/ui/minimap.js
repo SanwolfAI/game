@@ -31,9 +31,9 @@ export function createMinimap(hf, roads) {
       const i = hf.idx(ix, iz);
       if (hf.water[i]) continue;
       const h = hf.height[i];
-      const coast = hf.dist[i];
+      const coast = hf.signedCoastDistance(hf.minX + ix * hf.cell, hf.minZ + iz * hf.cell);
       let color;
-      if (coast < 90) color = SAND;
+      if (coast < 60) color = SAND;
       else if (h < 55) color = LAND_LOW;
       else if (h < 120) color = LAND_MID;
       else color = LAND_HIGH;
@@ -81,7 +81,7 @@ export function createMinimap(hf, roads) {
     ctx.restore();
   }
 
-  function update(x, z, yaw, dest) {
+  function update(x, z, yaw, dest, route = null) {
     ctx.clearRect(0, 0, size, size);
     const sw = VIEW_METERS * scale;
     const sx = (x - hf.minX) * scale - sw / 2;
@@ -89,6 +89,36 @@ export function createMinimap(hf, roads) {
     ctx.drawImage(off, sx, sy, sw, sw, 0, 0, size, size);
 
     const center = size / 2;
+    if (route) {
+      const s = size / sw;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let started = false;
+      const pts = route.pts;
+      const lim = VIEW_METERS;
+      for (let i = 0; i < pts.length; i++) {
+        const dx = pts[i][0] - x;
+        const dz = pts[i][1] - z;
+        if (Math.abs(dx) > lim || Math.abs(dz) > lim) {
+          started = false;
+          continue;
+        }
+        const px = center + dx * s;
+        const py = center + dz * s;
+        if (!started) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+        started = true;
+      }
+      ctx.strokeStyle = 'rgba(10,18,26,0.8)';
+      ctx.lineWidth = 9;
+      ctx.stroke();
+      ctx.strokeStyle = '#3fa9ff';
+      ctx.lineWidth = 5.5;
+      ctx.stroke();
+      ctx.restore();
+    }
     if (dest) {
       const s = size / sw;
       const edge = 14;
@@ -104,7 +134,7 @@ export function createMinimap(hf, roads) {
       }
       ctx.save();
       ctx.strokeStyle = '#ffcf5c';
-      ctx.globalAlpha = 0.6;
+      ctx.globalAlpha = route ? 0 : 0.6;
       ctx.setLineDash([6, 6]);
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -127,5 +157,5 @@ export function createMinimap(hf, roads) {
     return canvas;
   }
 
-  return { update, canvas, viewMeters: VIEW_METERS };
+  return { update, canvas, viewMeters: VIEW_METERS, base: off, scale, drawPlayerArrow };
 }

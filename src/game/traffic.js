@@ -218,7 +218,20 @@ export class Traffic {
       const parts = this.meshes[b];
       for (let i = 0; i < bucket.length; i++) {
         const car = bucket[i];
-        car.dist += car.speed * dt;
+        // obey robots: brake smoothly to the stop line on red (and amber when far enough)
+        let desired = car.speed;
+        if (this.props && car.hx !== undefined) {
+          const sig = this.props.signalAhead(car.px, car.pz, car.hx, car.hz, 40);
+          if (sig && (sig.state === 0 || (sig.state === 1 && sig.dist > 9))) {
+            const stop = sig.dist - 2.6;
+            if (stop > -2) desired = Math.min(desired, stop < 0.4 ? 0 : Math.sqrt(2 * 3.2 * stop));
+          }
+        }
+        if (car.v === undefined) car.v = car.speed;
+        const dv = desired - car.v;
+        car.v += Math.max(-7 * dt, Math.min(2.6 * dt, dv));
+        if (car.v < 0) car.v = 0;
+        car.dist += car.v * dt;
 
         let guard = 0;
         while (car.dist > car.edge.road.len && guard++ < 4) this.#advance(car);
@@ -238,6 +251,10 @@ export class Traffic {
         const cx = pp.x + pp.fz * car.lane;
         const cz = pp.z - pp.fx * car.lane;
         const along = car.dir > 0 ? car.dist : car.edge.road.len - car.dist;
+        car.px = cx;
+        car.pz = cz;
+        car.hx = pp.fx;
+        car.hz = pp.fz;
         const y = this.roads.roadHeightAt ? this.roads.roadHeightAt(car.edge.road, along, cx, cz) : this.hf.heightAt(pp.x, pp.z);
         this.pos.set(cx, y, cz);
         this.quat.setFromAxisAngle(this.axis, Math.atan2(pp.fx, pp.fz));
