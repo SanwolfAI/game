@@ -1,6 +1,9 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { buildVehicleMesh, vehicleType, VEHICLE_TYPES } from './models.js';
+import { playerCarModel, animateWheels } from './carModels.js';
+import { CarLights } from './carLights.js';
+import { WORLD } from '../world/worldLight.js';
 
 const CAR_RADIUS = 2.1;
 
@@ -63,14 +66,26 @@ export class Vehicle {
     this.group = new THREE.Group();
     this.group.name = 'player-vehicle';
     this.mesh = null;
+    this.delta = 0;
+    this.lights = new CarLights();
+    this.group.add(this.lights.group);
     this.setType(typeId);
     this.#place();
   }
 
   setType(id) {
     if (this.mesh) this.group.remove(this.mesh);
-    this.mesh = buildVehicleMesh(id);
+    const model = playerCarModel(id);
+    this.mesh = model || buildVehicleMesh(id);
     this.group.add(this.mesh);
+    if (model) {
+      const sz = model.userData.size;
+      this.lights.layout({ length: sz.z, width: sz.x, lamps: model.userData.lamps });
+    } else {
+      const box = new THREE.Box3().setFromObject(this.mesh);
+      const sz = box.getSize(new THREE.Vector3());
+      this.lights.layout({ length: sz.z, width: sz.x, headY: sz.y * 0.42, tailY: sz.y * 0.45 });
+    }
     this.typeId = id;
     this.spec = vehicleType(id);
     this.phys = physicsFor(this.spec);
@@ -209,6 +224,7 @@ export class Vehicle {
     const speedAbs = Math.abs(this.speed);
     const maxAngle = (34 * Math.PI) / 180 / (1 + speedAbs / 13); // 34° parked, ~10° at 110 km/h
     const delta = this.steer * maxAngle;
+    this.delta = delta;
     let yawRate = (this.speed / ph.wheelbase) * Math.tan(delta);
     const grip = ph.grip * (handbrake && speedAbs > 5 ? 1.7 : 1); // lateral accel limit
     const maxYaw = grip / Math.max(speedAbs, 1);
@@ -254,9 +270,22 @@ export class Vehicle {
     this.#resolveCollisions();
     this.#bridgeRails();
     this.#place(dt);
+    animateWheels(this.mesh, this.speed, this.delta, dt);
+    this.lights.update(WORLD.night.value, brakeIn > 0.1 || handbrake, gear === 'R');
   }
 
   #resolveCollisions() {
+    const hit = this.city.buildings ? this.city.buildings.collide(this.x, this.z, 1.25) : null;
+    if (hit) {
+      this.x = hit.x;
+      this.z = hit.z;
+      // bounce off the wall: lose most speed, keep a little glancing slide
+      const fx = Math.sin(this.yaw);
+      const fz = Math.cos(this.yaw);
+      const into = -(fx * hit.nx + fz * hit.nz) * Math.sign(this.speed);
+      this.speed *= into > 0.5 ? -0.15 : 0.6;
+      this.lateral *= 0.3;
+    }
     const nearby = this.city.hash.query(this.x, this.z, 10);
     for (const c of nearby) {
       const dx = this.x - c.x;
