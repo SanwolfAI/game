@@ -75,6 +75,7 @@ const roads = raw.roads.map(r => {
     id: r.id,
     h: hw,
     n: r.tags.name || r.tags.ref || '',
+    ...(r.tags.old_name && r.tags.old_name !== r.tags.name ? { on: r.tags.old_name } : {}),
     r: r.tags.ref || '',
     w: Number(r.tags.lanes) || 0,
     o: r.tags.oneway === 'yes' || r.tags.oneway === '1' ? 1 : 0,

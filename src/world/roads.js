@@ -164,7 +164,9 @@ export class RoadNetwork {
       this.roads.push({
         id: r.id,
         cls: r.h,
-        name: r.n || '',
+        name: r.on && r.n ? `${r.n} (${r.on})` : (r.n || ''),
+        newName: r.n || '',
+        oldName: r.on || '',
         ref: r.r || '',
         oneway,
         bridge: !!r.b,
