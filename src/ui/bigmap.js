@@ -58,7 +58,7 @@ export class BigMap {
           "1991 BMW 325i (E30) — Pink Slip Kings" by micorlov, <a href="https://sketchfab.com/3d-models/1991-bmw-325i-e30-pink-slip-kings-f0399f2b18394643bf57d20ba3b72a98" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0 (optimised).<br>
           "Low-Poly BMW" by Luka.Fox, <a href="https://sketchfab.com/3d-models/low-poly-bmw-8dd6a439eed349b9a4d073ca20166ac3" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0.<br>
           "Toyota HiAce 2004" by Abdelrahman Elbaqsawi, <a href="https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0.<br>
-          Kenney City Kit Roads and Nature Kit (CC0). Textures: Poly Haven (CC0). SA road signs: SADC-RTSM drawings, Wikimedia Commons (public domain).
+          Kenney City Kit Roads and Nature Kit (CC0). Textures: Poly Haven (CC0). SA road signs: SADC-RTSM drawings, Wikimedia Commons (public domain); direction boards drawn in-game in SARTSM style from OpenStreetMap names.
         </div>
       </details>`;
     document.body.appendChild(root);

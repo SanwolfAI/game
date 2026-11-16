@@ -9,6 +9,7 @@ import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
 import { Buildings } from './world/buildings.js';
 import { Props } from './world/props.js';
+import { DirSigns } from './world/dirSigns.js';
 import { WORLD } from './world/worldLight.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
@@ -219,6 +220,8 @@ async function main() {
   scene.add(cityGroup);
   if (buildings) scene.add(buildings.group);
   scene.add(props.group);
+  const dirSigns = new DirSigns({ roads, features: featData?.features });
+  scene.add(dirSigns.group);
   scene.add(landmarks);
 
   const input = new Input();
@@ -613,6 +616,7 @@ async function main() {
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     props.update(camera.position.x, camera.position.z, dt, 1);
+    dirSigns.update(camera.position.x, camera.position.z);
     pedestrians.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
@@ -657,7 +661,7 @@ async function main() {
   props.update(camera.position.x, camera.position.z, 0, 12);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, gps, bigmap };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, dirSigns, gps, bigmap };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();

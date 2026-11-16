@@ -38,7 +38,31 @@ const TYPES = {
 };
 const TREE_TYPES = ['oak', 'oakDark', 'fat', 'detailed', 'plateau', 'tall'];
 
-const SIGN_FILES = { stop: 'r1.png', yield: 'r2.png', signalsAhead: 'w301.png', ped: 'w306.png', rail: 'w318.png' };
+// Small SADC signs live in one 8x4 atlas (scripts/build-sign-atlas.py) so all
+// of them are ONE instanced draw call. Order must match the atlas script.
+const SIGN_TILES = ['stop', 'yield', 'signalsAhead', 'ped', 'rail', 'sl40', 'sl60', 'sl80', 'sl100', 'sl120', 'noEntry', 'noStopping', 'noUturn', 'noParking', 'taxi', 'stopAhead', 'yieldAhead', 'pedsAhead', 'children', 'humps', 'curves', 'cyclists'];
+const SIGN_INDEX = {};
+for (let i = 0; i < SIGN_TILES.length; i++) SIGN_INDEX[SIGN_TILES[i]] = i;
+const ATLAS_COLS = 8;
+const ATLAS_ROWS = 4;
+const MAX_SIGNS = 1400;
+
+// Lambert material whose map is one tile of an atlas, picked per instance by
+// the aTile attribute (tile origin in UV). Back faces render as bare grey metal;
+// a little self-light keeps retro-reflective faces readable at night.
+export function tiledSignMaterial(tex, tileW, tileH) {
+  const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 aTile;')
+      .replace('#include <uv_vertex>', `#include <uv_vertex>\n  vMapUv = vec2(aTile.x + uv.x * ${tileW.toFixed(5)}, aTile.y + uv.y * ${tileH.toFixed(5)});`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.42, 0.43, 0.45);')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (gl_FrontFacing) totalEmissiveRadiance += diffuseColor.rgb * 0.22;');
+  };
+  mat.customProgramCacheKey = () => 'tiledSign' + tileW + 'x' + tileH;
+  return mat;
+}
 
 function pointInRing(x, z, p) {
   let inside = false;
@@ -174,11 +198,11 @@ export class Props {
     // sign poles + faces
     const poleGeo = new THREE.CylinderGeometry(0.045, 0.045, 2.6, 6);
     poleGeo.translate(0, 1.3, 0);
-    this.poles = new THREE.InstancedMesh(poleGeo, new THREE.MeshLambertMaterial({ color: 0x9aa0a4 }), 600);
+    this.poles = new THREE.InstancedMesh(poleGeo, new THREE.MeshLambertMaterial({ color: 0x9aa0a4 }), MAX_SIGNS);
     this.poles.count = 0;
     this.poles.frustumCulled = false;
     this.group.add(this.poles);
-    this.signMeshes = {};
+    this.signFaces = null;
   }
 
   async load() {
@@ -199,24 +223,25 @@ export class Props {
           .catch((err) => console.warn('[IZK] prop model missing', t.file, err))
       );
     }
-    const tl = new THREE.TextureLoader();
-    for (const [name, file] of Object.entries(SIGN_FILES)) {
-      jobs.push(
-        tl
-          .loadAsync(`./src/assets/signs/${file}`)
-          .then((tex) => {
-            tex.colorSpace = THREE.SRGBColorSpace;
-            const g = new THREE.PlaneGeometry(0.75, 0.75);
-            g.translate(0, 2.35, 0.06);
-            const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide }), 300);
-            mesh.count = 0;
-            mesh.frustumCulled = false;
-            this.signMeshes[name] = mesh;
-            this.group.add(mesh);
-          })
-          .catch(() => {})
-      );
-    }
+    jobs.push(
+      new THREE.TextureLoader()
+        .loadAsync('./src/assets/signs/atlas.png')
+        .then((tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.anisotropy = 2;
+          const g = new THREE.PlaneGeometry(0.75, 0.75);
+          g.translate(0, 2.35, 0.06);
+          this.signTile = new Float32Array(MAX_SIGNS * 2);
+          g.setAttribute('aTile', new THREE.InstancedBufferAttribute(this.signTile, 2));
+          const mesh = new THREE.InstancedMesh(g, tiledSignMaterial(tex, 1 / ATLAS_COLS, 1 / ATLAS_ROWS), MAX_SIGNS);
+          mesh.count = 0;
+          mesh.frustumCulled = false;
+          mesh.name = 'props-signs';
+          this.signFaces = mesh;
+          this.group.add(mesh);
+        })
+        .catch((err) => console.warn('[IZK] sign atlas missing', err))
+    );
     await Promise.all(jobs);
     this.ready = true;
   }
@@ -242,7 +267,35 @@ export class Props {
     const glow = []; // x, y, z, r, g, b
     const pools = []; // x, y, z, size
     const zebras = []; // x, y, z, yaw, len
-    const signs = []; // type, x, y, z, yaw
+    const signs = []; // type, x, y, z, yaw, scale
+    const sign = (type, x, y, z, yaw, sc = 1) => signs.push(type, x, y, z, yaw, sc);
+    // roadside sign at index k of a strip, on the left of traffic travelling
+    // in direction dir (+1 = increasing index), facing that traffic
+    const roadside = (pc, k, dir, type, sc = 1, extra = 0) => {
+      const s = pc.s;
+      const k2 = Math.min(s.m - 1, Math.max(0, k + (k + 1 < s.m ? 1 : -1)));
+      let tx = (s.xs[k2] - s.xs[k]) * (k2 > k ? 1 : -1);
+      let tz = (s.zs[k2] - s.zs[k]) * (k2 > k ? 1 : -1);
+      const tl = Math.hypot(tx, tz) || 1;
+      tx = (tx / tl) * dir;
+      tz = (tz / tl) * dir;
+      const hasWalk = !!specFor(pc.road.cls).walk;
+      const off = pc.hw + (hasWalk ? WALK_W * 0.5 : 1.2) + extra;
+      const x = s.xs[k] + tz * off;
+      const z = s.zs[k] - tx * off;
+      if (this.buildings && this.buildings.blocked(x, z, 0.4)) return;
+      sign(type, x, s.ys[k] + (hasWalk ? KERB_H : -0.05), z, Math.atan2(-tx, -tz), sc);
+    };
+    // index along a strip that is `dist` m in from the given end
+    const idxFrom = (s, atStart, dist) => {
+      if (atStart) {
+        for (let i = 0; i < s.m; i++) if (s.ds[i] >= dist) return i;
+        return s.m - 1;
+      }
+      const L = s.ds[s.m - 1];
+      for (let i = s.m - 1; i >= 0; i--) if (L - s.ds[i] >= dist) return i;
+      return 0;
+    };
     const robots = []; // x, y, z (head glow), phaseGroup
     const minx = cx * CHUNK;
     const minz = cz * CHUNK;
@@ -362,6 +415,63 @@ export class Props {
               else tree(x, z, 0.95);
             }
           }
+          // speed limits: repeated along the road for both directions
+          const slSpacing = rank >= 8 ? 900 : rank >= 5 ? 650 : 0;
+          if (slSpacing && !road.cls.endsWith('_link')) {
+            const ph = (road.id % 97) * 3.1;
+            if (Math.floor((d + ph) / slSpacing) !== Math.floor((dPrev + ph) / slSpacing)) {
+              const lim = road.cls === 'motorway' ? (Math.hypot(s.xs[k], s.zs[k]) < 5500 ? 'sl80' : 'sl100') : road.cls === 'trunk' ? 'sl80' : 'sl60';
+              const sc = rank >= 8 ? 1.6 : 1.1;
+              roadside(pc, k, 1, lim, sc, rank >= 8 ? 1.5 : 0);
+              if (!road.oneway) roadside(pc, k, -1, lim, sc, rank >= 8 ? 1.5 : 0);
+              else if (rank < 8 && rng() < 0.5) roadside(pc, k, 1, 'noUturn');
+            }
+          }
+          // CBD kerbs: taxi bays and no-stopping on the busy roads
+          if (cbd && rank >= 5 && rank <= 7 && Math.floor(d / 180) !== Math.floor(dPrev / 180)) {
+            const r = rng();
+            if (r < 0.28) roadside(pc, k, road.oneway || rng() < 0.5 ? 1 : -1, 'taxi');
+            else if (r < 0.48) roadside(pc, k, road.oneway || rng() < 0.5 ? 1 : -1, 'noStopping');
+            else if (r < 0.58) roadside(pc, k, road.oneway || rng() < 0.5 ? 1 : -1, 'noParking');
+          }
+          // winding roads: series-of-curves warning where the heading swings
+          if (rank >= 4 && rank <= 8 && Math.floor(d / 120) !== Math.floor(dPrev / 120)) {
+            let j = k;
+            while (j < s.m - 1 && s.ds[j] - s.ds[k] < 90) j++;
+            if (j > k + 1 && s.ds[j] - s.ds[k] >= 60) {
+              const a0 = Math.atan2(s.xs[k + 1] - s.xs[k], s.zs[k + 1] - s.zs[k]);
+              const a1 = Math.atan2(s.xs[j] - s.xs[j - 1], s.zs[j] - s.zs[j - 1]);
+              let da = Math.abs(a1 - a0);
+              if (da > Math.PI) da = 2 * Math.PI - da;
+              if (da > 1.0) {
+                roadside(pc, Math.max(run.i0, k - 1), 1, 'curves');
+                if (!road.oneway) roadside(pc, j, -1, 'curves');
+              }
+            }
+          }
+          // residential: occasional speed humps and children-ahead signs
+          if (rank === 3 && fromStart > 25 && Math.floor(d / 260) !== Math.floor(dPrev / 260)) {
+            const r = rng();
+            if (r < 0.1) roadside(pc, k, 1, 'humps');
+            else if (r < 0.15) roadside(pc, k, -1, 'children');
+          }
+        }
+      }
+
+      // No entry where one-way streets leave a junction (seen from the junction)
+      for (const node of rc.nodes) {
+        if (node.ends.length < 3) continue;
+        for (const e of node.ends) {
+          const pc = e.pc;
+          const road = pc.road;
+          if (!road.oneway || e.atStart || pc.elevated || road.rank > 7 || road.cls.endsWith('_link') || pc.len < 25) continue;
+          const s = pc.s;
+          const i = idxFrom(s, false, (node.r || 6) + 3);
+          const off = pc.hw + 0.8;
+          const yaw = Math.atan2(-e.dx, -e.dz);
+          // one sign, on the side a driver turning in from the junction sees first
+          const sg = (node.key.length + node.ends.length) % 2 ? 1 : -1;
+          sign('noEntry', s.xs[i] + e.dz * off * sg, s.ys[i] + KERB_H, s.zs[i] - e.dx * off * sg, yaw);
         }
       }
 
@@ -420,7 +530,11 @@ export class Props {
               const grp = Math.abs(e.dx * e0.dx + e.dz * e0.dz) > 0.6 ? 0 : 1;
               robots.push(x + e.dx * 0.25, y + 3.55, z + e.dz * 0.25, grp, x, z, e.dx, e.dz);
               arm++;
-              // W301 not needed at the robot itself; stop line is painted by roads.js
+              // robot-ahead warning on long fast approaches
+              if (pc.len > 160 && pc.road.rank >= 5) {
+                const j = idxFrom(s, e.atStart, 110);
+                sign('signalsAhead', s.xs[j] + lx * off, s.ys[j] + KERB_H, s.zs[j] + lz * off, yaw, 1.15);
+              }
             }
           } else {
             for (const e of best.ends) {
@@ -431,7 +545,12 @@ export class Props {
               const off = pc.hw + 0.8;
               const x = s.xs[i] - e.dz * off;
               const z = s.zs[i] + e.dx * off;
-              signs.push(f.k, x, s.ys[i] + KERB_H, z, Math.atan2(e.dx, e.dz));
+              sign(f.k, x, s.ys[i] + KERB_H, z, Math.atan2(e.dx, e.dz));
+              // advance warning on longer approaches
+              if (pc.len > 120 && pc.road.rank >= 3) {
+                const j = idxFrom(s, e.atStart, 70);
+                sign(f.k === 'stop' ? 'stopAhead' : 'yieldAhead', s.xs[j] - e.dz * off, s.ys[j] + KERB_H, s.zs[j] + e.dx * off, Math.atan2(e.dx, e.dz));
+              }
               break;
             }
           }
@@ -446,7 +565,7 @@ export class Props {
             const lx = nr.dirZ / dl;
             const lz = -nr.dirX / dl;
             const off = nr.road.width / 2 + 0.8;
-            signs.push('ped', nr.x + lx * off + (nr.dirX / dl) * 14, surf.y + KERB_H, nr.z + lz * off + (nr.dirZ / dl) * 14, yaw + Math.PI);
+            sign(rng() < 0.85 ? 'ped' : 'pedsAhead', nr.x + lx * off + (nr.dirX / dl) * 14, surf.y + KERB_H, nr.z + lz * off + (nr.dirZ / dl) * 14, yaw + Math.PI);
           }
         } else if (f.k === 'rail') {
           const nr = this.roads.nearestRoad(f.x, f.z, 12);
@@ -457,7 +576,7 @@ export class Props {
           for (const sgn of [1, -1]) {
             const x = nr.x - dx * 110 * sgn + -dz * sgn * (nr.road.width / 2 + 0.8);
             const z = nr.z - dz * 110 * sgn + dx * sgn * (nr.road.width / 2 + 0.8);
-            signs.push('rail', x, this.roads.surfaceAt(x, z, null).y + 0.1, z, Math.atan2(dx * sgn, dz * sgn) + Math.PI);
+            sign('rail', x, this.roads.surfaceAt(x, z, null).y + 0.1, z, Math.atan2(dx * sgn, dz * sgn) + Math.PI);
           }
         }
       }
@@ -582,7 +701,6 @@ export class Props {
     let pi = 0;
     let zi = 0;
     let poleI = 0;
-    const signCounts = {};
     this.robots.length = 0;
     for (const c of this.chunks.values()) {
       const cd = Math.hypot(c.x - camX, c.z - camZ) - CHUNK * 0.71;
@@ -653,19 +771,24 @@ export class Props {
             this.zebra.setMatrixAt(zi++, m);
           }
         }
-        for (let i = 0; i < c.signs.length; i += 5) {
-          const type = c.signs[i];
-          const mesh = this.signMeshes[type];
-          if (!mesh) continue;
-          const k = signCounts[type] || 0;
-          if (k >= 300 || poleI >= 600) continue;
+        const mesh = this.signFaces;
+        for (let i = 0; mesh && i < c.signs.length; i += 6) {
+          if (poleI >= MAX_SIGNS) break;
+          const t = SIGN_INDEX[c.signs[i]];
+          if (t === undefined) continue;
+          const dx = c.signs[i + 1] - camX;
+          const dz = c.signs[i + 3] - camZ;
+          const big = c.signs[i + 5] > 1.3;
+          if (dx * dx + dz * dz > (big ? 420 * 420 : 260 * 260)) continue;
           e.set(0, c.signs[i + 4], 0);
           q.setFromEuler(e);
           p.set(c.signs[i + 1], c.signs[i + 2], c.signs[i + 3]);
-          sc.set(1, 1, 1);
+          const s = c.signs[i + 5];
+          sc.set(s, s, s);
           m.compose(p, q, sc);
-          mesh.setMatrixAt(k, m);
-          signCounts[type] = k + 1;
+          mesh.setMatrixAt(poleI, m);
+          this.signTile[poleI * 2] = (t % ATLAS_COLS) / ATLAS_COLS;
+          this.signTile[poleI * 2 + 1] = 1 - (Math.floor(t / ATLAS_COLS) + 1) / ATLAS_ROWS;
           this.poles.setMatrixAt(poleI++, m);
         }
         for (let i = 0; i < c.robots.length; i += 8) this.robots.push(c.robots.slice(i, i + 8));
@@ -677,9 +800,10 @@ export class Props {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       total += counts[name];
     }
-    for (const [type, mesh] of Object.entries(this.signMeshes)) {
-      mesh.count = signCounts[type] || 0;
-      mesh.instanceMatrix.needsUpdate = true;
+    if (this.signFaces) {
+      this.signFaces.count = poleI;
+      this.signFaces.instanceMatrix.needsUpdate = true;
+      this.signFaces.geometry.attributes.aTile.needsUpdate = true;
     }
     this.poles.count = poleI;
     this.poles.instanceMatrix.needsUpdate = true;

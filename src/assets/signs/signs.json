@@ -124,5 +124,40 @@
   "license": "Public domain",
   "description": "Hazard delineator.",
   "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W401.svg"
+ },
+ {
+  "code": "R217",
+  "file": "r217.png",
+  "license": "Public domain",
+  "description": "Stopping prohibited.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R217.svg"
+ },
+ {
+  "code": "R3",
+  "file": "r3.png",
+  "license": "Public domain",
+  "description": "No entry.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R3.svg"
+ },
+ {
+  "code": "R309",
+  "file": "r309.png",
+  "license": "Public domain",
+  "description": "Reservation for taxis.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R309.svg"
+ },
+ {
+  "code": "W211",
+  "file": "w211.png",
+  "license": "Public domain",
+  "description": "Series of curves.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W211.svg"
+ },
+ {
+  "code": "W332",
+  "file": "w332.png",
+  "license": "Public domain",
+  "description": "Speed humps ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W332.svg"
  }
 ]
