@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0d1620" />
-    <title>Izinja zase Kasi (IZK) — Phase 1 Roads</title>
+    <link rel="icon" href="data:," />
+    <title>Izinja zase Kasi (IZK) — Durban</title>
     <style>
       :root {
         --ink: #f4f7fa;
@@ -91,6 +92,7 @@
         min-width: 150px;
       }
       #dest.show { display: flex; }
+      #dest-arrow.turn { font-size: 26px; transition: none; }
       #dest-arrow {
         width: 30px;
         height: 30px;
@@ -117,6 +119,10 @@
         letter-spacing: 1px;
         color: var(--dim);
         font-variant-numeric: tabular-nums;
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       #speedo {
@@ -149,11 +155,8 @@
         transition: width 0.08s linear;
       }
 
-      #road-label { position:absolute; left:198px; top:14px; padding:10px 16px; font-size:15px; font-weight:700; letter-spacing:.3px; }
-      #osm-attribution { position:absolute; right:14px; bottom:10px; color:#e8eef4; font-size:10px; text-shadow:0 1px 3px #000; }
       #map-box {
         position: absolute;
-        pointer-events: auto;
         left: 14px;
         top: 14px;
         padding: 8px;
@@ -228,11 +231,6 @@
       }
       #load-status { font-size: 11px; color: var(--dim); letter-spacing: 1px; min-height: 14px; }
 
-      #model-credits { position: absolute; right: 14px; bottom: 14px; z-index: 12; pointer-events: auto; max-width: min(330px, 46vw); font-size: 10px; color: var(--dim); }
-      #model-credits summary { cursor: pointer; list-style: none; padding: 9px 12px; border: 1px solid var(--edge); border-radius: 10px; background: rgba(10,18,26,.82); color: var(--ink); letter-spacing: .7px; font-weight: 700; }
-      #model-credits summary::-webkit-details-marker { display: none; }
-      #model-credits .credits-body { margin-top: 6px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: 10px; background: rgba(10,18,26,.94); line-height: 1.55; max-height: 38vh; overflow: auto; }
-      #model-credits a { color: var(--accent); }
       #touch { position: absolute; inset: 0; pointer-events: none; display: none; }
       #touch .tbtn {
         position: absolute;
@@ -254,126 +252,169 @@
       }
       #touch .tbtn.active { background: rgba(255, 207, 92, 0.34); }
       #touch .tbtn.small { width: 52px; height: 52px; font-size: 11px; letter-spacing: 0.5px; }
+      #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
+      #touch #t-signals .tbtn { position: relative; width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
+      #touch #t-signals #t-lights { width: 50px; font-size: 10px; }
+      #touch #t-signals .tbtn.on { background: rgba(255, 160, 32, 0.55); border-color: #ffb347; }
+      #touch #t-lights.on { background: rgba(120, 190, 255, 0.4); border-color: #9fd0ff; }
+      #touch #t-lights.high { background: rgba(80, 150, 255, 0.7); }
+      #t-lights-mode { position: absolute; right: 3px; bottom: 1px; font-size: 9px; color: var(--accent); }
+      #t-haz { color: #ff6b57; }
+      /* ---- Steering wheel (SVG, rotates with the finger) ---- */
       #t-wheel {
         position: absolute;
         pointer-events: auto;
-        left: 24px;
-        bottom: 22px;
-        width: 154px;
-        height: 154px;
-        display: grid;
-        place-items: center;
+        left: 18px;
+        bottom: 18px;
+        width: 168px;
+        height: 168px;
         border-radius: 50%;
-        background: rgba(12, 22, 32, 0.22);
         touch-action: none;
+        -webkit-tap-highlight-color: transparent;
       }
-      #t-wheel-inner {
-        position: relative;
-        width: 142px;
-        height: 142px;
-        border: 13px solid #68747d;
-        border-radius: 50%;
-        background: radial-gradient(circle, #303b45 0 24%, transparent 26%);
-        box-shadow: inset 0 0 0 2px rgba(255,255,255,.18), 0 5px 16px rgba(0,0,0,.38);
-        transform: rotate(0deg);
-        transition: transform .04s linear;
-      }
-      #t-wheel-inner::before, #t-wheel-inner::after {
+      #t-wheel::before {
         content: "";
         position: absolute;
-        left: 50%;
-        top: 48%;
-        width: 9px;
-        height: 48px;
-        border-radius: 6px;
-        background: #87939b;
-        transform-origin: 50% 0;
-      }
-      #t-wheel-inner::before { transform: translateX(-50%) rotate(90deg); }
-      #t-wheel-inner::after { transform: translateX(-50%) rotate(0deg); }
-      #t-wheel-hub {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 35px;
-        height: 35px;
+        inset: -4px;
         border-radius: 50%;
-        transform: translate(-50%,-50%);
-        background: #b99a53;
-        border: 2px solid rgba(255,255,255,.45);
-        z-index: 2;
+        background: radial-gradient(circle, rgba(12, 22, 32, 0) 58%, rgba(12, 22, 32, 0.28) 62%, rgba(12, 22, 32, 0) 72%);
       }
+      #t-wheel-inner { position: absolute; inset: 0; will-change: transform; }
+      #t-wheel-inner svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45)); }
+      #t-wheel.active #t-wheel-inner svg { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) brightness(1.08); }
+
+      /* ---- Pedals: brushed aluminium with rubber grip strips ---- */
       #touch .pedal {
-        width: 76px;
-        height: 112px;
-        border-radius: 18px;
-        font-size: 14px;
-        letter-spacing: 1px;
-        writing-mode: vertical-rl;
-        box-shadow: inset 0 0 0 5px rgba(255,255,255,.06), 0 5px 16px rgba(0,0,0,.35);
+        position: absolute;
+        pointer-events: auto;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+        --press: 0;
+        border-radius: 12px 12px 16px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background:
+          repeating-linear-gradient(180deg, rgba(20, 22, 25, 0.55) 0 5px, rgba(0, 0, 0, 0) 5px 11px) 10% 12% / 80% 70% no-repeat,
+          linear-gradient(160deg, #e3e8ec 0%, #a8b0b6 45%, #868e94 100%);
+        box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.18), 0 6px 14px rgba(0, 0, 0, 0.45);
+        transform-origin: 50% 100%;
+        transform: perspective(320px) rotateX(calc(var(--press) * 24deg)) scale(calc(1 - var(--press) * 0.05));
+        color: #1b2127;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.2px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 6px;
+        overflow: hidden;
       }
-      #t-gas { right: 28px; bottom: 26px; background: rgba(39,105,76,.72); }
-      #t-brake { right: 116px; bottom: 26px; background: rgba(139,54,48,.72); }
+      #touch .pedal::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: calc(var(--press) * 100%);
+        background: var(--pedal-tint);
+        opacity: 0.38;
+        pointer-events: none;
+      }
+      #t-gas { right: 18px; bottom: 18px; width: 62px; height: 128px; --pedal-tint: #4fd47a; }
+      #t-brake { right: 94px; bottom: 18px; width: 86px; height: 100px; --pedal-tint: #ff6b57; }
+
+      /* ---- Gear selector (automatic: R / N / D) ---- */
       #t-gear {
         position: absolute;
-        right: 34px;
-        bottom: 150px;
+        right: 194px;
+        bottom: 18px;
         display: flex;
-        gap: 7px;
-        padding: 7px;
+        flex-direction: column;
+        gap: 4px;
+        padding: 5px;
         pointer-events: auto;
-        border-radius: 14px;
+        border-radius: 12px;
       }
       .gear-btn {
-        width: 42px;
-        height: 38px;
+        width: 40px;
+        height: 30px;
         border: 1px solid var(--edge);
-        border-radius: 9px;
+        border-radius: 8px;
         color: var(--ink);
-        background: rgba(12,22,32,.72);
-        font-weight: 800;
-        touch-action: manipulation;
+        background: rgba(12, 22, 32, 0.72);
+        font: 800 14px "Trebuchet MS", system-ui, sans-serif;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
       }
       .gear-btn.active { color: #17202a; background: var(--accent); }
-      #t-hand { right: 22px; bottom: 118px; }
-      #t-horn { right: 106px; bottom: 118px; }
-      #t-interact { right: 22px; top: 116px; }
-      #t-cam { right: 86px; top: 116px; }
-      #t-cycle { right: 150px; top: 116px; }
-      #t-gps { right: 214px; top: 116px; }
-      @media (pointer: coarse) { #touch { display: block; } #help { display: none; } }
+      .gear-btn[data-gear="R"].active { background: #ff8a6b; }
+
+      #t-hand { right: 18px; bottom: 160px; }
+      #t-horn { right: 94px; bottom: 160px; }
+      #t-interact { right: 18px; top: 104px; }
+      #t-cam { right: 76px; top: 104px; }
+      #t-cycle { right: 134px; top: 104px; }
+      #t-gps { right: 192px; top: 104px; }
+      #speed-gear {
+        margin-left: auto;
+        min-width: 22px;
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: rgba(255, 207, 92, 0.18);
+        color: var(--accent);
+        font-size: 14px;
+        font-weight: 800;
+        text-align: center;
+      }
+      #speed-gear:empty { display: none; }
+      #bigmap { position: fixed; inset: 0; z-index: 40; display: none; background: #183d55; touch-action: none; }
+      #bigmap.show { display: block; }
+      #bigmap canvas { position: absolute; inset: 0; touch-action: none; }
+      #bigmap-top { position: absolute; left: 10px; top: 10px; padding: 7px 12px; font-size: 13px; display: flex; gap: 10px; align-items: baseline; pointer-events: none; }
+      #bigmap-hint { font-size: 10px; color: var(--dim); letter-spacing: 0.3px; }
+      #bigmap-info { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 7px 14px; font-size: 12px; display: none; pointer-events: none; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+      #bigmap-info.show { display: block; }
+      #bigmap-btns { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
+      #bigmap-btns button { min-width: 46px; height: 40px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(10, 18, 26, 0.82); color: var(--ink); font: 700 15px "Trebuchet MS", sans-serif; padding: 0 10px; }
+      #bigmap-btns #bm-close { background: #ffcf5c; color: #10202c; font-size: 12px; }
+      #bigmap-btns #bm-clear { font-size: 11px; }
+      #map-box { cursor: pointer; pointer-events: auto; }
+      #model-credits { position: absolute; left: 10px; bottom: 44px; max-width: min(360px, 60vw); font-size: 10px; color: var(--dim); }
+      #model-credits summary { cursor: pointer; list-style: none; padding: 6px 10px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(10,18,26,.82); color: var(--ink); font-weight: 700; font-size: 10px; display: inline-block; }
+      #model-credits summary::-webkit-details-marker { display: none; }
+      #model-credits .credits-body { margin-top: 5px; padding: 9px 11px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(10,18,26,.94); line-height: 1.5; max-height: 45vh; overflow: auto; }
+      #model-credits a { color: var(--accent); }
+      @media (pointer: coarse) {
+        #touch { display: block; }
+        #help { display: none; }
+        /* Landscape phone (about 800 x 360): nothing may overlap. */
+        #map-box { left: 10px; top: 10px; padding: 6px; }
+        #minimap { width: 118px; height: 118px; }
+        #place { left: 150px; top: 10px; padding: 7px 12px; min-width: 0; }
+        #place-name { font-size: 15px; }
+        #clock-box { top: 10px; right: 10px; padding: 7px 11px; }
+        #dest { top: 92px; max-width: 236px; padding: 6px 10px 6px 8px; }
+        #dest-name, #dest-distance { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #dest-distance { letter-spacing: 0.3px; }
+        #toast { top: 150px; }
+        #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 128px; padding: 7px 12px 8px; }
+        #speed-val { font-size: 30px; }
+        #t-wheel { left: 14px; bottom: 12px; width: 150px; height: 150px; }
+        #t-gas { right: 12px; bottom: 12px; width: 58px; height: 118px; }
+        #t-brake { right: 80px; bottom: 12px; width: 78px; height: 92px; }
+        #t-gear { right: 168px; bottom: 12px; }
+        #touch #t-hand, #touch #t-horn { width: 52px; height: 52px; font-size: 11px; }
+        #t-hand { right: 12px; bottom: 142px; }
+        #t-horn { right: 80px; bottom: 142px; }
+        #touch .tbtn.small { width: 48px; height: 48px; font-size: 10px; }
+        #t-interact { right: 12px; top: 92px; }
+        #t-cam { right: 66px; top: 92px; }
+        #t-cycle { right: 120px; top: 92px; }
+        #t-gps { right: 174px; top: 92px; }
+        #t-map { right: 228px; top: 92px; }
+      }
       @media (max-width: 560px) {
         #place { left: 14px; top: 198px; }
         #clock-box { top: 198px; }
-      }
-      #full-map { position:fixed; inset:0; z-index:40; display:none; background:rgba(5,12,19,.97); padding:12px; }
-      #full-map.open { display:flex; flex-direction:column; gap:10px; }
-      #full-map header,#full-map footer { display:flex; align-items:center; justify-content:center; gap:14px; color:#fff; min-height:42px; }
-      #full-map header { justify-content:space-between; }
-      #full-map button { border:1px solid rgba(255,255,255,.25); border-radius:10px; padding:10px 18px; color:#fff; background:#263746; font-size:16px; font-weight:700; }
-      .full-map-stage { flex:1; min-height:0; display:grid; place-items:center; overflow:hidden; border:1px solid rgba(255,255,255,.16); border-radius:12px; background:#183d55; }
-      #full-map-canvas { width:100%; height:100%; }
-      #minimap { cursor:zoom-in; pointer-events:auto; }
-      #map-box::after { content:'TAP MAP TO EXPAND'; display:block; color:#e6edf5; font-size:9px; text-align:center; letter-spacing:1px; }
-      /* Touch layout: nothing overlaps on a landscape phone (about 360px tall). */
-      @media (pointer: coarse) {
-        #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 132px; }
-        #model-credits { left: 50%; right: auto; bottom: 92px; transform: translateX(-50%); }
-        #model-credits summary { padding: 5px 9px; font-size: 9px; opacity: .75; }
-        #t-wheel { left: 12px; bottom: 12px; width: 140px; height: 140px; }
-        #t-wheel-inner { width: 128px; height: 128px; border-width: 12px; }
-        #touch .pedal { width: 70px; height: 104px; font-size: 12px; }
-        #t-gas { right: 14px; bottom: 14px; }
-        #t-brake { right: 94px; bottom: 14px; }
-        #t-gear { right: 176px; bottom: 14px; flex-direction: column; gap: 5px; padding: 5px; }
-        .gear-btn { width: 40px; height: 32px; }
-        #touch #t-hand, #touch #t-horn { width: 56px; height: 56px; font-size: 12px; }
-        #t-hand { right: 14px; bottom: 130px; }
-        #t-horn { right: 80px; bottom: 130px; }
-        #t-interact { right: 14px; top: 72px; }
-        #t-cam { right: 72px; top: 72px; }
-        #t-cycle { right: 130px; top: 72px; }
-        #t-gps { right: 188px; top: 72px; }
       }
     </style>
     <script type="importmap">
@@ -389,9 +430,7 @@
     <div id="app"></div>
 
     <div id="hud">
-      <div id="road-label" class="panel">You are on: —</div>
-      <div id="osm-attribution">© OpenStreetMap contributors</div>
-      <div id="place" class="panel" style="display:none">
+      <div id="place" class="panel">
         <div id="place-name">eThekwini</div>
         <div id="place-kind">Durban</div>
         <div id="coords">-29.8587, 31.0218</div>
@@ -416,49 +455,71 @@
         <div id="speed-row">
           <div id="speed-val">0</div>
           <div id="speed-unit">KM/H</div>
+          <div id="speed-gear">D</div>
         </div>
         <div id="speed-bar"><div id="speed-fill"></div></div>
       </div>
 
-      <div id="map-box" class="panel" role="button" aria-label="Open full Durban map"><canvas id="minimap" width="336" height="336"></canvas></div>
+      <div id="map-box" class="panel"><canvas id="minimap" width="336" height="336"></canvas></div>
 
       <div id="toast" class="panel"></div>
       <div id="help" class="panel">
-        <b>W/S</b> drive &nbsp; <b>A/D</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>F</b> enter/exit &nbsp; <b>C</b> camera &nbsp; <b>V</b> vehicle &nbsp; <b>G</b> GPS
+        <b>W/S</b> gas/brake &nbsp; <b>R/N</b> gear &nbsp; <b>A/D</b> steer &nbsp; <b>Space</b> drift &nbsp; <b>L</b> lights &nbsp; <b>Q/.</b> indicators &nbsp; <b>K</b> hazards &nbsp; <b>M</b> map &nbsp; <b>F</b> in/out &nbsp; <b>C</b> cam &nbsp; <b>V</b> car
       </div>
     </div>
 
-    <details id="model-credits">
-      <summary>3D MODEL CREDITS · SKETCHFAB</summary>
-      <div class="credits-body">
-        <p>Kenney — Road Kit, Nature Kit, Suburban Kit, Commercial Kit, Train Kit and Harbour Kit (CC0).</p>
-        <b>1991 BMW 325i (E30) — Pink Slip Kings</b><br>
-        micorlov · <a href="https://sketchfab.com/3d-models/1991-bmw-325i-e30-pink-slip-kings-f0399f2b18394643bf57d20ba3b72a98" target="_blank" rel="noopener">Sketchfab source</a><br>
-        <b>Low-Poly BMW</b><br>
-        Luka.Fox · <a href="https://sketchfab.com/3d-models/low-poly-bmw-8dd6a439eed349b9a4d073ca20166ac3" target="_blank" rel="noopener">Sketchfab source</a><br>
-        <b>Toyota HiAce 2004</b><br>
-        Abdelrahman Elbaqsawi · <a href="https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1" target="_blank" rel="noopener">Sketchfab source</a><br>
-        <b>Low road</b><br>
-        Yarelon · <a href="https://sketchfab.com/3d-models/low-road-e353f90e42b542689bade5e3f714f710" target="_blank" rel="noopener">Sketchfab source</a><br>
-        The three vehicle models and Low road are licensed CC BY 4.0. Commercial use is permitted with attribution. <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">License details</a>.
-      </div>
-    </details>
-
     <div id="touch">
-      <div id="t-wheel"><div id="t-wheel-inner"><div id="t-wheel-hub"></div></div></div>
-      <div class="tbtn pedal" id="t-gas" data-action="gas">ACCELERATOR</div>
-      <div class="tbtn pedal" id="t-brake" data-action="brake">BRAKE</div>
+      <div id="t-wheel" aria-label="Steering wheel">
+        <div id="t-wheel-inner">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <radialGradient id="wRim" cx="50%" cy="38%" r="60%">
+                <stop offset="0%" stop-color="#4a4440" />
+                <stop offset="70%" stop-color="#26221f" />
+                <stop offset="100%" stop-color="#121010" />
+              </radialGradient>
+              <linearGradient id="wMetal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#d6dbe0" />
+                <stop offset="55%" stop-color="#8f979e" />
+                <stop offset="100%" stop-color="#5d646a" />
+              </linearGradient>
+              <radialGradient id="wHub" cx="45%" cy="38%" r="65%">
+                <stop offset="0%" stop-color="#3a3632" />
+                <stop offset="100%" stop-color="#151312" />
+              </radialGradient>
+            </defs>
+            <circle cx="50" cy="50" r="43" fill="none" stroke="url(#wRim)" stroke-width="10" />
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#000" stroke-opacity="0.28" stroke-width="10" stroke-dasharray="0.7 2.4" />
+            <circle cx="50" cy="50" r="47.6" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="0.8" />
+            <path d="M50 50 L9 47 L9 55 L50 58 Z" fill="url(#wMetal)" />
+            <path d="M50 50 L91 47 L91 55 L50 58 Z" fill="url(#wMetal)" />
+            <path d="M46 52 L44 91 L56 91 L54 52 Z" fill="url(#wMetal)" />
+            <circle cx="50" cy="52" r="14" fill="url(#wHub)" stroke="#9aa2a8" stroke-width="1.2" />
+            <circle cx="50" cy="52" r="5" fill="none" stroke="#6b7177" stroke-width="1" />
+            <rect x="47.6" y="2.6" width="4.8" height="9.8" rx="1.2" fill="#ffcf5c" />
+          </svg>
+        </div>
+      </div>
+      <div class="pedal" id="t-brake" data-action="brake">BRAKE</div>
+      <div class="pedal" id="t-gas" data-action="gas">GAS</div>
       <div id="t-gear" class="panel" aria-label="Gear selector">
         <button class="gear-btn" type="button" data-gear="R">R</button>
-        <button class="gear-btn active" type="button" data-gear="D">D</button>
         <button class="gear-btn" type="button" data-gear="N">N</button>
+        <button class="gear-btn active" type="button" data-gear="D">D</button>
       </div>
-      <div class="tbtn" id="t-hand" data-action="boost">RUN</div>
+      <div class="tbtn" id="t-hand" data-action="handbrake">DRIFT</div>
       <div class="tbtn" id="t-horn" data-action="horn" data-press="true">HORN</div>
       <div class="tbtn small" id="t-interact" data-action="interact" data-press="true">IN/OUT</div>
       <div class="tbtn small" id="t-cam" data-action="camera" data-press="true">CAM</div>
       <div class="tbtn small" id="t-cycle" data-action="cycle" data-press="true">CAR</div>
       <div class="tbtn small" id="t-gps" data-action="destination" data-press="true">GPS</div>
+      <div class="tbtn small" id="t-map" data-action="map" data-press="true">MAP</div>
+      <div id="t-signals">
+        <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator">◀</div>
+        <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards">▲</div>
+        <div class="tbtn sig" id="t-ind-r" data-action="indRight" data-press="true" aria-label="Right indicator">▶</div>
+        <div class="tbtn sig" id="t-lights" data-action="lights" data-press="true" aria-label="Headlights">LIGHT<span id="t-lights-mode">A</span></div>
+      </div>
     </div>
 
     <div id="loading">
@@ -469,34 +530,41 @@
     </div>
 
     <script>
-      (() => {
-        const status = document.getElementById('load-status');
-        const showStartupError = (message) => {
-          if (!status) return;
-          status.textContent = 'Startup error: ' + String(message).slice(0, 900);
-          status.style.color = '#ff8b78';
-          status.style.letterSpacing = '0.2px';
-          status.style.whiteSpace = 'pre-wrap';
-          status.style.maxWidth = 'min(90vw, 760px)';
-          status.style.maxHeight = '35vh';
-          status.style.overflow = 'auto';
-        };
-
-        window.addEventListener('error', (event) => {
-          const detail = event.error && event.error.stack
-            ? event.error.stack
-            : (event.message || 'Unknown JavaScript error');
-          showStartupError(detail);
+      // Classic (non-module) boot guard: shows any startup error on the loading
+      // screen instead of hanging at "Starting engine…" (Android WebView).
+      (function () {
+        var status = document.getElementById('load-status');
+        var fill = document.getElementById('load-fill');
+        window.__izkBooted = false;
+        function show(msg) {
+          if (!status || window.__izkBooted) return;
+          status.textContent = 'Failed: ' + msg;
+          status.style.color = '#ffb4a8';
+          status.style.whiteSpace = 'normal';
+          if (fill) { fill.style.width = '100%'; fill.style.background = '#ff6b57'; }
+        }
+        window.__izkShowError = show;
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.src || t.href)) {
+            var u = String(t.src || t.href);
+            show(/main\.js$/.test(u) ? 'could not load the game scripts (src/main.js or one of the files it imports). Reinstall/update the app.' : 'could not load ' + u);
+            return;
+          }
+          show((e.message || 'script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          show(r && r.message ? r.message : String(r));
         });
-
-        window.addEventListener('unhandledrejection', (event) => {
-          const reason = event.reason;
-          const detail = reason && (reason.stack || reason.message)
-            ? (reason.stack || reason.message)
-            : String(reason ?? 'Unknown promise rejection');
-          showStartupError(detail);
-        });
+        // Watchdog: if main.js never started (module not supported / import failed).
+        setTimeout(function () {
+          if (!window.__izkStarted) show('game modules did not start. This WebView may be too old (needs ES modules) or a script failed to load.');
+        }, 20000);
       })();
+    </script>
+    <script nomodule>
+      document.getElementById('load-status').textContent = 'Failed: this browser/WebView does not support ES modules. Please update Android System WebView or Chrome.';
     </script>
     <script type="module" src="./src/main.js"></script>
   </body>

@@ -138,13 +138,75 @@ export function isNight(date) {
   return h < sunrise || h > sunset;
 }
 
-// Accelerated in-game clock: one 24-hour game day passes in four real hours.
-// Every fresh game session begins at 08:00 so play starts in daylight.
-export function createGameClock() {
-  const startReal = Date.now();
-  const startGame = durbanNow();
-  startGame.setHours(8, 0, 0, 0);
-  return function gameNow() {
-    return new Date(startGame.getTime() + (Date.now() - startReal) * 6);
-  };
+// ---------------------------------------------------------------------------
+// Accelerated game clock: one full 24-hour Durban day passes in 4 real hours
+// (6x real time). A fresh game starts at 08:00 so play begins in daylight.
+// The clock is persist-friendly: `snapshot()` returns a plain number (the
+// in-game epoch ms) that can be stored and passed back as `resumeAt`.
+export const GAME_DAY_REAL_HOURS = 4;
+export const GAME_TIME_SCALE = 24 / GAME_DAY_REAL_HOURS; // 6x
+
+const CLOCK_KEY = 'izk.gameClock.v1';
+
+export class GameClock {
+  constructor({ startHour = 8, resumeAt = null, scale = GAME_TIME_SCALE } = {}) {
+    this.scale = scale;
+    this.paused = false;
+    let start;
+    if (Number.isFinite(resumeAt)) {
+      start = new Date(resumeAt);
+    } else {
+      start = durbanNow();
+      const h = Math.floor(startHour);
+      start.setHours(h, Math.round((startHour - h) * 60), 0, 0);
+    }
+    this.gameMs = start.getTime();
+    this.lastReal = performance.now();
+  }
+
+  // Advance by real elapsed time; call once per frame (dt-free so tab switches
+  // and frame spikes are handled by wall-clock time, capped at 1 real minute).
+  tick() {
+    const real = performance.now();
+    const elapsed = Math.min(60000, Math.max(0, real - this.lastReal));
+    this.lastReal = real;
+    if (!this.paused) this.gameMs += elapsed * this.scale;
+    return this.now();
+  }
+
+  now() {
+    return new Date(this.gameMs);
+  }
+
+  setHour(hour) {
+    const d = new Date(this.gameMs);
+    const h = Math.floor(hour);
+    d.setHours(h, Math.round((hour - h) * 60), 0, 0);
+    this.gameMs = d.getTime();
+  }
+
+  snapshot() {
+    return this.gameMs;
+  }
+
+  // localStorage helpers (silently ignored where storage is unavailable).
+  save() {
+    try {
+      localStorage.setItem(CLOCK_KEY, JSON.stringify({ gameMs: this.gameMs, savedAt: Date.now() }));
+    } catch {}
+  }
+
+  static load(opts = {}) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CLOCK_KEY) || 'null');
+      if (raw && Number.isFinite(raw.gameMs)) return new GameClock({ ...opts, resumeAt: raw.gameMs });
+    } catch {}
+    return new GameClock(opts);
+  }
+}
+
+// Back-compat with the function-style clock used on main (2892d63).
+export function createGameClock(opts) {
+  const clock = new GameClock(opts);
+  return () => clock.tick();
 }

@@ -6,9 +6,9 @@ const RUN = 7.2;
 const PERSON_RADIUS = 0.5;
 
 export class Player {
-  constructor(hf, roads, input, x, z, yaw = 0) {
+  constructor(hf, city, input, x, z, yaw = 0) {
     this.hf = hf;
-    this.roads = roads;
+    this.city = city;
     this.input = input;
     this.x = x;
     this.z = z;
@@ -24,11 +24,12 @@ export class Player {
     this.legR = model.legR;
     this.shoeL = model.shoeL;
     this.shoeR = model.shoeR;
-    this.group.visible = true;
+    this.group.visible = false;
     this.#place();
   }
 
-  placeAt(x, z, yaw) {
+  placeAt(x, z, yaw, y = null) {
+    this.y = y;
     this.x = x;
     this.z = z;
     if (yaw !== undefined) this.yaw = yaw;
@@ -36,8 +37,16 @@ export class Player {
     this.#place();
   }
 
+  // Walkable height: roads/bridges/sidewalks when the road network is attached.
+  #groundY() {
+    if (!this.roads) return this.hf.heightAt(this.x, this.z);
+    const prev = this.y ?? null;
+    this.y = this.roads.surfaceAt(this.x, this.z, prev).y;
+    return this.y;
+  }
+
   #place() {
-    this.group.position.set(this.x, this.hf.heightAt(this.x, this.z), this.z);
+    this.group.position.set(this.x, this.#groundY(), this.z);
     this.group.rotation.y = this.yaw;
   }
 
@@ -61,9 +70,7 @@ export class Player {
     this.x += fx * this.speed * dt;
     this.z += fz * this.speed * dt;
 
-    const nearest = this.roads?.nearestRoad(this.x, this.z, 45);
-    const roadLimit = nearest ? Math.max(1.8, nearest.road.width * 0.5 - PERSON_RADIUS) : 0;
-    if (!nearest || nearest.dist > roadLimit || this.hf.signedCoastDistance(this.x, this.z) < 2) {
+    if (this.hf.signedCoastDistance(this.x, this.z) < 2) {
       this.x = prevX;
       this.z = prevZ;
     }
@@ -78,10 +85,13 @@ export class Player {
   }
 
   #resolveCollisions() {
-    const nearby = this.roads?.nearestRoad(this.x, this.z, 45);
-    if (!nearby) return;
-    // Roads are the only walkable surfaces in Phase 1; no building colliders exist.
-    for (const c of []) {
+    const hit = this.city.buildings ? this.city.buildings.collide(this.x, this.z, PERSON_RADIUS) : null;
+    if (hit) {
+      this.x = hit.x;
+      this.z = hit.z;
+    }
+    const nearby = this.city.hash.query(this.x, this.z, 6);
+    for (const c of nearby) {
       const dx = this.x - c.x;
       const dz = this.z - c.z;
       const d = Math.hypot(dx, dz);
@@ -105,7 +115,7 @@ export class Player {
     this.shoeR.rotation.x = -swing;
     this.armL.rotation.x = -swing * 0.7;
     this.armR.rotation.x = swing * 0.7;
-    this.group.position.y = this.hf.heightAt(this.x, this.z) + bob;
+    this.group.position.y = this.#groundY() + bob;
   }
 
   get forward() {

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Toyota Hiace 2004
+* source:	https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1
+* author:	Abdelrahman Elbaqsawi 🇵🇸🇪🇬 (https://sketchfab.com/abdelrahmanbesso82)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Toyota Hiace 2004" (https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1) by Abdelrahman Elbaqsawi 🇵🇸🇪🇬 (https://sketchfab.com/abdelrahmanbesso82) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

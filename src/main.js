@@ -1,33 +1,28 @@
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
-import { createGameClock, seasonForDate, solarState } from './core/time.js';
-import { Heightfield, loadDurbanDEM } from './world/heightfield.js';
-import { buildTerrain } from './world/terrain.js';
+import { GameClock, seasonForDate, solarState } from './core/time.js';
+import { Heightfield } from './world/heightfield.js';
+import { buildTerrain, buildLandcover, createGroundMaterial } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
-import { buildNature } from './world/nature.js';
 import { RoadNetwork } from './world/roads.js';
-import { Roadside } from './world/roadside.js';
-import { buildRoadProps } from './world/roadProps.js';
 import { City } from './world/city.js';
-import { buildCityModels } from './world/buildingModels.js';
-import { buildIndustrialModels } from './world/industrialModels.js';
-import { buildSuburbanDetails } from './world/suburbanDetails.js';
-import { buildTrains } from './game/trains.js';
-import { buildHarbour } from './world/harbour.js';
-import { buildRailTracks } from './world/railTracks.js';
+import { Buildings } from './world/buildings.js';
+import { Props } from './world/props.js';
+import { WORLD } from './world/worldLight.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
-import { loadDownloadedVehicles, applyVehicleEnvironment } from './game/sketchfabModels.js';
+import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
 import { Input } from './game/input.js';
-import { honk, unlockAudio } from './game/audio.js';
+import { honk, unlockAudio, tick } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
-import { loadGameSave, writeGameSave } from './game/save.js';
+import { Router } from './game/router.js';
+import { BigMap } from './ui/bigmap.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xd97a4d);
@@ -114,6 +109,7 @@ function buildStars() {
 }
 
 async function main() {
+  window.__izkStarted = true;
   setLoad(6, 'Loading OpenStreetMap data…');
   const res = await fetch('./src/data/durban-game.json');
   if (!res.ok) throw new Error(`Could not load map data (HTTP ${res.status})`);
@@ -125,91 +121,65 @@ async function main() {
   const coastXZ = extendCoast(data.coast.map(([lon, lat]) => toXZ(lon, lat)));
   const bounds = worldBounds(coastXZ, data);
 
-  setLoad(26, 'Loading real Durban elevation…');
+  setLoad(26, 'Carving hills and coastline…');
   await nextFrame();
-  let dem = null;
-  try {
-    dem = await loadDurbanDEM();
-  } catch (error) {
-    console.warn('Real Durban DEM unavailable; using fallback terrain:', error);
-  }
-  const waterAreas = (data.landuse || []).filter((area) => area.u === 'water' || area.u === 'riverbank');
-  const hf = new Heightfield(coastXZ, bounds, 80, dem, waterAreas);
+  const hf = new Heightfield(coastXZ, bounds, 80);
 
+  const loadJson = async (url) => {
+    try {
+      const r = await fetch(url);
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [areaData, featData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json')]);
   setLoad(40, 'Paving the ground…');
   await nextFrame();
-  const terrain = buildTerrain(hf, coastXZ, 1);
+  const coverBox = { minX: -11760, maxX: 9470, minZ: -19760, maxZ: 11300 };
+  const groundMat = createGroundMaterial(buildLandcover(areaData?.areas, coverBox), coverBox);
+  const terrain = buildTerrain(hf, coastXZ, 2, groundMat);
+  hf.renderStep = 2; // roads sample the rendered (decimated) terrain too
   const landuse = buildLanduse(hf, data.landuse);
 
-  const mappedBridgeCount = data.roads.reduce((count, road) => count + (road.b ? 1 : 0), 0);
-  setLoad(58, `Paving ${data.roads.length.toLocaleString()} roads and building ${mappedBridgeCount.toLocaleString()} bridges…`);
+  setLoad(58, 'Laying 19 000 roads…');
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
-  setLoad(62, 'Placing streetlights and bridge barriers…');
-  await nextFrame();
-  const roadProps = await buildRoadProps(roads, hf);
-  setLoad(65, 'Laying mapped railway tracks…');
-  await nextFrame();
-  const railTracks = await buildRailTracks(roads, hf);
-  const roadside = new Roadside(data, roads, hf);
 
-  setLoad(72, 'Raising the city…');
+  setLoad(68, 'Raising 200 000 real buildings…');
+  await nextFrame();
+  let buildings = null;
+  try {
+    const bres = await fetch('./src/data/durban-buildings.bin');
+    if (!bres.ok) throw new Error(`HTTP ${bres.status}`);
+    buildings = new Buildings(await bres.arrayBuffer(), hf, roads);
+  } catch (err) {
+    console.warn('[IZK] building footprints unavailable, using generated city only', err);
+  }
+  setLoad(74, 'Raising the city…');
   await nextFrame();
   const city = new City(hf, roads, mulberry32(20241113));
-  const cityGroup = city.build(districtsWorld(data));
+  city.buildings = buildings;
+  // Footprint data covers the core; generated districts fill in the rest.
+  const cityGroup = city.build(districtsWorld(data).filter((d) => !buildings || !Buildings.covers(d.x, d.z)));
 
-  setLoad(76, 'Loading 3D Durban houses and buildings…');
-  await nextFrame();
-  const cityModels = await buildCityModels(city, hf, mulberry32(15112027));
-  setLoad(77, 'Building Durban industrial areas…');
-  await nextFrame();
-  const industrialModels = await buildIndustrialModels(data, hf, roads, city, mulberry32(15112029));
-  setLoad(78, 'Adding suburban fences, driveways and gardens…');
-  await nextFrame();
-  const suburbanDetails = await buildSuburbanDetails(city, hf, mulberry32(15112030));
-
-  setLoad(79, 'Loading Durban freight trains…');
-  await nextFrame();
-  const trains = await buildTrains(roads, hf);
-
-  setLoad(81, 'Building Durban harbour…');
-  await nextFrame();
-  const harbour = await buildHarbour(data, roads, city, hf, mulberry32(15112028));
-
-  setLoad(85, 'Planting Durban trees and palms…');
-  await nextFrame();
-  const nature = await buildNature(data, roads, city, hf, coastXZ, mulberry32(15112026));
-
-  setLoad(87, 'Building Durban landmarks…');
+  setLoad(82, 'Building Durban landmarks…');
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
 
-  setLoad(88, 'Loading downloaded 3D vehicles…');
-  await loadDownloadedVehicles();
+  setLoad(84, 'Planting trees and street lights…');
+  await nextFrame();
+  const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
+  setLoad(86, 'Polishing the gusheshe…');
+  await nextFrame();
+  await Promise.race([Promise.all([loadCarModels(), props.load()]), new Promise((r) => setTimeout(r, 20000))]);
+
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
-  // Mobile-first WebGL settings: avoid MSAA and excessive device-pixel rendering.
-  // These reduce GPU memory and fill-rate pressure on entry-level Android phones.
-  let renderer;
-  try {
-    renderer = new THREE.WebGLRenderer({
-      antialias: false,
-      alpha: false,
-      depth: true,
-      stencil: false,
-      powerPreference: 'low-power',
-      failIfMajorPerformanceCaveat: false
-    });
-  } catch (error) {
-    throw new Error(`Graphics could not start. Your device may not have enough WebGL support or memory. Details: ${error?.message || error}`);
-  }
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1));
-  renderer.domElement.addEventListener('webglcontextlost', (event) => {
-    event.preventDefault();
-    setLoad(100, 'Graphics stopped. Please close and reopen the game.');
-  }, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
@@ -219,9 +189,8 @@ async function main() {
   scene.background = skyDay.clone();
   scene.fog = new THREE.Fog(0x9fc6e2, 750, 5200);
 
-  applyVehicleEnvironment(renderer, scene);
-
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.5, 16000);
+  // near=1 m doubles depth precision vs 0.5 (no road/marking z-fighting at range)
+  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 1.0, 16000);
 
   const hemi = new THREE.HemisphereLight(0xd8ecff, 0x4b5a42, 1.6);
   scene.add(hemi);
@@ -242,65 +211,56 @@ async function main() {
   moonDisc.renderOrder = -2;
   scene.add(moonDisc);
 
+  scene.environment = applyVehicleEnvironment(renderer, scene);
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
-  scene.add(roadside.group);
-  scene.add(roadProps.group);
-  scene.add(railTracks.group);
   scene.add(cityGroup);
-  scene.add(cityModels.group);
-  scene.add(industrialModels.group);
-  scene.add(suburbanDetails.group);
-  scene.add(trains.group);
-  scene.add(harbour.group);
+  if (buildings) scene.add(buildings.group);
+  scene.add(props.group);
   scene.add(landmarks);
-  scene.add(nature.group);
 
   const input = new Input();
-  const vehicle = new Vehicle(hf, roads, city, input, 'gusheshe-3d');
+  const vehicle = new Vehicle(hf, roads, city, input);
   scene.add(vehicle.group);
 
   const [vx, vz] = vehicle.forward;
-  const player = new Player(hf, roads, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
+  const player = new Player(hf, city, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
+  player.roads = roads;
   scene.add(player.group);
 
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
+  traffic.props = props;
   scene.add(traffic.group);
 
   const pedestrians = new Pedestrians(hf, city, mulberry32(40421), vehicle.x, vehicle.z);
+  pedestrians.roads = roads;
   scene.add(pedestrians.group);
 
   const hud = new HUD();
+  input.gearListeners.push((g) => hud.toast(g === 'D' ? 'Drive' : g === 'R' ? 'Reverse' : 'Neutral', 0.9));
   const minimap = createMinimap(hf, roads);
   const gps = new GPS();
-  const savedGame = loadGameSave();
+  gps.router = new Router(roads);
+  const bigmap = new BigMap({
+    hf,
+    roads,
+    minimap,
+    gps,
+    onDestination: (x, z, name) => {
+      gps.setDestination(x, z, name);
+      const e = entity();
+      gps.update(e.x, e.z, e.yaw);
+      hud.toast(gps.route ? `Route set: ${name}` : `Destination set: ${name}`, 2);
+    }
+  });
+  document.getElementById('map-box')?.addEventListener('click', () => {
+    const e = entity();
+    bigmap.show(e.x, e.z, e.yaw);
+  });
 
   let inVehicle = true;
   let camMode = 0;
-  if (savedGame) {
-    const insideMap = (x, z) =>
-      x >= hf.minX && x <= hf.minX + (hf.cols - 1) * hf.cell &&
-      z >= hf.minZ && z <= hf.minZ + (hf.rows - 1) * hf.cell;
-    if (insideMap(savedGame.vehicle.x, savedGame.vehicle.z) &&
-        insideMap(savedGame.player.x, savedGame.player.z)) {
-      vehicle.placeAt(
-        savedGame.vehicle.x, savedGame.vehicle.z, savedGame.vehicle.yaw,
-        savedGame.vehicle.y, savedGame.vehicle.typeId
-      );
-      player.placeAt(savedGame.player.x, savedGame.player.z, savedGame.player.yaw);
-      inVehicle = savedGame.inVehicle !== false;
-      player.group.visible = !inVehicle;
-      camMode = Number.isInteger(savedGame.camMode)
-        ? Math.max(0, Math.min(4, savedGame.camMode)) : 0;
-      if (['R', 'D', 'N'].includes(savedGame.gear)) input.gear = savedGame.gear;
-      if (Number.isInteger(savedGame.gpsIndex) &&
-          savedGame.gpsIndex >= 0 && savedGame.gpsIndex < gps.places.length) {
-        gps.index = savedGame.gpsIndex;
-        gps.dest = gps.places[gps.index];
-      }
-    }
-  }
   let cameraReady = false;
   let camSnap = true;
   const camPos = new THREE.Vector3();
@@ -308,14 +268,9 @@ async function main() {
   const desiredPos = new THREE.Vector3();
   const desiredLook = new THREE.Vector3();
 
-  // Five selectable views, tuned around the Polo Vivo test car.
-  // Local coordinates use +Z as forward and +X as the driver's (right) side.
   const CAM_MODES = [
-    { name: 'Close chase', kind: 'chase', back: 9.5, height: 3.9, ahead: 7, look: 1.5 },
-    { name: 'High chase', kind: 'chase', back: 18, height: 8.5, ahead: 12, look: 1.2 },
-    { name: 'Bonnet', kind: 'bonnet', forward: 1.25, height: 1.65, ahead: 22, look: 1.25 },
-    { name: 'Front view', kind: 'front', forward: 8.5, height: 3.1, look: 1.2 },
-    { name: 'Side view', kind: 'side', right: 7.5, height: 3.2, ahead: 2.5, look: 1.2 }
+    { dist: 9.5, height: 3.9, ahead: 7, look: 1.5 },
+    { dist: 18, height: 8.5, ahead: 12, look: 1.2 }
   ];
 
   let newRoadTimer = 0;
@@ -329,6 +284,29 @@ async function main() {
   const sunColor = new THREE.Color();
   const hemiSky = new THREE.Color();
   const hemiGround = new THREE.Color();
+
+  vehicle.onBlink = (on) => tick(on);
+  const sigEls = {
+    l: document.getElementById('t-ind-l'),
+    r: document.getElementById('t-ind-r'),
+    h: document.getElementById('t-haz'),
+    lights: document.getElementById('t-lights'),
+    mode: document.getElementById('t-lights-mode')
+  };
+  let sigKey = '';
+  function updateSignalButtons() {
+    const ind = vehicle.indicator;
+    const blink = vehicle.blinkOn;
+    const key = `${ind}|${blink}|${vehicle.lightMode}`;
+    if (key === sigKey || !sigEls.l) return;
+    sigKey = key;
+    sigEls.l.classList.toggle('on', blink && (ind === 'left' || ind === 'hazard'));
+    sigEls.r.classList.toggle('on', blink && (ind === 'right' || ind === 'hazard'));
+    sigEls.h.classList.toggle('on', ind === 'hazard' && blink);
+    sigEls.lights.classList.toggle('on', vehicle.lightMode === 'on' || vehicle.lightMode === 'high');
+    sigEls.lights.classList.toggle('high', vehicle.lightMode === 'high');
+    sigEls.mode.textContent = { auto: 'A', on: '', high: 'H', off: 'off' }[vehicle.lightMode];
+  }
 
   function entity() {
     return inVehicle ? vehicle : player;
@@ -357,7 +335,7 @@ async function main() {
       hud.toast('No room to get out here', 1.6);
       return;
     }
-    player.placeAt(ex, ez, vehicle.yaw + Math.PI / 2);
+    player.placeAt(ex, ez, vehicle.yaw + Math.PI / 2, vehicle.y);
     player.group.visible = true;
     vehicle.speed = 0;
     vehicle.lateral = 0;
@@ -420,6 +398,12 @@ async function main() {
     fill.intensity = 0.15 + solar.day * 0.35;
     renderer.toneMappingExposure = 0.82 + solar.day * 0.3;
 
+    WORLD.night.value = Math.min(1, solar.night * 1.2 + solar.golden * 0.25);
+    WORLD.day.value = solar.day;
+    WORLD.time.value = performance.now() / 1000;
+    if (terrain.ocean.material.uniforms) terrain.ocean.material.uniforms.uSunDir.value.copy(sunDir);
+    scene.environmentIntensity = 0.12 + solar.day * 0.88;
+    WORLD.sky.value.copy(sky);
     stars.material.opacity = solar.night * 0.95;
     stars.position.copy(camera.position);
     moonDisc.visible = solar.night > 0.05;
@@ -431,33 +415,27 @@ async function main() {
   function updateCamera(dt, snap) {
     const ent = entity();
     const mode = CAM_MODES[camMode];
+    const dist = inVehicle ? mode.dist : 5.6;
+    const height = inVehicle ? mode.height : 2.5;
+    const ahead = inVehicle ? mode.ahead : 2.5;
+    const look = inVehicle ? mode.look : 1.35;
     const [fx, fz] = ent.forward;
-    const rx = fz;
-    const rz = -fx;
-    const ground = inVehicle ? vehicle.group.position.y : hf.heightAt(ent.x, ent.z);
 
-    if (!inVehicle) {
-      desiredPos.set(ent.x - fx * 5.6, ground + 2.5, ent.z - fz * 5.6);
-      desiredLook.set(ent.x + fx * 2.5, ground + 1.35, ent.z + fz * 2.5);
-    } else if (mode.kind === 'front') {
-      desiredPos.set(ent.x + fx * mode.forward, ground + mode.height, ent.z + fz * mode.forward);
-      desiredLook.set(ent.x - fx * 2.2, ground + mode.look, ent.z - fz * 2.2);
-    } else if (mode.kind === 'bonnet') {
-      desiredPos.set(ent.x + fx * mode.forward, ground + mode.height, ent.z + fz * mode.forward);
-      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
-    } else if (mode.kind === 'side') {
-      desiredPos.set(ent.x + rx * mode.right - fx * 1.5, ground + mode.height, ent.z + rz * mode.right - fz * 1.5);
-      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
-    } else {
-      desiredPos.set(ent.x - fx * mode.back, ground + mode.height, ent.z - fz * mode.back);
-      desiredLook.set(ent.x + fx * mode.ahead, ground + mode.look, ent.z + fz * mode.ahead);
-    }
+    const baseY = ent.group.position.y;
+    desiredPos.set(ent.x - fx * dist, baseY + height, ent.z - fz * dist);
+    desiredLook.set(ent.x + fx * ahead, baseY + look, ent.z + fz * ahead);
 
     const t = snap ? 1 : 1 - Math.exp(-7 * dt);
     camPos.lerp(desiredPos, t);
     camLook.lerp(desiredLook, snap ? 1 : 1 - Math.exp(-10 * dt));
     camera.position.copy(camPos);
     camera.lookAt(camLook);
+    // Debug/screenshot override: window.__izkCam = { pos: [x, y, z], look: [x, y, z] }
+    const ov = window.__izkCam;
+    if (ov) {
+      camera.position.set(ov.pos[0], ov.pos[1], ov.pos[2]);
+      camera.lookAt(ov.look[0], ov.look[1], ov.look[2]);
+    }
   }
 
   function onResize() {
@@ -468,49 +446,50 @@ async function main() {
   addEventListener('resize', onResize);
 
   const clock = new THREE.Clock();
-  const gameClock = createGameClock();
+  // 24 in-game hours = 4 real hours. Fresh sessions start at 08:00; ?time=HH
+  // overrides the start hour and ?resume=1 continues the last saved clock.
+  const params = new URLSearchParams(location.search);
+  const startHour = params.has('time') ? Number(params.get('time')) || 0 : 8;
+  const gameClock = params.get('resume') === '1' ? GameClock.load({ startHour }) : new GameClock({ startHour });
   let helpTimer = 0;
-  let saveTimer = 0;
-
-  function saveProgress() {
-    return writeGameSave({
-      version: 1,
-      vehicle: {
-        x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw,
-        y: vehicle.group.position.y, typeId: vehicle.typeId
-      },
-      player: { x: player.x, z: player.z, yaw: player.yaw },
-      inVehicle, camMode, gpsIndex: gps.index, gear: input.gear,
-      savedAt: Date.now()
-    });
-  }
-  addEventListener('pagehide', saveProgress);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) saveProgress();
-  });
+  let clockSaveTimer = 0;
 
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
-    saveTimer += dt;
-    if (saveTimer >= 8) {
-      saveTimer = 0;
-      saveProgress();
-    }
-    if (terrain.ocean?.material?.uniforms?.time) terrain.ocean.material.uniforms.time.value += dt;
-    const now = gameClock();
+    const now = gameClock.tick();
     const { season, solar } = updateEnvironment(now);
     const ent = entity();
+    clockSaveTimer += dt;
+    if (clockSaveTimer > 10) {
+      clockSaveTimer = 0;
+      gameClock.save();
+    }
 
     if (input.takePressed('camera')) {
       camMode = (camMode + 1) % CAM_MODES.length;
-      hud.toast(`${CAM_MODES[camMode].name} camera`, 1.2);
+      hud.toast(camMode === 0 ? 'Chase camera' : 'High camera', 1.2);
     }
     if (input.takePressed('horn')) {
       unlockAudio();
       honk();
       hud.toast('Beep beep!', 0.9);
     }
+    if (input.takePressed('map')) {
+      bigmap.toggle(ent.x, ent.z, ent.yaw);
+    }
+    if (input.takePressed('lights')) {
+      unlockAudio();
+      const m = vehicle.cycleLights();
+      hud.toast({ auto: 'Lights: auto', on: 'Headlights on', high: 'High beam', off: 'Lights off' }[m], 1.1);
+    }
+    for (const [act, which] of [['indLeft', 'left'], ['indRight', 'right'], ['hazard', 'hazard']]) {
+      if (input.takePressed(act)) {
+        unlockAudio();
+        vehicle.setIndicator(which);
+      }
+    }
+    updateSignalButtons();
     if (input.takePressed('cycle')) {
       const name = vehicle.cycleType();
       hud.toast(`Now driving a ${name}`, 2);
@@ -535,7 +514,9 @@ async function main() {
     helpTimer += dt;
     if (helpTimer > 16) hud.hideHelp();
 
+    input.update(dt, inVehicle ? vehicle.speed : 0);
     ent.update(dt);
+    hud.updateGear?.(inVehicle ? input.gear : '');
     updateCamera(dt, !cameraReady || camSnap);
     cameraReady = true;
     camSnap = false;
@@ -544,16 +525,10 @@ async function main() {
     if (arrival) hud.toast(`Arrived at ${arrival.name}`, 3);
 
     traffic.update(dt, ent.x, ent.z);
-    roadside.update(ent.x, ent.z, dt);
-    roadProps.update(ent.x, ent.z);
-    railTracks.update(ent.x, ent.z);
+    roads.update(camera.position.x, camera.position.z);
+    if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
+    props.update(camera.position.x, camera.position.z, dt, 1);
     pedestrians.update(dt, ent.x, ent.z);
-    nature.update(ent.x, ent.z);
-    cityModels.update(ent.x, ent.z);
-    industrialModels.update(ent.x, ent.z);
-    suburbanDetails.update(ent.x, ent.z);
-    trains.update(dt, ent.x, ent.z);
-    harbour.update(ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -564,7 +539,8 @@ async function main() {
     hud.updateTime(now, season, solar.night > 0.5);
     hud.update(dt, ent);
     hud.updateDestination(gps);
-    minimap.update(ent.x, ent.z, ent.yaw, gps.dest);
+    minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
+    bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
     newRoadTimer += dt;
     if (newRoadTimer > 0.5) {
@@ -585,13 +561,17 @@ async function main() {
 
   setLoad(100, 'Ready');
   document.getElementById('loading').classList.add('done');
-  updateEnvironment(durbanNow());
+  const now = gameClock.now();
+  updateEnvironment(now);
   updateCamera(0, true);
+  roads.update(camera.position.x, camera.position.z, 1e9); // build nearby road detail up front
+  if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
+  props.update(camera.position.x, camera.position.z, 0, 12);
   cameraReady = true;
-  const now = durbanNow();
+  // Small debug handle for automated checks / console tinkering.
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, gps, bigmap };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
-  hud.toast(savedGame ? 'Welcome back — your driving progress was restored' :
-    `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
+  hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
 
@@ -600,8 +580,11 @@ function formatSeasonTime(now) {
   return h < 6 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 20 ? 'evening' : 'night';
 }
 
-main().catch((err) => {
+main().then(() => {
+  window.__izkBooted = true;
+}).catch((err) => {
   console.error(err);
+  if (window.__izkShowError) window.__izkShowError(err && err.message ? err.message : String(err));
   setLoad(100, `Failed: ${err.message}`);
   loadFill.style.background = '#ff6b57';
 });

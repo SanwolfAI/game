@@ -1,29 +1,7 @@
-import { toXZ, toLonLat } from '../core/geo.js';
+import { toXZ } from '../core/geo.js';
 import { clamp, smoothstep } from '../core/utils.js';
 
-
-// Load the bundled Terrarium DEM locally; no network tile requests are made.
-export async function loadDurbanDEM() {
-  const metaResponse = await fetch('./src/assets/terrain/durban-dem.json');
-  if (!metaResponse.ok) throw new Error('Durban elevation metadata unavailable');
-  const meta = await metaResponse.json();
-  const image = new Image();
-  await new Promise((resolve, reject) => {
-    image.onload = resolve;
-    image.onerror = () => reject(new Error('Durban elevation image could not be loaded'));
-    image.src = './src/assets/terrain/durban-dem-terrarium-z12.png';
-  });
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth || image.width;
-  canvas.height = image.naturalHeight || image.height;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) throw new Error('Elevation canvas is unavailable');
-  context.drawImage(image, 0, 0);
-  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-  return { meta, pixels, width: canvas.width, height: canvas.height };
-}
-
-// Fallback hills are used only if the bundled DEM cannot be read.
+// Low-poly hills placed on their real KZN locations.
 const HILLS = [
   { lon: 31.0055, lat: -29.862, amp: 95, sigma: 1400, name: 'Berea' },
   { lon: 30.928, lat: -29.912, amp: 150, sigma: 2600, name: 'Cato Ridge' },
@@ -44,20 +22,9 @@ const FLATS = [
   { lon: 30.9255, lat: -29.9205, r: 1100, inner: 500, h: 54 }
 ];
 
-function pointInRingXZ(x, z, ring) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[i], b = ring[j];
-    const crosses = (a[1] > z) !== (b[1] > z);
-    if (crosses && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
-  }
-  return inside;
-}
-
 export class Heightfield {
-  constructor(coastXZ, bounds, cell = 80, dem = null, waterAreas = []) {
+  constructor(coastXZ, bounds, cell = 80) {
     this.cell = cell;
-    this.dem = dem;
     this.minX = bounds.minX;
     this.minZ = bounds.minZ;
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / cell) + 1;
@@ -81,10 +48,9 @@ export class Heightfield {
     this.#rasteriseCoast(coastXZ);
     this.#distanceTransform();
     this.#floodOcean();
-    this.#rasteriseWaterAreas(waterAreas);
+    this.#coastDistance(coastXZ);
     this.#buildHeight();
-    this.#smooth(this.dem ? 1 : 2);
-    for (let i = 0; i < this.water.length; i++) if (this.water[i]) this.height[i] = Math.min(this.height[i], -0.4);
+    this.#smooth(2);
   }
 
   idx(ix, iz) {
@@ -93,17 +59,40 @@ export class Heightfield {
 
   #rasteriseCoast(coastXZ) {
     if (!coastXZ || coastXZ.length === 0) return;
-    for (const [x, z] of coastXZ) {
-      const ix = Math.round((x - this.minX) / this.cell);
-      const iz = Math.round((z - this.minZ) / this.cell);
-      if (ix < 0 || iz < 0 || ix >= this.cols || iz >= this.rows) continue;
-      const i = this.idx(ix, iz);
-      this.wall[i] = 1;
+    // rasterise every coastline segment (not just its vertices) so the wall is
+    // gap-free, and run both ends on to the map edge so the sea can't leak round
+    coastXZ = coastXZ.slice();
+    const far = 4 * (this.cols + this.rows) * this.cell;
+    const ext = (p, q) => {
+      const dx = p[0] - q[0];
+      const dz = p[1] - q[1];
+      const l = Math.hypot(dx, dz) || 1;
+      return [p[0] + (dx / l) * far, p[1] + (dz / l) * far];
+    };
+    if (coastXZ.length > 1) {
+      coastXZ.unshift(ext(coastXZ[0], coastXZ[1]));
+      coastXZ.push(ext(coastXZ[coastXZ.length - 1], coastXZ[coastXZ.length - 2]));
+    }
+    for (let k = 0; k < coastXZ.length; k++) {
+      const a = coastXZ[k];
+      const b = coastXZ[Math.min(coastXZ.length - 1, k + 1)];
+      const steps = Math.min(200000, Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (this.cell * 0.5))));
+      for (let t = 0; t <= steps; t++) {
+        const x = a[0] + ((b[0] - a[0]) * t) / steps;
+        const z = a[1] + ((b[1] - a[1]) * t) / steps;
+        const ix = Math.round((x - this.minX) / this.cell);
+        const iz = Math.round((z - this.minZ) / this.cell);
+        if (ix < 0 || iz < 0 || ix >= this.cols || iz >= this.rows) continue;
+        this.wall[this.idx(ix, iz)] = 1;
+      }
     }
     // A wall thicker than one cell so the flood fill cannot leak through diagonal gaps.
+    // Dilate from a copy: dilating in place cascaded right/down and turned
+    // most of the map (including the sea off the Golden Mile) into "wall".
+    const src = this.wall.slice();
     for (let iz = 0; iz < this.rows; iz++) {
       for (let ix = 0; ix < this.cols; ix++) {
-        if (!this.wall[this.idx(ix, iz)]) continue;
+        if (!src[this.idx(ix, iz)]) continue;
         for (let dz = -1; dz <= 1; dz++) {
           for (let dx = -1; dx <= 1; dx++) {
             const nx = ix + dx;
@@ -151,6 +140,61 @@ export class Heightfield {
     for (let i = 0; i < dist.length; i++) dist[i] *= this.cell;
   }
 
+  // True distance (metres) to the coastline polyline. The legacy `dist` field
+  // (used for the height profile, unchanged so roads/bridges keep their tuned
+  // heights) comes from an over-dilated wall and is 0 over most of the land;
+  // signedCoastDistance() uses this field instead.
+  #coastDistance(coastXZ) {
+    const { cols, rows } = this;
+    const n = cols * rows;
+    const cd = new Float32Array(n).fill(1e9);
+    if (coastXZ && coastXZ.length > 1) {
+      for (let k = 1; k < coastXZ.length; k++) {
+        const a = coastXZ[k - 1];
+        const b = coastXZ[k];
+        const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (this.cell * 0.5)));
+        for (let t = 0; t <= steps; t++) {
+          const x = a[0] + ((b[0] - a[0]) * t) / steps;
+          const z = a[1] + ((b[1] - a[1]) * t) / steps;
+          const ix = Math.round((x - this.minX) / this.cell);
+          const iz = Math.round((z - this.minZ) / this.cell);
+          if (ix < 0 || iz < 0 || ix >= cols || iz >= rows) continue;
+          cd[iz * cols + ix] = 0;
+        }
+      }
+    }
+    const d1 = 1;
+    const d2 = Math.SQRT2;
+    for (let iz = 0; iz < rows; iz++) {
+      for (let ix = 0; ix < cols; ix++) {
+        const i = iz * cols + ix;
+        let d = cd[i];
+        if (ix > 0 && cd[i - 1] + d1 < d) d = cd[i - 1] + d1;
+        if (iz > 0) {
+          if (cd[i - cols] + d1 < d) d = cd[i - cols] + d1;
+          if (ix > 0 && cd[i - cols - 1] + d2 < d) d = cd[i - cols - 1] + d2;
+          if (ix < cols - 1 && cd[i - cols + 1] + d2 < d) d = cd[i - cols + 1] + d2;
+        }
+        cd[i] = d;
+      }
+    }
+    for (let iz = rows - 1; iz >= 0; iz--) {
+      for (let ix = cols - 1; ix >= 0; ix--) {
+        const i = iz * cols + ix;
+        let d = cd[i];
+        if (ix < cols - 1 && cd[i + 1] + d1 < d) d = cd[i + 1] + d1;
+        if (iz < rows - 1) {
+          if (cd[i + cols] + d1 < d) d = cd[i + cols] + d1;
+          if (ix < cols - 1 && cd[i + cols + 1] + d2 < d) d = cd[i + cols + 1] + d2;
+          if (ix > 0 && cd[i + cols - 1] + d2 < d) d = cd[i + cols - 1] + d2;
+        }
+        cd[i] = d;
+      }
+    }
+    for (let i = 0; i < n; i++) cd[i] *= this.cell;
+    this.cdist = cd;
+  }
+
   #floodOcean() {
     // The eastern edge of the map is open ocean, everything reachable from there is water.
     const { cols, rows, wall, water } = this;
@@ -180,61 +224,11 @@ export class Heightfield {
     }
   }
 
-  #rasteriseWaterAreas(areas) {
-    for (const area of areas || []) {
-      if (!Array.isArray(area.p) || area.p.length < 4 || (area.a && area.a > 120000000)) continue;
-      const ring = area.p.map(([lon, lat]) => toXZ(lon, lat));
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      for (const [x, z] of ring) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (z < minZ) minZ = z;
-        if (z > maxZ) maxZ = z;
-      }
-      const ix0 = clamp(Math.floor((minX - this.minX) / this.cell), 0, this.cols - 1);
-      const ix1 = clamp(Math.ceil((maxX - this.minX) / this.cell), 0, this.cols - 1);
-      const iz0 = clamp(Math.floor((minZ - this.minZ) / this.cell), 0, this.rows - 1);
-      const iz1 = clamp(Math.ceil((maxZ - this.minZ) / this.cell), 0, this.rows - 1);
-      for (let iz = iz0; iz <= iz1; iz++) {
-        const z = this.minZ + iz * this.cell;
-        for (let ix = ix0; ix <= ix1; ix++) {
-          const i = this.idx(ix, iz);
-          if (this.dist[i] > 3500) continue;
-          const x = this.minX + ix * this.cell;
-          if (pointInRingXZ(x, z, ring)) this.water[i] = 1;
-        }
-      }
-    }
-  }
-
   #profile(d) {
     if (d < 0) return -Math.min(28, 5 + -d * 0.014);
     let h = 1.2 + 0.0105 * Math.max(0, d - 45);
     h += 3.2 * Math.exp(-Math.pow((d - 110) / 95, 2));
     return h;
-  }
-
-  #sampleDem(x, z) {
-    const dem = this.dem;
-    if (!dem?.meta || !dem.pixels || !dem.width || !dem.height) return NaN;
-    const [lon, lat] = toLonLat(x, z);
-    const m = dem.meta;
-    if (lon < m.west || lon > m.east || lat < m.south || lat > m.north) return NaN;
-    const mercator = (value) => Math.log(Math.tan(Math.PI / 4 + value * Math.PI / 360));
-    const northY = mercator(m.north);
-    const southY = mercator(m.south);
-    const px = clamp(((lon - m.west) / (m.east - m.west)) * (dem.width - 1), 0, dem.width - 1);
-    const py = clamp(((northY - mercator(lat)) / (northY - southY)) * (dem.height - 1), 0, dem.height - 1);
-    const x0 = Math.floor(px), y0 = Math.floor(py);
-    const x1 = Math.min(dem.width - 1, x0 + 1), y1 = Math.min(dem.height - 1, y0 + 1);
-    const read = (ix, iy) => {
-      const k = (iy * dem.width + ix) * 4;
-      return dem.pixels[k] * 256 + dem.pixels[k + 1] + dem.pixels[k + 2] / 256 - 32768;
-    };
-    const tx = px - x0, ty = py - y0;
-    const top = read(x0, y0) * (1 - tx) + read(x1, y0) * tx;
-    const bottom = read(x0, y1) * (1 - tx) + read(x1, y1) * tx;
-    return top * (1 - ty) + bottom * ty;
   }
 
   #buildHeight() {
@@ -244,27 +238,21 @@ export class Heightfield {
       for (let ix = 0; ix < cols; ix++) {
         const x = this.minX + ix * this.cell;
         const i = this.idx(ix, iz);
-        const d = water[i] ? -Math.max(1, dist[i]) : dist[i];
-        let h = this.#sampleDem(x, z);
-        if (!Number.isFinite(h)) {
-          h = this.#profile(d);
-          for (const hill of this.hills) {
-            const dx = x - hill.x;
-            const dz = z - hill.z;
-            const q = (dx * dx + dz * dz) / (2 * hill.sigma * hill.sigma);
-            if (q < 12) h += hill.amp * Math.exp(-q);
-          }
-          for (const flat of this.flats) {
-            const dx = x - flat.x;
-            const dz = z - flat.z;
-            const r = Math.hypot(dx, dz);
-            if (r > flat.r) continue;
-            const w = 1 - smoothstep(flat.inner, flat.r, r);
-            h = h * (1 - w) + flat.h * w;
-          }
-        } else if (d >= 0) {
-          // DEM land elevations are kept real; the sea remains below the water plane.
-          h = Math.max(0, h);
+        const d = water[i] ? -dist[i] : dist[i];
+        let h = this.#profile(d);
+        for (const hill of this.hills) {
+          const dx = x - hill.x;
+          const dz = z - hill.z;
+          const q = (dx * dx + dz * dz) / (2 * hill.sigma * hill.sigma);
+          if (q < 12) h += hill.amp * Math.exp(-q);
+        }
+        for (const flat of this.flats) {
+          const dx = x - flat.x;
+          const dz = z - flat.z;
+          const r = Math.hypot(dx, dz);
+          if (r > flat.r) continue;
+          const w = 1 - smoothstep(flat.inner, flat.r, r);
+          h = h * (1 - w) + flat.h * w;
         }
         if (d < 0) h = Math.min(h, -0.4);
         height[i] = h;
@@ -305,13 +293,13 @@ export class Heightfield {
     const iz = Math.floor(fz);
     if (ix < 0 || iz < 0 || ix >= this.cols - 1 || iz >= this.rows - 1) {
       const i = this.idx(clamp(ix, 0, this.cols - 1), clamp(iz, 0, this.rows - 1));
-      return this.water[i] ? -Math.max(1, this.dist[i]) : this.dist[i];
+      return this.water[i] ? -this.cdist[i] : this.cdist[i];
     }
     const tx = fx - ix;
     const tz = fz - iz;
     const d = (a, b) => {
       const i = this.idx(a, b);
-      return this.water[i] ? -Math.max(1, this.dist[i]) : this.dist[i];
+      return this.water[i] ? -this.cdist[i] : this.cdist[i];
     };
     const d00 = d(ix, iz);
     const d10 = d(ix + 1, iz);

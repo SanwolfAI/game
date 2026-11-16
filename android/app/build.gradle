@@ -12,18 +12,23 @@ android {
         versionCode run
         versionName "0.1.${run}"
     }
+    // Optional stable signing key, supplied by CI secrets (never committed).
+    // Without it Gradle uses its default debug key, so the APK still builds.
+    def ksPath = System.getenv("IZK_KEYSTORE_PATH")
+    def hasKs = ksPath && file(ksPath).exists()
     signingConfigs {
-        // Test key only (kept the same so each new APK installs over the last one).
-        test {
-            storeFile file('test-key.p12')
-            storeType 'pkcs12'
-            storePassword 'sanwolftest'
-            keyAlias 'sanwolftest'
-            keyPassword 'sanwolftest'
+        if (hasKs) {
+            release_test {
+                storeFile file(ksPath)
+                storeType 'pkcs12'
+                storePassword System.getenv("IZK_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("IZK_KEY_ALIAS")
+                keyPassword System.getenv("IZK_KEY_PASSWORD")
+            }
         }
     }
     buildTypes {
-        debug { signingConfig signingConfigs.test }
+        debug { if (hasKs) signingConfig signingConfigs.release_test }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

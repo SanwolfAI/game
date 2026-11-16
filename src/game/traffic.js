@@ -1,6 +1,45 @@
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { VEHICLE_TYPES, buildVehicleMesh } from './models.js';
+import { trafficCarModel } from './carModels.js';
+import { glowTexture } from './carLights.js';
+import { WORLD } from '../world/worldLight.js';
+
+const PAINTS = ['#f2f2f0', '#c9ccd0', '#1d1f22', '#8c1d1d', '#1f3f7a', '#d8d2c0', '#5a6066', '#9a9ea3', '#2c5a3a', '#f2f2f0'].map((h) => new THREE.Color(h));
+
+// Head/tail lamp glow quads for every traffic car (one instanced draw call).
+function lampGeometry() {
+  const quads = [
+    [0.55, 0.62, 2.25, 1, 0.95, 0.8, 1],
+    [-0.55, 0.62, 2.25, 1, 0.95, 0.8, 1],
+    [0.6, 0.78, -2.25, 1, 0.12, 0.06, -1],
+    [-0.6, 0.78, -2.25, 1, 0.12, 0.06, -1]
+  ];
+  const pos = [];
+  const col = [];
+  const uv = [];
+  const s = 0.45;
+  for (const [x, y, z, r, g, b, f] of quads) {
+    const v = [
+      [x - s, y - s * 0.6],
+      [x + s, y - s * 0.6],
+      [x + s, y + s * 0.6],
+      [x - s, y + s * 0.6]
+    ];
+    const order = f > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
+    for (const k of order) {
+      pos.push(v[k][0], v[k][1], z);
+      col.push(r, g, b);
+      uv.push(uvs[k][0], uvs[k][1]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return g;
+}
 
 function pointAlong(road, dir, dist) {
   const pts = road.pts;
@@ -63,15 +102,32 @@ export class Traffic {
     this.buckets = [];
     this.meshes = [];
 
-    for (const type of VEHICLE_TYPES.filter((item) => item.traffic === true || ['gusheshe','quantum','polo','hilux','saps'].includes(item.id))) {
-      const count = COUNTS[type.id] || 3;
-      const proto = buildVehicleMesh(type.id);
-      const mesh = new THREE.InstancedMesh(proto.geometry, proto.material, count);
-      mesh.frustumCulled = false;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.count = 0;
-      this.group.add(mesh);
-      this.meshes.push(mesh);
+    let total = 0;
+    for (const type of VEHICLE_TYPES) {
+      const count = COUNTS[type.id] || 10;
+      total += count;
+      const model = trafficCarModel(type.id);
+      const parts = [];
+      if (model) {
+        for (const part of model.parts) {
+          const mesh = new THREE.InstancedMesh(part.geometry, part.material, count);
+          if (part.paint) {
+            mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+            for (let i = 0; i < count; i++) mesh.setColorAt(i, PAINTS[Math.floor(this.rng() * PAINTS.length)]);
+          }
+          parts.push(mesh);
+        }
+      } else {
+        const proto = buildVehicleMesh(type.id);
+        parts.push(new THREE.InstancedMesh(proto.geometry, proto.material, count));
+      }
+      for (const mesh of parts) {
+        mesh.frustumCulled = false;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.count = 0;
+        this.group.add(mesh);
+      }
+      this.meshes.push(parts);
       const bucket = [];
       for (let i = 0; i < count; i++) {
         const car = this.#makeCar(type, px, pz);
@@ -79,6 +135,16 @@ export class Traffic {
       }
       this.buckets.push(bucket);
     }
+    this.lamps = new THREE.InstancedMesh(
+      lampGeometry(),
+      new THREE.MeshBasicMaterial({ map: glowTexture(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }),
+      total
+    );
+    this.lamps.frustumCulled = false;
+    this.lamps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.lamps.count = 0;
+    this.lamps.renderOrder = 4;
+    this.group.add(this.lamps);
   }
 
   #makeCar(type, px, pz) {
@@ -99,16 +165,13 @@ export class Traffic {
       if (!edge) return null;
       mid = pointAlong(edge.road, 1, edge.road.len * 0.5);
     }
-    const ground = this.hf.heightAt(mid.x, mid.z);
-    const surfaceY = this.roads.deckHeightAt(mid.x, mid.z, edge.road.bridge ? ground + 6.5 : ground);
     return {
       type,
       edge,
-      surfaceY,
       dir: edge.reverse && this.rng() > 0.5 ? -1 : 1,
       dist: this.rng() * edge.road.len,
       speed: clamp(edge.road.speed * (0.28 + this.rng() * 0.18), 3.5, 13),
-      lane: LANE + this.rng() * 0.6,
+      lane: this.roads.laneOffset ? this.roads.laneOffset(edge.road, this.rng) : LANE + this.rng() * 0.6,
       checkpoint: mid
     };
   }
@@ -144,15 +207,31 @@ export class Traffic {
     car.dir = next[1];
     car.dist = Math.max(0, car.dist - edge.road.len);
     car.speed = clamp(car.edge.road.speed * (0.28 + this.rng() * 0.18), 3.5, 13);
+    if (car.edge.road !== edge.road && this.roads.laneOffset) car.lane = this.roads.laneOffset(car.edge.road, this.rng);
   }
 
   update(dt, px, pz) {
+    const night = WORLD.night.value > 0.15;
+    let li = 0;
     for (let b = 0; b < this.buckets.length; b++) {
       const bucket = this.buckets[b];
-      const mesh = this.meshes[b];
+      const parts = this.meshes[b];
       for (let i = 0; i < bucket.length; i++) {
         const car = bucket[i];
-        car.dist += car.speed * dt;
+        // obey robots: brake smoothly to the stop line on red (and amber when far enough)
+        let desired = car.speed;
+        if (this.props && car.hx !== undefined) {
+          const sig = this.props.signalAhead(car.px, car.pz, car.hx, car.hz, 40);
+          if (sig && (sig.state === 0 || (sig.state === 1 && sig.dist > 9))) {
+            const stop = sig.dist - 2.6;
+            if (stop > -2) desired = Math.min(desired, stop < 0.4 ? 0 : Math.sqrt(2 * 3.2 * stop));
+          }
+        }
+        if (car.v === undefined) car.v = car.speed;
+        const dv = desired - car.v;
+        car.v += Math.max(-7 * dt, Math.min(2.6 * dt, dv));
+        if (car.v < 0) car.v = 0;
+        car.dist += car.v * dt;
 
         let guard = 0;
         while (car.dist > car.edge.road.len && guard++ < 4) this.#advance(car);
@@ -169,19 +248,29 @@ export class Traffic {
         }
 
         const pp = pointAlong(car.edge.road, car.dir, car.dist);
-        const worldX = pp.x + pp.fz * car.lane;
-        const worldZ = pp.z - pp.fx * car.lane;
-        const ground = this.hf.heightAt(worldX, worldZ);
-        const y = this.roads.deckHeightAt(worldX, worldZ, Number.isFinite(car.surfaceY) ? car.surfaceY : ground);
-        car.surfaceY = y;
-        this.pos.set(worldX, y, worldZ);
+        const cx = pp.x + pp.fz * car.lane;
+        const cz = pp.z - pp.fx * car.lane;
+        const along = car.dir > 0 ? car.dist : car.edge.road.len - car.dist;
+        car.px = cx;
+        car.pz = cz;
+        car.hx = pp.fx;
+        car.hz = pp.fz;
+        const y = this.roads.roadHeightAt ? this.roads.roadHeightAt(car.edge.road, along, cx, cz) : this.hf.heightAt(pp.x, pp.z);
+        this.pos.set(cx, y, cz);
         this.quat.setFromAxisAngle(this.axis, Math.atan2(pp.fx, pp.fz));
         this.matrix.compose(this.pos, this.quat, this.scale);
-        mesh.setMatrixAt(i, this.matrix);
+        for (const mesh of parts) mesh.setMatrixAt(i, this.matrix);
+        if (night) this.lamps.setMatrixAt(li++, this.matrix);
       }
-      mesh.count = bucket.length;
-      mesh.instanceMatrix.needsUpdate = true;
+      for (const mesh of parts) {
+        mesh.count = bucket.length;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
     }
+    this.lamps.count = li;
+    this.lamps.visible = li > 0;
+    this.lamps.material.opacity = Math.min(1, WORLD.night.value * 1.3);
+    if (li) this.lamps.instanceMatrix.needsUpdate = true;
   }
 }
 

@@ -40,6 +40,14 @@ export class HUD {
     this.lastSpeed = -1;
   }
 
+  updateGear(g) {
+    if (!this.gearEl) this.gearEl = document.getElementById('speed-gear');
+    if (this.gearEl && this._gear !== g) {
+      this._gear = g;
+      this.gearEl.textContent = g;
+    }
+  }
+
   setClock(seconds) {
     const total = Math.floor(seconds) % 86400;
     const h = Math.floor(total / 3600);
@@ -73,9 +81,22 @@ export class HUD {
       return;
     }
     this.destEl.classList.add('show');
-    this.destName.textContent = gps.dest.name;
-    this.destDistance.textContent = formatDistance(gps.distance);
-    this.destArrow.style.transform = `rotate(${(gps.bearing * 180) / Math.PI}deg)`;
+    const t = gps.nextTurn;
+    if (t && gps.turnDist < 300) {
+      const icon = t.dir === 'left' ? '↰' : t.dir === 'right' ? '↱' : '⮌';
+      const word = t.dir === 'uturn' ? 'U-turn' : `${t.sharp ? 'Sharp ' : 'Turn '}${t.dir}`;
+      this.destArrow.textContent = icon;
+      this.destArrow.style.transform = 'none';
+      this.destArrow.classList.add('turn');
+      this.destName.textContent = `${word} in ${formatDistance(gps.turnDist)}`;
+      this.destDistance.textContent = `${t.name ? t.name + ' · ' : ''}${formatDistance(gps.distance)} to ${gps.dest.name}`;
+    } else {
+      this.destArrow.textContent = '▲';
+      this.destArrow.classList.remove('turn');
+      this.destArrow.style.transform = `rotate(${(gps.bearing * 180) / Math.PI}deg)`;
+      this.destName.textContent = gps.dest.name;
+      this.destDistance.textContent = gps.route ? `${formatDistance(gps.distance)} by road` : formatDistance(gps.distance);
+    }
   }
 
   update(dt, vehicle) {

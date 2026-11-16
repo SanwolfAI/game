@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
+import * as THREE from '../../vendor/three/three.module.js';
+import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 import { toXZ } from '../core/geo.js';
 
 const LANDUSE_COLOR = {
@@ -15,7 +15,6 @@ export function buildLanduse(hf, areas, { lift = 0.45, opacity = 0.4 } = {}) {
 
   const geometries = [];
   for (const area of areas) {
-    if (!['residential', 'informal'].includes(area?.u)) continue;
     const ring = area?.p;
     if (!ring || ring.length < 4) continue;
 

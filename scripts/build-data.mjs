@@ -71,28 +71,19 @@ const roads = raw.roads.map(r => {
     last = q;
   }
   const simp = rdp(pts, simplify);
-  // OSM oneway=-1 means traffic travels opposite to the stored way geometry.
-  // Reverse the geometry so the road graph's forward edge follows legal traffic.
-  const directed = r.tags.oneway === '-1' ? simp.reverse() : simp;
   return {
     id: r.id,
     h: hw,
-    n: r.tags.old_name || r.tags.name || '',
+    n: r.tags.name || r.tags.ref || '',
     r: r.tags.ref || '',
     w: Number(r.tags.lanes) || 0,
-    s: r.tags.maxspeed || '',
-    o: r.tags.oneway === 'yes' || r.tags.oneway === '1' || r.tags.oneway === '-1' ? 1 : 0,
+    o: r.tags.oneway === 'yes' || r.tags.oneway === '1' ? 1 : 0,
     b: r.tags.bridge === 'yes' ? 1 : 0,
-    p: directed
+    p: simp
   };
 });
 
 const beaches = raw.beaches.map(b => ({ id: b.id, n: b.tags.name || '', p: b.points.map(round) }));
-
-// Point features used for South African signs, traffic lights and crossings.
-const features = (raw.features || [])
-  .filter(f => f && Array.isArray(f.point) && f.point.length === 2)
-  .map(f => ({ id: f.id, t: f.tags || {}, p: round(f.point) }));
 
 const rail = (raw.rail || []).map(r => {
   const pts = [];
@@ -179,10 +170,9 @@ const out = {
   beaches,
   rail,
   roads,
-  features,
   places,
   landuse
 };
 const txt = JSON.stringify(out);
 await fs.writeFile(new URL('../src/data/durban-game.json', import.meta.url), txt);
-console.log('roads', roads.length, 'points', roads.reduce((a,r)=>a+r.p.length,0), 'features', features.length, 'coast', flatCoast.length, 'places', places.length, 'landuse', landuse.length, 'size', (txt.length/1024/1024).toFixed(2), 'MB');
+console.log('roads', roads.length, 'points', roads.reduce((a,r)=>a+r.p.length,0), 'coast', flatCoast.length, 'places', places.length, 'landuse', landuse.length, 'size', (txt.length/1024/1024).toFixed(2), 'MB');
