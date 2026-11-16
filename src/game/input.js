@@ -47,8 +47,8 @@ const PRESS_ACTIONS = {
 };
 
 export const WHEEL_LOCK_DEG = 450; // ±450° = 900° lock-to-lock
-const FINGER_GAIN = 2.5; // wheel degrees per finger degree
-const KEY_STEER_RATE = 620; // °/s when steering with keys
+const FINGER_GAIN = 3.5; // wheel degrees per finger degree
+const KEY_STEER_RATE = 870; // °/s when steering with keys
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -278,8 +278,8 @@ export class Input {
     // --- pedals (rate-limited so throttle and brake build up gradually)
     const gasTarget = gasKey ? 1 : this.pedal.gas;
     const brakeTarget = brakeKey ? 1 : this.pedal.brake;
-    this.throttle += clamp(gasTarget - this.throttle, -5 * dt, 2.2 * dt);
-    this.brake += clamp(brakeTarget - this.brake, -7 * dt, 3.5 * dt);
+    this.throttle += clamp(gasTarget - this.throttle, -6 * dt, 3.2 * dt);
+    this.brake += clamp(brakeTarget - this.brake, -8 * dt, 5 * dt);
     if (this.throttle < 0.003) this.throttle = 0;
     if (this.brake < 0.003) this.brake = 0;
 
