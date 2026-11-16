@@ -3,7 +3,7 @@ import { toXZ, districtsWorld, configurePlaces } from './core/geo.js';
 import { mulberry32 } from './core/utils.js';
 import { GameClock, seasonForDate, solarState } from './core/time.js';
 import { Heightfield } from './world/heightfield.js';
-import { buildTerrain } from './world/terrain.js';
+import { buildTerrain, buildLandcover, createGroundMaterial } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
 import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
@@ -123,9 +123,20 @@ async function main() {
   await nextFrame();
   const hf = new Heightfield(coastXZ, bounds, 80);
 
+  const loadJson = async (url) => {
+    try {
+      const r = await fetch(url);
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [areaData, featData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json')]);
   setLoad(40, 'Paving the ground…');
   await nextFrame();
-  const terrain = buildTerrain(hf, coastXZ, 2);
+  const coverBox = { minX: -11760, maxX: 9470, minZ: -19760, maxZ: 11300 };
+  const groundMat = createGroundMaterial(buildLandcover(areaData?.areas, coverBox), coverBox);
+  const terrain = buildTerrain(hf, coastXZ, 2, groundMat);
   hf.renderStep = 2; // roads sample the rendered (decimated) terrain too
   const landuse = buildLanduse(hf, data.landuse);
 
@@ -143,15 +154,6 @@ async function main() {
   } catch (err) {
     console.warn('[IZK] building footprints unavailable, using generated city only', err);
   }
-  const loadJson = async (url) => {
-    try {
-      const r = await fetch(url);
-      return r.ok ? await r.json() : null;
-    } catch {
-      return null;
-    }
-  };
-  const [areaData, featData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json')]);
   setLoad(74, 'Raising the city…');
   await nextFrame();
   const city = new City(hf, roads, mulberry32(20241113));
@@ -355,6 +357,8 @@ async function main() {
 
     WORLD.night.value = Math.min(1, solar.night * 1.2 + solar.golden * 0.25);
     WORLD.day.value = solar.day;
+    WORLD.time.value = performance.now() / 1000;
+    if (terrain.ocean.material.uniforms) terrain.ocean.material.uniforms.uSunDir.value.copy(sunDir);
     scene.environmentIntensity = 0.12 + solar.day * 0.88;
     WORLD.sky.value.copy(sky);
     stars.material.opacity = solar.night * 0.95;

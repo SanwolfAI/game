@@ -297,14 +297,17 @@ export class Props {
     if (this.buildings) {
       this.buildings.forEachIn(minx, minz, minx + CHUNK, minz + CHUNK, (i, type, x, z, area) => {
         if (type !== 'house' && type !== 'rdp' && type !== 'flats' && type !== 'civic') return;
-        if (rng() > (type === 'house' ? 0.55 : 0.3)) return;
-        const r = Math.sqrt(area) * 0.5 + 3 + rng() * 6;
-        const a = rng() * 6.283;
-        const px = x + Math.cos(a) * r;
-        const pz = z + Math.sin(a) * r;
-        if (!this.#free(px, pz, 1.8, 2.5)) return;
-        if (rng() < 0.65) tree(px, pz, 0.85);
-        else add('bush', px, hf.heightAt(px, pz) - 0.1, pz, rng() * 6.283, 2 + rng() * 1.6, 0.8 + rng() * 0.3);
+        const tries = type === 'house' ? 3 : 1;
+        for (let t = 0; t < tries; t++) {
+          if (rng() > (type === 'house' ? 0.7 : 0.45)) continue;
+          const r = Math.sqrt(area) * 0.5 + 2.5 + rng() * 6;
+          const a = rng() * 6.283;
+          const px = x + Math.cos(a) * r;
+          const pz = z + Math.sin(a) * r;
+          if (!this.#free(px, pz, 1.8, 2.5)) continue;
+          if (rng() < 0.6) tree(px, pz, 0.85);
+          else add('bush', px, hf.heightAt(px, pz) - 0.1, pz, rng() * 6.283, 2 + rng() * 1.6, 0.8 + rng() * 0.3);
+        }
       });
     }
 
@@ -321,7 +324,7 @@ export class Props {
         const lampSpacing = rank >= 9 ? 70 : rank >= 5 ? 34 : 0;
         const coastD = hf.signedCoastDistance(s.xs[run.i0], s.zs[run.i0]);
         const cbd = Math.hypot(s.xs[run.i0], s.zs[run.i0]) < 1300;
-        const treeSpacing = !cbd && rank <= 5 && rank >= 3 ? (coastD < 220 ? 20 : 24) : 0;
+        const treeSpacing = !cbd && rank <= 6 && rank >= 2 ? (coastD < 220 ? 16 : 17) : 0;
         for (let k = run.i0; k <= run.i1; k++) {
           const d = pc.d0 + s.ds[k];
           const dPrev = k > run.i0 ? pc.d0 + s.ds[k - 1] : d - 0.001;
@@ -349,7 +352,7 @@ export class Props {
               }
             }
           }
-          if (treeSpacing && Math.floor(d / treeSpacing) !== Math.floor(dPrev / treeSpacing) && rng() < 0.55) {
+          if (treeSpacing && Math.floor(d / treeSpacing) !== Math.floor(dPrev / treeSpacing) && rng() < 0.72) {
             const side = rng() < 0.5 ? 1 : -1;
             const off = pc.hw + (hasWalk ? WALK_W + 1.4 : 2.6) + rng() * 1.2;
             const x = s.xs[k] + s.lx[k] * off * side;
