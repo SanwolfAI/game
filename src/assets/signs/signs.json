@@ -1,0 +1,128 @@
+[
+ {
+  "code": "R1",
+  "file": "r1.png",
+  "license": "Public domain",
+  "description": "Stop.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R1.svg"
+ },
+ {
+  "code": "R2",
+  "file": "r2.png",
+  "license": "Public domain",
+  "description": "Give Way / Yield.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R2.svg"
+ },
+ {
+  "code": "R201-100",
+  "file": "r201-100.png",
+  "license": "Public domain",
+  "description": "Speed limit of 100 km/h.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R201-100.svg"
+ },
+ {
+  "code": "R201-120",
+  "file": "r201-120.png",
+  "license": "Public domain",
+  "description": "Speed limit of 120 km/h.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R201-120.svg"
+ },
+ {
+  "code": "R201-40",
+  "file": "r201-40.png",
+  "license": "Public domain",
+  "description": "Speed limit of 40 km/h.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R201-40.svg"
+ },
+ {
+  "code": "R201-60",
+  "file": "r201-60.png",
+  "license": "Public domain",
+  "description": "Speed limit of 60 km/h.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R201-60.svg"
+ },
+ {
+  "code": "R201-80",
+  "file": "r201-80.png",
+  "license": "Public domain",
+  "description": "Speed limit of 80 km/h.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R201-80.svg"
+ },
+ {
+  "code": "R213",
+  "file": "r213.png",
+  "license": "Public domain",
+  "description": "U-turn prohibited.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R213.svg"
+ },
+ {
+  "code": "R216",
+  "file": "r216.png",
+  "license": "Public domain",
+  "description": "Parking prohibited.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_R216.svg"
+ },
+ {
+  "code": "W301",
+  "file": "w301.png",
+  "license": "Public domain",
+  "description": "Traffic signals ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W301.svg"
+ },
+ {
+  "code": "W302",
+  "file": "w302.png",
+  "license": "Public domain",
+  "description": "Stop control ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W302.svg"
+ },
+ {
+  "code": "W303",
+  "file": "w303.png",
+  "license": "Public domain",
+  "description": "Give Way / Yield control ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W303.svg"
+ },
+ {
+  "code": "W306",
+  "file": "w306.png",
+  "license": "Public domain",
+  "description": "Pedestrian crossing ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W306.svg"
+ },
+ {
+  "code": "W307",
+  "file": "w307.png",
+  "license": "Public domain",
+  "description": "Pedestrians ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W307.svg"
+ },
+ {
+  "code": "W308",
+  "file": "w308.png",
+  "license": "Public domain",
+  "description": "Children ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W308.svg"
+ },
+ {
+  "code": "W309",
+  "file": "w309.png",
+  "license": "Public domain",
+  "description": "Cyclists ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W309.svg"
+ },
+ {
+  "code": "W318",
+  "file": "w318.png",
+  "license": "Public domain",
+  "description": "Railway crossing ahead.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W318.svg"
+ },
+ {
+  "code": "W401",
+  "file": "w401.png",
+  "license": "Public domain",
+  "description": "Hazard delineator.",
+  "source": "https://commons.wikimedia.org/wiki/File:SADC_road_sign_W401.svg"
+ }
+]

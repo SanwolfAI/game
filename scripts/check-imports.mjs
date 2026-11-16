@@ -24,10 +24,13 @@ const problems = [];
 for (const file of files) {
   const rel = path.relative(root, file);
   const source = fs.readFileSync(file, 'utf8');
-  const re = /\bfrom\s*['"]([^'"]+)['"]|\bimport\s*\(?\s*['"]([^'"]+)['"]/g;
+  // Only real import/export statements (comments and log strings mentioning
+  // "from 'x'" are ignored).
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const re = /^\s*(?:import|export)\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]/gm;
   let m;
-  while ((m = re.exec(source))) {
-    const spec = m[1] || m[2];
+  while ((m = re.exec(code))) {
+    const spec = m[1] || m[2] || m[3];
     if (!spec.startsWith('.')) {
       problems.push(`${rel}: bare import '${spec}' (use a relative path to vendor/)`);
       continue;
