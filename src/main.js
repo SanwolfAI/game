@@ -7,8 +7,12 @@ import { buildTerrain } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
 import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
+import { Buildings } from './world/buildings.js';
+import { Props } from './world/props.js';
+import { WORLD } from './world/worldLight.js';
 import { buildLandmarks } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
+import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { Pedestrians } from './game/pedestrians.js';
@@ -129,14 +133,42 @@ async function main() {
   await nextFrame();
   const roads = new RoadNetwork(data, hf);
 
-  setLoad(72, 'Raising the city…');
+  setLoad(68, 'Raising 200 000 real buildings…');
+  await nextFrame();
+  let buildings = null;
+  try {
+    const bres = await fetch('./src/data/durban-buildings.bin');
+    if (!bres.ok) throw new Error(`HTTP ${bres.status}`);
+    buildings = new Buildings(await bres.arrayBuffer(), hf, roads);
+  } catch (err) {
+    console.warn('[IZK] building footprints unavailable, using generated city only', err);
+  }
+  const loadJson = async (url) => {
+    try {
+      const r = await fetch(url);
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [areaData, featData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json')]);
+  setLoad(74, 'Raising the city…');
   await nextFrame();
   const city = new City(hf, roads, mulberry32(20241113));
-  const cityGroup = city.build(districtsWorld(data));
+  city.buildings = buildings;
+  // Footprint data covers the core; generated districts fill in the rest.
+  const cityGroup = city.build(districtsWorld(data).filter((d) => !buildings || !Buildings.covers(d.x, d.z)));
 
   setLoad(82, 'Building Durban landmarks…');
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
+
+  setLoad(84, 'Planting trees and street lights…');
+  await nextFrame();
+  const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
+  setLoad(86, 'Polishing the gusheshe…');
+  await nextFrame();
+  await Promise.race([Promise.all([loadCarModels(), props.load()]), new Promise((r) => setTimeout(r, 20000))]);
 
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
@@ -175,10 +207,13 @@ async function main() {
   moonDisc.renderOrder = -2;
   scene.add(moonDisc);
 
+  scene.environment = applyVehicleEnvironment(renderer, scene);
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
   scene.add(cityGroup);
+  if (buildings) scene.add(buildings.group);
+  scene.add(props.group);
   scene.add(landmarks);
 
   const input = new Input();
@@ -318,6 +353,10 @@ async function main() {
     fill.intensity = 0.15 + solar.day * 0.35;
     renderer.toneMappingExposure = 0.82 + solar.day * 0.3;
 
+    WORLD.night.value = Math.min(1, solar.night * 1.2 + solar.golden * 0.25);
+    WORLD.day.value = solar.day;
+    scene.environmentIntensity = 0.12 + solar.day * 0.88;
+    WORLD.sky.value.copy(sky);
     stars.material.opacity = solar.night * 0.95;
     stars.position.copy(camera.position);
     moonDisc.visible = solar.night > 0.05;
@@ -425,6 +464,8 @@ async function main() {
 
     traffic.update(dt, ent.x, ent.z);
     roads.update(camera.position.x, camera.position.z);
+    if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
+    props.update(camera.position.x, camera.position.z, dt, 1);
     pedestrians.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
@@ -461,9 +502,11 @@ async function main() {
   updateEnvironment(now);
   updateCamera(0, true);
   roads.update(camera.position.x, camera.position.z, 1e9); // build nearby road detail up front
+  if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
+  props.update(camera.position.x, camera.position.z, 0, 12);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();

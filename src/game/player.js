@@ -85,6 +85,11 @@ export class Player {
   }
 
   #resolveCollisions() {
+    const hit = this.city.buildings ? this.city.buildings.collide(this.x, this.z, PERSON_RADIUS) : null;
+    if (hit) {
+      this.x = hit.x;
+      this.z = hit.z;
+    }
     const nearby = this.city.hash.query(this.x, this.z, 6);
     for (const c of nearby) {
       const dx = this.x - c.x;

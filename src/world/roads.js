@@ -24,7 +24,7 @@ const CLASS_SPEC = {
 };
 const DEFAULT_SPEC = { laneW: 3.2, lanes: 1, shoulderL: 0.4, shoulderR: 0.4, speed: 12, rank: 3, color: 0x55555a, tint: 0.95, major: false };
 
-function specFor(cls) {
+export function specFor(cls) {
   return CLASS_SPEC[cls] || DEFAULT_SPEC;
 }
 
@@ -42,9 +42,9 @@ export function roadClass(cls) {
 const KEY_SCALE = 4; // 4 m node snapping for the traffic graph (unchanged from Horus)
 export const ROAD_LIFT = 0.3; // asphalt sits this far above the terrain
 const MARK_LIFT = 0.035; // paint above asphalt
-const KERB_H = 0.16;
-const WALK_W = 1.9;
-const CHUNK = 400; // render chunk size (m)
+export const KERB_H = 0.16;
+export const WALK_W = 1.9;
+export const CHUNK = 400; // render chunk size (m)
 const DETAIL_IN = 520; // build markings/sidewalks within this distance
 const DETAIL_OUT = 760; // dispose them beyond this
 const ROAD_FAR = 4200; // hide arterial asphalt beyond this (fog covers it)
