@@ -23,6 +23,7 @@ import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
+import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xd97a4d);
@@ -269,9 +270,58 @@ async function main() {
   const desiredLook = new THREE.Vector3();
 
   const CAM_MODES = [
-    { dist: 9.5, height: 3.9, ahead: 7, look: 1.5 },
-    { dist: 18, height: 8.5, ahead: 12, look: 1.2 }
+    { name: 'Chase camera', dist: 9.5, height: 3.9, ahead: 7, look: 1.5 },
+    { name: 'Close chase', dist: 6.2, height: 2.3, ahead: 6, look: 1.25 },
+    { name: 'Bonnet camera', local: [0, 1.32, 1.0], near: 0.3 },
+    { name: 'Driver view', local: [DRIVER_X, 1.24, -0.12], near: 0.08, cockpit: true },
+    { name: 'Orbit: drag to turn, pinch to zoom', orbit: true },
+    { name: 'High camera', dist: 18, height: 8.5, ahead: 12, look: 1.2 }
   ];
+  const cockpit = buildCockpit();
+  vehicle.group.add(cockpit);
+  const camTmp = new THREE.Vector3();
+  const orbit = { yaw: 0.6, pitch: 0.28, dist: 7.5, ptrs: new Map(), pinch: 0 };
+  {
+    const el = renderer.domElement;
+    el.addEventListener('pointerdown', (e) => {
+      if (!CAM_MODES[camMode].orbit) return;
+      orbit.ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+      orbit.pinch = 0;
+    });
+    const end = (e) => orbit.ptrs.delete(e.pointerId);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('pointermove', (e) => {
+      const p = orbit.ptrs.get(e.pointerId);
+      if (!p) return;
+      if (orbit.ptrs.size === 1) {
+        orbit.yaw -= (e.clientX - p[0]) * 0.008;
+        orbit.pitch = Math.max(-0.05, Math.min(1.3, orbit.pitch + (e.clientY - p[1]) * 0.006));
+      }
+      p[0] = e.clientX;
+      p[1] = e.clientY;
+      if (orbit.ptrs.size === 2) {
+        const it = orbit.ptrs.values();
+        const a = it.next().value;
+        const b = it.next().value;
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (orbit.pinch > 0) orbit.dist = Math.max(3.2, Math.min(22, orbit.dist * (orbit.pinch / d)));
+        orbit.pinch = d;
+      }
+    });
+    el.addEventListener('wheel', (e) => {
+      if (!CAM_MODES[camMode].orbit) return;
+      orbit.dist = Math.max(3.2, Math.min(22, orbit.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
+    }, { passive: true });
+  }
+  let camNear = 1.0;
+  function setNear(n) {
+    if (n !== camNear) {
+      camNear = n;
+      camera.near = n;
+      camera.updateProjectionMatrix();
+    }
+  }
 
   let newRoadTimer = 0;
   let lastRoad = '';
@@ -414,22 +464,51 @@ async function main() {
 
   function updateCamera(dt, snap) {
     const ent = entity();
-    const mode = CAM_MODES[camMode];
-    const dist = inVehicle ? mode.dist : 5.6;
-    const height = inVehicle ? mode.height : 2.5;
-    const ahead = inVehicle ? mode.ahead : 2.5;
-    const look = inVehicle ? mode.look : 1.35;
-    const [fx, fz] = ent.forward;
+    const mode = inVehicle ? CAM_MODES[camMode] : CAM_MODES[0];
+    const inCar = inVehicle && !!mode.local;
+    cockpit.visible = inVehicle && !!mode.cockpit;
+    if (vehicle.mesh) vehicle.mesh.visible = !cockpit.visible;
+    if (cockpit.visible) updateCockpit(cockpit, vehicle.steer || 0);
+    setNear(inCar ? mode.near : 1.0);
+    if (inCar) {
+      // Rigidly mounted in the car (follows pitch and roll). Taller vans
+      // (Quantum) lift the eye point and cockpit with the body height.
+      const sz = vehicle.mesh && vehicle.mesh.userData.size;
+      const lift = sz ? Math.max(0, sz.y * 0.88 - 1.24) : 0;
+      cockpit.position.y = lift;
+      ent.group.updateMatrixWorld(true);
+      camPos.set(mode.local[0], mode.local[1] + lift, mode.local[2]);
+      ent.group.localToWorld(camPos);
+      camLook.set(mode.local[0], mode.local[1] + lift - 0.25, mode.local[2] + 12);
+      ent.group.localToWorld(camLook);
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+    } else if (inVehicle && mode.orbit) {
+      const baseY = ent.group.position.y;
+      const a = ent.yaw + Math.PI + orbit.yaw;
+      desiredPos.set(ent.x + Math.sin(a) * Math.cos(orbit.pitch) * orbit.dist, baseY + 0.9 + Math.sin(orbit.pitch) * orbit.dist, ent.z + Math.cos(a) * Math.cos(orbit.pitch) * orbit.dist);
+      camTmp.set(ent.x, baseY + 0.8, ent.z);
+      camPos.lerp(desiredPos, snap ? 1 : 1 - Math.exp(-14 * dt));
+      camLook.copy(camTmp);
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+    } else {
+      const dist = inVehicle ? mode.dist : 5.6;
+      const height = inVehicle ? mode.height : 2.5;
+      const ahead = inVehicle ? mode.ahead : 2.5;
+      const look = inVehicle ? mode.look : 1.35;
+      const [fx, fz] = ent.forward;
 
-    const baseY = ent.group.position.y;
-    desiredPos.set(ent.x - fx * dist, baseY + height, ent.z - fz * dist);
-    desiredLook.set(ent.x + fx * ahead, baseY + look, ent.z + fz * ahead);
+      const baseY = ent.group.position.y;
+      desiredPos.set(ent.x - fx * dist, baseY + height, ent.z - fz * dist);
+      desiredLook.set(ent.x + fx * ahead, baseY + look, ent.z + fz * ahead);
 
-    const t = snap ? 1 : 1 - Math.exp(-7 * dt);
-    camPos.lerp(desiredPos, t);
-    camLook.lerp(desiredLook, snap ? 1 : 1 - Math.exp(-10 * dt));
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
+      const t = snap ? 1 : 1 - Math.exp(-7 * dt);
+      camPos.lerp(desiredPos, t);
+      camLook.lerp(desiredLook, snap ? 1 : 1 - Math.exp(-10 * dt));
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+    }
     // Debug/screenshot override: window.__izkCam = { pos: [x, y, z], look: [x, y, z] }
     const ov = window.__izkCam;
     if (ov) {
@@ -473,7 +552,7 @@ async function main() {
 
     if (input.takePressed('camera')) {
       camMode = (camMode + 1) % CAM_MODES.length;
-      hud.toast(camMode === 0 ? 'Chase camera' : 'High camera', 1.2);
+      hud.toast(CAM_MODES[camMode].name, 1.4);
     }
     if (input.takePressed('horn')) {
       unlockAudio();
