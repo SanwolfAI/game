@@ -210,7 +210,7 @@ export class Input {
       const r = el.getBoundingClientRect();
       // touching the top of the pedal = light press, lower = deeper press
       const t = (e.clientY - r.top) / (r.height * 0.82);
-      this.pedal[name] = clamp(0.12 + 0.88 * t, 0.12, 1);
+      this.pedal[name] = name === 'brake' ? clamp(0.45 + 0.55 * t, 0.45, 1) : clamp(0.12 + 0.88 * t, 0.12, 1);
     };
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -278,8 +278,8 @@ export class Input {
     // --- pedals (rate-limited so throttle and brake build up gradually)
     const gasTarget = gasKey ? 1 : this.pedal.gas;
     const brakeTarget = brakeKey ? 1 : this.pedal.brake;
-    this.throttle += clamp(gasTarget - this.throttle, -6 * dt, 3.2 * dt);
-    this.brake += clamp(brakeTarget - this.brake, -8 * dt, 5 * dt);
+    this.throttle += clamp(gasTarget - this.throttle, -6 * dt, 2.2 * dt);
+    this.brake += clamp(brakeTarget - this.brake, -8 * dt, 12 * dt);
     if (this.throttle < 0.003) this.throttle = 0;
     if (this.brake < 0.003) this.brake = 0;
 

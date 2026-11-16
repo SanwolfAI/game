@@ -33,7 +33,7 @@ function physicsFor(spec) {
     vmaxR: 9,
     roll,
     drag,
-    brake: p.mass > 2000 ? 8.2 : 9.0,
+    brake: p.mass > 2000 ? 9.0 : 10.0,
     wheelbase: p.mass > 2000 ? 3.0 : 2.55,
     grip: 7.2 * (spec.handling / 1.5)
   };
