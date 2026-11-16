@@ -11,7 +11,7 @@ import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 const SOURCES = [
   { id: 'gusheshe', file: './src/assets/vehicles/gusheshe.glb', length: 4.33, title: '1991 BMW 325i (E30)' },
   { id: 'bmw-lowpoly', file: './src/assets/vehicles/bmw-lowpoly.glb', length: 4.4, title: 'Low-Poly BMW' },
-  { id: 'hiace', file: './src/assets/vehicles/hiace.glb', length: 4.9, title: 'Toyota HiAce 2004' }
+  { id: 'hiace', file: './src/assets/vehicles/hiace.glb', length: 4.9, title: 'Toyota HiAce 2004', flip: true }
 ];
 
 // Which loaded model plays which game vehicle (player / traffic).
