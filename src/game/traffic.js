@@ -84,7 +84,10 @@ function pointAlong(road, dir, dist) {
   return { x: p[0], z: p[1], fx: 0, fz: 1 };
 }
 
-const COUNTS = { gusheshe: 15, quantum: 17, polo: 13, hilux: 11, saps: 8 };
+const COUNTS = { gusheshe: 24, quantum: 28, polo: 21, hilux: 16, saps: 9 };
+// Spawn weight by road class: busy arterials and the CBD, quiet side streets.
+const CLASS_WEIGHT = { motorway: 1, trunk: 1, primary: 1, secondary: 0.85, motorway_link: 0.5, trunk_link: 0.5, primary_link: 0.5, secondary_link: 0.45, tertiary: 0.5, tertiary_link: 0.35, unclassified: 0.14, residential: 0.1, living_street: 0.05, service: 0.03 };
+const SPAWN_R = 650;
 const LANE = 2.1;
 
 export class Traffic {
@@ -147,23 +150,45 @@ export class Traffic {
     this.group.add(this.lamps);
   }
 
-  #makeCar(type, px, pz) {
+  #makeCar(type, px, pz, minR = 0) {
+    if (!this.edgeOf) {
+      this.edgeOf = new Map();
+      for (const e of this.roads.edges) this.edgeOf.set(e.road, e);
+    }
     let edge = null;
     let mid = null;
-    for (let tries = 0; tries < 40; tries++) {
-      const candidate = this.roads.edges[Math.floor(this.rng() * this.roads.edges.length)];
+    for (let tries = 0; tries < 30; tries++) {
+      const a = this.rng() * Math.PI * 2;
+      const r = minR + Math.sqrt(this.rng()) * (SPAWN_R - minR);
+      const sx = px + Math.cos(a) * r;
+      const sz = pz + Math.sin(a) * r;
+      const near = this.roads.nearestRoad(sx, sz, 90);
+      if (!near) continue;
+      const candidate = this.edgeOf.get(near.road);
       if (!candidate || candidate.road.len < 12) continue;
+      let w = CLASS_WEIGHT[candidate.road.cls] ?? 0.2;
+      if (candidate.road.lanes >= 4) w = Math.max(w, 0.9);
+      if (this.rng() > w) continue;
       const m = pointAlong(candidate.road, 1, candidate.road.len * this.rng());
       if (this.hf.isWater(m.x, m.z)) continue;
-      if (Math.hypot(m.x - px, m.z - pz) > 900) continue;
       edge = candidate;
       mid = m;
       break;
     }
     if (!edge) {
-      edge = this.roads.randomEdge(this.rng);
+      for (let tries = 0; tries < 40 && !edge; tries++) {
+        const c = this.roads.edges[Math.floor(this.rng() * this.roads.edges.length)];
+        if (c && c.road.len >= 12) {
+          const m = pointAlong(c.road, 1, c.road.len * 0.5);
+          if (Math.hypot(m.x - px, m.z - pz) < 900) {
+            edge = c;
+            mid = m;
+          }
+        }
+      }
+      if (!edge) edge = this.roads.randomEdge(this.rng);
       if (!edge) return null;
-      mid = pointAlong(edge.road, 1, edge.road.len * 0.5);
+      if (!mid) mid = pointAlong(edge.road, 1, edge.road.len * 0.5);
     }
     return {
       type,
@@ -177,7 +202,7 @@ export class Traffic {
   }
 
   #relocate(car, px, pz) {
-    const fresh = this.#makeCar(car.type, px, pz);
+    const fresh = this.#makeCar(car.type, px, pz, 220); // respawn out of sight
     if (!fresh) return;
     Object.assign(car, fresh);
   }
@@ -199,7 +224,20 @@ export class Traffic {
     }
 
     let next = null;
-    if (options.length) next = options[Math.floor(this.rng() * options.length)];
+    if (options.length) {
+      // weighted toward busier roads, so quiet streets stay quiet
+      let sum = 0;
+      for (const o of options) sum += (CLASS_WEIGHT[o[0].road.cls] ?? 0.2) + 0.05;
+      let pick = this.rng() * sum;
+      next = options[options.length - 1];
+      for (const o of options) {
+        pick -= (CLASS_WEIGHT[o[0].road.cls] ?? 0.2) + 0.05;
+        if (pick <= 0) {
+          next = o;
+          break;
+        }
+      }
+    }
     else if (!edge.road.oneway) next = [edge, -car.dir];
     else next = [edge, car.dir];
 
@@ -262,7 +300,7 @@ export class Traffic {
         const x = p.x + lx * car.lane;
         const z = p.z + lz * car.lane;
 
-        if (this.hf.isWater(x, z) || Math.hypot(x - px, z - pz) > 950) {
+        if (this.hf.isWater(x, z) || Math.hypot(x - px, z - pz) > 800) {
           this.#relocate(car, px, pz);
           if (!car.edge) continue;
         }
