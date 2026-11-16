@@ -20,6 +20,7 @@ export class HUD {
     this.placeName = document.getElementById('place-name');
     this.placeKind = document.getElementById('place-kind');
     this.coords = document.getElementById('coords');
+    this.street = document.getElementById('street');
     this.clock = document.getElementById('clock');
     this.clockLabel = document.getElementById('clock-label');
     this.dateEl = document.getElementById('date');
@@ -38,6 +39,13 @@ export class HUD {
     this.lastPlace = null;
     this.helpHidden = false;
     this.lastSpeed = -1;
+  }
+
+  setStreet(name) {
+    if (this.street && name) {
+      this.street.textContent = name;
+      this.street.title = name;
+    }
   }
 
   updateGear(g) {

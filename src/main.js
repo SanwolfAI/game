@@ -546,12 +546,10 @@ async function main() {
     if (newRoadTimer > 0.5) {
       newRoadTimer = 0;
       const near = roads.nearestRoad(ent.x, ent.z, 26);
-      if (near && near.dist < 18 && near.road.name && near.road.name !== lastRoad) {
-        lastRoad = near.road.name;
-        if (roadToastCooldown <= 0) {
-          hud.toast(near.road.name, 2);
-          roadToastCooldown = 4;
-        }
+      const onRoad = ent.surfRoad && ent.surfRoad.name ? ent.surfRoad : near && near.dist < near.road.width / 2 + 3 ? near.road : null;
+      if (onRoad && onRoad.name && onRoad.name !== lastRoad) {
+        lastRoad = onRoad.name;
+        hud.setStreet(onRoad.name); // permanent label; keeps the last name off-road
       }
     }
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
