@@ -255,6 +255,7 @@ async function main() {
       hud.toast(gps.route ? `Route set: ${name}` : `Destination set: ${name}`, 2);
     }
   });
+  bigmap.features = featData?.features || null;
   document.getElementById('map-box')?.addEventListener('click', () => {
     const e = entity();
     bigmap.show(e.x, e.z, e.yaw);
@@ -637,6 +638,8 @@ async function main() {
       if (onRoad && onRoad.name && onRoad.name !== lastRoad) {
         lastRoad = onRoad.name;
         hud.setStreet(onRoad.name); // permanent label; keeps the last name off-road
+        bigmap.street = onRoad.name;
+        bigmap.dirty = true;
       }
     }
     if (roadToastCooldown > 0) roadToastCooldown -= dt;

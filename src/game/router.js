@@ -93,6 +93,13 @@ export class Router {
     this.built = true;
   }
 
+  #fromNode(e) {
+    // edges store `to`; the from node is the other end of the piece
+    const a = this.index.get(e.pc.nA);
+    const b = this.index.get(e.pc.nB);
+    return e.fwd ? a : b;
+  }
+
   nearestNode(x, z, maxR = 600) {
     if (!this.built) this.#build();
     let best = -1;
@@ -182,7 +189,33 @@ export class Router {
     const chain = [];
     for (let v = goal; prev[v] >= 0; v = prev[v]) chain.push(prevEdge[v]);
     chain.reverse();
-    const pts = [[sx, sz]];
+    // Start at the player's snapped spot on the current piece and follow the
+    // piece's own geometry to the first node (no straight chord across blocks).
+    const pts = [];
+    const first = chain.length ? chain[0] : null;
+    const startNode = first ? this.#fromNode(first) : goal;
+    if (pc && (this.index.get(pc.nA) === startNode || this.index.get(pc.nB) === startNode)) {
+      const p = pc.pts;
+      let bi = 0;
+      let bt = 0;
+      let bd = Infinity;
+      for (let i = 0; i < p.length - 1; i++) {
+        const dx = p[i + 1][0] - p[i][0];
+        const dz = p[i + 1][1] - p[i][1];
+        const l2 = dx * dx + dz * dz || 1;
+        let t = ((sx - p[i][0]) * dx + (sz - p[i][1]) * dz) / l2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(sx - p[i][0] - dx * t, sz - p[i][1] - dz * t);
+        if (d < bd) {
+          bd = d;
+          bi = i;
+          bt = t;
+        }
+      }
+      pts.push([p[bi][0] + (p[bi + 1][0] - p[bi][0]) * bt, p[bi][1] + (p[bi + 1][1] - p[bi][1]) * bt]);
+      if (this.index.get(pc.nB) === startNode) for (let i = bi + 1; i < p.length; i++) pts.push(p[i]);
+      else for (let i = bi; i >= 0; i--) pts.push(p[i]);
+    } else pts.push([sx, sz]);
     const names = [];
     const nodeIdx = []; // index in pts where each edge ends
     for (const e of chain) {

@@ -81,12 +81,26 @@ export function createMinimap(hf, roads) {
     ctx.restore();
   }
 
+  let smoothYaw = null;
   function update(x, z, yaw, dest, route = null) {
     ctx.clearRect(0, 0, size, size);
     const sw = VIEW_METERS * scale;
     const sx = (x - hf.minX) * scale - sw / 2;
     const sy = (z - hf.minZ) * scale - sw / 2;
-    ctx.drawImage(off, sx, sy, sw, sw, 0, 0, size, size);
+    // Integer source rect + fractional destination offset: some WebViews snap
+    // fractional source rects to whole pixels, which made the map jump under
+    // the (fixed, centred) arrow.
+    const k0 = size / sw;
+    const sxi = Math.floor(sx);
+    const syi = Math.floor(sy);
+    const swi = Math.ceil(sw) + 2;
+    ctx.drawImage(off, sxi, syi, swi, swi, -(sx - sxi) * k0, -(sy - syi) * k0, swi * k0, swi * k0);
+    // smoothed heading for the arrow (shortest way round)
+    if (smoothYaw === null) smoothYaw = yaw;
+    let dy = yaw - smoothYaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    smoothYaw += dy * 0.3;
+    yaw = smoothYaw;
 
     const center = size / 2;
     if (route) {
@@ -101,7 +115,8 @@ export function createMinimap(hf, roads) {
       for (let i = 0; i < pts.length; i++) {
         const dx = pts[i][0] - x;
         const dz = pts[i][1] - z;
-        if (Math.abs(dx) > lim || Math.abs(dz) > lim) {
+        if (Math.abs(dx) > lim * 4 || Math.abs(dz) > lim * 4) {
+          // far outside: break the line (canvas clips the nearby part itself)
           started = false;
           continue;
         }
@@ -112,10 +127,10 @@ export function createMinimap(hf, roads) {
         started = true;
       }
       ctx.strokeStyle = 'rgba(10,18,26,0.8)';
-      ctx.lineWidth = 9;
+      ctx.lineWidth = 13;
       ctx.stroke();
       ctx.strokeStyle = '#3fa9ff';
-      ctx.lineWidth = 5.5;
+      ctx.lineWidth = 8.5;
       ctx.stroke();
       ctx.restore();
     }
