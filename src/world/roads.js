@@ -709,6 +709,17 @@ export class RoadNetwork {
       corners.push({ x: s.xs[i] - lxv * hw, z: s.zs[i] - lzv * hw, y, e, side: -1 });
     }
     node.y = ySum / ends.length;
+    // End centres for a sloped surface across the junction (bridge ramps that
+    // start at a junction would otherwise sit above a flat disc).
+    const ep = new Float32Array(ends.length * 3);
+    for (let k = 0; k < ends.length; k++) {
+      const s = ends[k].pc.s;
+      const i = ends[k].atStart ? 0 : s.m - 1;
+      ep[k * 3] = s.xs[i];
+      ep[k * 3 + 1] = s.zs[i];
+      ep[k * 3 + 2] = s.ys[i];
+    }
+    node.ep = ep;
     for (const c of corners) c.a = Math.atan2(c.z - node.z, c.x - node.x);
     corners.sort((a, b) => a.a - b.a);
     node.corners = corners;
@@ -1469,7 +1480,7 @@ export class RoadNetwork {
   // Drivable surface height at (x, z). `prevY` keeps a vehicle on the layer it
   // is on: under a bridge you stay on the ground, on the deck you follow it.
   // Returns { y, onRoad, deck, lateral, hw } (object reused between calls).
-  surfaceAt(x, z, prevY = null) {
+  surfaceAt(x, z, prevY = null, prevRoad = null, hx = 0, hz = 0) {
     const out = this._surf || (this._surf = { y: 0, onRoad: false, deck: false, lateral: 0, hw: 0, pc: null });
     const ground = this.hf.heightAt(x, z);
     const SC = this.sCell;
@@ -1483,11 +1494,14 @@ export class RoadNetwork {
     out.pc = null;
     out.lateral = 0;
     out.hw = 0;
-    const consider = (y, deck, pc, lat) => {
+    const consider = (y, deck, pc, lat, aligned = false) => {
       let score;
+      // Staying on the road you are driving lets you climb a ramp step
+      // (junction/bridge seams) instead of dropping under the deck.
+      const same = aligned || (pc !== null && prevRoad !== null && (pc.road === prevRoad || (pc.road.name !== '' && pc.road.name === prevRoad.name) || (pc.road.ref !== '' && pc.road.ref === prevRoad.ref)));
       if (prevY === null) score = y; // lowest layer when unknown
-      else if (y > prevY + 1.4) return;
-      else score = Math.abs(y - prevY);
+      else if (y > prevY + (same ? 4.5 : 1.4)) return;
+      else score = Math.abs(y - prevY) - (same ? 5 : 0);
       if (score < bestScore) {
         bestScore = score;
         bestY = y;
@@ -1502,7 +1516,7 @@ export class RoadNetwork {
       for (const item of list) {
         if (item.node) {
           const nd = item.node;
-          if (Math.hypot(x - nd.x, z - nd.z) <= nd.r) consider(nd.y, nd.off > 1, null, 0);
+          if (Math.hypot(x - nd.x, z - nd.z) <= nd.r) consider(junctionY(nd, x, z), nd.off > 1, null, 0);
           continue;
         }
         const pc = item.pc;
@@ -1526,12 +1540,14 @@ export class RoadNetwork {
           if (!pc.elevated && alat < pc.hw + WALK_W + 0.2 && specFor(pc.road.cls).walk) walkY = Math.max(walkY, y + KERB_H);
           if (alat > pc.hw + (pc.elevated ? 0.2 : 0.05)) continue;
         }
-        consider(y, pc.bridge || s.offs[i] > 1, pc, lat);
+        // Heading along this piece = you are driving it (climb its ramp).
+        const al = (hx !== 0 || hz !== 0) && Math.abs(dx * hx + dz * hz) > 0.85 * l;
+        consider(y, pc.bridge || s.offs[i] > 1, pc, lat, al);
       }
     }
     // Ground option (off-road / under bridges).
     const gY = walkY > -Infinity && !found ? walkY : nearRoad ? ground + ROAD_LIFT * 0.5 : ground;
-    if (prevY === null ? !found : Math.abs(gY - prevY) < bestScore && gY <= prevY + 1.4) {
+    if (prevY === null ? !found : Math.abs(gY - prevY) < bestScore && gY <= prevY + 1.4 && !(found && out.pc && prevRoad && (out.pc.road === prevRoad || (out.pc.road.name !== '' && out.pc.road.name === prevRoad.name)))) {
       bestY = gY;
       found = false;
       out.deck = false;
@@ -1681,4 +1697,20 @@ function outward(corner, node) {
   oz /= l;
   void node;
   return [ox, oz];
+}
+
+// Height on a junction: inverse-distance blend of its arm end heights.
+function junctionY(nd, x, z) {
+  const ep = nd.ep;
+  if (!ep) return nd.y;
+  let ws = 0;
+  let ys = 0;
+  for (let k = 0; k < ep.length; k += 3) {
+    const dx = x - ep[k];
+    const dz = z - ep[k + 1];
+    const w = 1 / (dx * dx + dz * dz + 0.25);
+    ws += w;
+    ys += w * ep[k + 2];
+  }
+  return ys / ws;
 }

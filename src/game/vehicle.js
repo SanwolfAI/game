@@ -124,9 +124,11 @@ export class Vehicle {
     // Road-aware surface (bridges, embankments, kerbs). The previous height
     // picks the layer, so driving under a bridge keeps you on the ground.
     const prev = this.y;
-    const surf = this.roads.surfaceAt(this.x, this.z, prev);
+    const surf = this.roads.surfaceAt(this.x, this.z, prev, this.surfRoad || null, fx, fz);
     let target = surf.y;
     this.onDeck = surf.deck;
+    if (surf.pc) this.surfRoad = surf.pc.road;
+    else if (!surf.onRoad) this.surfRoad = null;
     if (prev === null || dt === 0) {
       this.y = target;
       this.vy = 0;
@@ -134,6 +136,10 @@ export class Vehicle {
       // simple gravity when leaving a ledge
       this.vy -= 22 * dt;
       this.y = Math.max(target, prev + this.vy * dt);
+    } else if (target > prev + 0.4) {
+      // ease up over a seam / ramp step instead of popping
+      this.vy = 0;
+      this.y = prev + Math.min(target - prev, Math.max(0.4, 14 * dt));
     } else {
       this.vy = 0;
       this.y = target;
