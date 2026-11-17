@@ -86,7 +86,7 @@ function pointAlong(road, dir, dist) {
 
 const COUNTS = { gusheshe: 24, quantum: 28, polo: 21, hilux: 16, saps: 9 };
 // Spawn weight by road class: busy arterials and the CBD, quiet side streets.
-const CLASS_WEIGHT = { motorway: 1, trunk: 1, primary: 1, secondary: 0.85, motorway_link: 0.5, trunk_link: 0.5, primary_link: 0.5, secondary_link: 0.45, tertiary: 0.5, tertiary_link: 0.35, unclassified: 0.14, residential: 0.1, living_street: 0.05, service: 0.03 };
+const CLASS_WEIGHT = { motorway: 1, trunk: 1, primary: 1, secondary: 0.85, motorway_link: 0.5, trunk_link: 0.5, primary_link: 0.5, secondary_link: 0.45, tertiary: 0.5, tertiary_link: 0.35, unclassified: 0.14, residential: 0.1, living_street: 0.05, service: 0, pedestrian: 0 };
 const SPAWN_R = 650;
 const LANE = 2.1;
 
@@ -165,7 +165,7 @@ export class Traffic {
       const near = this.roads.nearestRoad(sx, sz, 90);
       if (!near) continue;
       const candidate = this.edgeOf.get(near.road);
-      if (!candidate || candidate.road.len < 12) continue;
+      if (!candidate || candidate.road.len < 12 || candidate.road.rank <= 1) continue;
       let w = CLASS_WEIGHT[candidate.road.cls] ?? 0.2;
       if (candidate.road.lanes >= 4) w = Math.max(w, 0.9);
       if (this.rng() > w) continue;
@@ -219,7 +219,7 @@ export class Traffic {
         let dir = 0;
         if (e.from === arrival) dir = 1;
         else if (e.reverse && e.to === arrival) dir = -1;
-        if (dir) options.push([e, dir]);
+        if (dir && e.road.rank > 1) options.push([e, dir]);
       }
     }
 

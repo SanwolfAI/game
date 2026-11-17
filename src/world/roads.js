@@ -20,7 +20,11 @@ const CLASS_SPEC = {
   trunk_link: { laneW: 3.6, lanes: 1, shoulderL: 1.0, shoulderR: 0.5, speed: 15, rank: 5, color: 0x4e4e54, tint: 0.84, major: false, edges: true },
   primary_link: { laneW: 3.5, lanes: 1, shoulderL: 0.6, shoulderR: 0.4, speed: 13, rank: 4, color: 0x55555b, tint: 0.88, major: false, edges: true },
   secondary_link: { laneW: 3.4, lanes: 1, shoulderL: 0.5, shoulderR: 0.4, speed: 12, rank: 4, color: 0x5a5a60, tint: 0.9, major: false, edges: true },
-  tertiary_link: { laneW: 3.3, lanes: 1, shoulderL: 0.4, shoulderR: 0.3, speed: 10, rank: 3, color: 0x60605c, tint: 0.95, major: false }
+  tertiary_link: { laneW: 3.3, lanes: 1, shoulderL: 0.4, shoulderR: 0.3, speed: 10, rank: 3, color: 0x60605c, tint: 0.95, major: false },
+  // CBD lanes and passages (OSM service / pedestrian / named footway): narrow,
+  // unmarked, paler paving; drivable but traffic and GPS avoid them
+  service: { laneW: 3.2, lanes: 1, shoulderL: 0.2, shoulderR: 0.2, speed: 6, rank: 1, color: 0x77746d, tint: 1.12, major: false, lane: true },
+  pedestrian: { laneW: 3.4, lanes: 1, shoulderL: 0.3, shoulderR: 0.3, speed: 4, rank: 1, color: 0x9a948a, tint: 1.42, major: false, lane: true }
 };
 const DEFAULT_SPEC = { laneW: 3.2, lanes: 1, shoulderL: 0.4, shoulderR: 0.4, speed: 12, rank: 3, color: 0x55555a, tint: 0.95, major: false };
 
@@ -132,6 +136,14 @@ class Buf {
   }
 }
 
+// Is piece pc the road we are on, or joined to it at one of its end nodes?
+function linked(pc, road) {
+  if (pc.road === road) return true;
+  for (const e of pc.nA.ends) if (e.pc.road === road) return true;
+  for (const e of pc.nB.ends) if (e.pc.road === road) return true;
+  return false;
+}
+
 export class RoadNetwork {
   constructor(data, hf) {
     this.hf = hf;
@@ -155,12 +167,12 @@ export class RoadNetwork {
       const oneway = !!r.o;
       const tagged = Number(r.w) > 0;
       let lanes = tagged ? Math.min(8, Math.round(Number(r.w))) : spec.lanes;
-      if (!tagged && !oneway && spec.lanes === 1) lanes = 2; // two-way links
+      if (!tagged && !oneway && spec.lanes === 1 && !spec.lane) lanes = 2; // two-way links
       if (!tagged && oneway && spec.lanes === 2 && spec.rank < 8) lanes = r.h === 'residential' || r.h === 'living_street' ? 1 : 2;
       let shoulder = spec.shoulderL + spec.shoulderR;
       if (!oneway) shoulder = spec.shoulderR * 2 + (spec.rank >= 8 ? spec.shoulderL : 0);
       // Gameplay floor: keep narrow OSM ways drivable (car is ~1.8 m wide).
-      const width = Math.max(lanes * spec.laneW + shoulder, oneway ? 4.4 : 6.2);
+      const width = spec.lane ? Math.max(3.6, lanes * spec.laneW + shoulder) : Math.max(lanes * spec.laneW + shoulder, oneway ? 4.4 : 6.2);
       this.roads.push({
         id: r.id,
         cls: r.h,
@@ -190,6 +202,7 @@ export class RoadNetwork {
       if (pts.length > 1) this.rail.push({ pts, name: r.n || '' });
     }
 
+    this.welds = this.#weld();
     this.#buildGraph();
     this.#buildIndex();
     this.#buildRender();
@@ -197,6 +210,143 @@ export class RoadNetwork {
   }
 
   // ---- traffic graph (endpoint graph, as in the Horus version) -------------
+
+  // ---- weld loose road ends ------------------------------------------------
+  // OSM ways are simplified one by one, so a way that ends ON another way can
+  // lose its shared vertex and dead-end a metre or two beside it ("unfinished"
+  // roads with a gap at the junction). Some ways also stop a few metres short.
+  // Snap every loose end onto the nearest other road: to its vertex if one is
+  // close, else insert a new shared vertex into that road.
+  #weld() {
+    const keyOf = (p) => p[0] + ',' + p[1];
+    const use = new Map();
+    for (const road of this.roads) {
+      let prev = '';
+      for (const p of road.raw) {
+        const k = keyOf(p);
+        if (k === prev) continue;
+        prev = k;
+        use.set(k, (use.get(k) || 0) + 1);
+      }
+    }
+    const G = 40;
+    const grid = new Map();
+    const cellAdd = (k, road, i) => {
+      let l = grid.get(k);
+      if (!l) grid.set(k, (l = []));
+      l.push(road, i);
+      if (!road._cells) road._cells = new Set();
+      road._cells.add(k);
+    };
+    for (const road of this.roads) {
+      const pts = road.pts;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const x0 = Math.floor(Math.min(pts[i][0], pts[i + 1][0]) / G);
+        const x1 = Math.floor(Math.max(pts[i][0], pts[i + 1][0]) / G);
+        const z0 = Math.floor(Math.min(pts[i][1], pts[i + 1][1]) / G);
+        const z1 = Math.floor(Math.max(pts[i][1], pts[i + 1][1]) / G);
+        if ((x1 - x0 + 1) * (z1 - z0 + 1) > 64) continue;
+        for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) cellAdd(cx * 100000 + cz, road, i);
+      }
+    }
+    const recum = (road) => {
+      const pts = road.pts;
+      const cum = new Float64Array(pts.length);
+      for (let i = 1; i < pts.length; i++) cum[i] = cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      road.cum = cum;
+      road.len = cum[pts.length - 1];
+    };
+    let welded = 0;
+    for (const road of this.roads) {
+      const n = road.pts.length;
+      if (n < 2 || road.raw.length !== n) continue;
+      for (const atStart of [true, false]) {
+        const ei = atStart ? 0 : n - 1;
+        const ni = atStart ? 1 : n - 2;
+        const k0 = keyOf(road.raw[ei]);
+        if (use.get(k0) !== 1) continue;
+        const ex = road.pts[ei][0];
+        const ez = road.pts[ei][1];
+        let dx = ex - road.pts[ni][0];
+        let dz = ez - road.pts[ni][1];
+        const dl = Math.hypot(dx, dz) || 1;
+        dx /= dl;
+        dz /= dl;
+        const MAXD = 7;
+        let best = null;
+        let bd = MAXD;
+        const seen = new Set();
+        const gx = Math.floor(ex / G);
+        const gz = Math.floor(ez / G);
+        for (let cz = gz - 1; cz <= gz + 1; cz++) {
+          for (let cx = gx - 1; cx <= gx + 1; cx++) {
+            const l = grid.get(cx * 100000 + cz);
+            if (!l) continue;
+            for (let j = 0; j < l.length; j += 2) {
+              const o = l[j];
+              const i = l[j + 1];
+              if (o === road || seen.has(o.id2 * 100000 + i)) continue;
+              seen.add(o.id2 * 100000 + i);
+              if (o.bridge !== road.bridge) continue;
+              if ((o.rank >= 8) !== (road.rank >= 8) && !o.cls.endsWith('_link') && !road.cls.endsWith('_link')) continue;
+              const a = o.pts[i];
+              const b = o.pts[i + 1];
+              const sx = b[0] - a[0];
+              const sz = b[1] - a[1];
+              const L2 = sx * sx + sz * sz || 1;
+              const t = Math.max(0, Math.min(1, ((ex - a[0]) * sx + (ez - a[1]) * sz) / L2));
+              const px = a[0] + sx * t;
+              const pz = a[1] + sz * t;
+              const d = Math.hypot(px - ex, pz - ez);
+              if (d >= bd) continue;
+              // beyond ~2.5 m only weld if the road was heading that way
+              if (d > 2.5 && ((px - ex) * dx + (pz - ez) * dz) / d < 0.6) continue;
+              bd = d;
+              best = { o, i, t, px, pz };
+            }
+          }
+        }
+        if (!best) continue;
+        const o = best.o;
+        let vi = -1;
+        const a = o.pts[best.i];
+        const b = o.pts[best.i + 1];
+        if (Math.hypot(a[0] - best.px, a[1] - best.pz) < 1.5) vi = best.i;
+        else if (Math.hypot(b[0] - best.px, b[1] - best.pz) < 1.5) vi = best.i + 1;
+        if (vi < 0) {
+          if (o.raw.length !== o.pts.length) continue;
+          // new shared vertex: interpolate raw lon/lat at the same place
+          const ra = o.raw[best.i];
+          const rb = o.raw[best.i + 1];
+          const lon = Math.round((ra[0] + (rb[0] - ra[0]) * best.t) * 1e5) / 1e5;
+          const lat = Math.round((ra[1] + (rb[1] - ra[1]) * best.t) * 1e5) / 1e5;
+          const q = toXZ(lon, lat);
+          o.raw = o.raw.slice(0, best.i + 1).concat([[lon, lat]], o.raw.slice(best.i + 1));
+          o.pts = o.pts.slice(0, best.i + 1).concat([q], o.pts.slice(best.i + 1));
+          recum(o);
+          vi = best.i + 1;
+          // keep the segment grid valid for later welds onto this road
+          for (const ck of o._cells) {
+            const l = grid.get(ck);
+            for (let j = 0; j < l.length; j += 2) if (l[j] === o && l[j + 1] > best.i) l[j + 1]++;
+          }
+          const cx = Math.floor(q[0] / G);
+          const cz = Math.floor(q[1] / G);
+          cellAdd(cx * 100000 + cz, o, best.i);
+        }
+        const kv = keyOf(o.raw[vi]);
+        road.raw[ei] = [o.raw[vi][0], o.raw[vi][1]];
+        road.pts[ei] = [o.pts[vi][0], o.pts[vi][1]];
+        recum(road);
+        use.set(k0, 0);
+        use.set(kv, (use.get(kv) || 0) + 1);
+        welded++;
+      }
+    }
+    for (const road of this.roads) road._cells = null;
+    return welded;
+  }
+
   #buildGraph() {
     const nodes = [];
     const nodeMap = new Map();
@@ -806,6 +956,9 @@ export class RoadNetwork {
       }),
       pier: new THREE.MeshLambertMaterial({ color: 0x9a968e })
     };
+    // bridge decks / fascias: a touch of self-light so undersides aren't pitch black
+    this.mats.structure = this.mats.concrete.clone();
+    this.mats.structure.emissive = new THREE.Color().setRGB(0.07, 0.07, 0.068, THREE.LinearSRGBColorSpace);
 
     this.chunks = new Map();
     const chunkAt = (x, z) => {
@@ -888,9 +1041,14 @@ export class RoadNetwork {
                 b = S.v(x, y - 1.3, z, 0.26, v, fascia.r * 0.8, fascia.g * 0.8, fascia.b * 0.8);
               } else {
                 const off = s.offs[k];
-                const out = off * 1.7 + 0.4;
+                // no embankment where the ramp is nearly at grade or near a
+                // junction (it would cover the crossing street's paving)
+                const fromA = s.ds[k];
+                const fromB = s.ds[s.m - 1] - s.ds[k];
+                const nearJ = (pc.nA.junction && fromA < 14) || (pc.nB.junction && fromB < 14);
+                const out = off < 0.6 || nearJ ? 0 : off * 1.7 + 0.4;
                 a = S.v(x, y, z, 0, v, earth.r, earth.g, earth.b);
-                b = S.v(x + s.lx[k] * out * side, y - off - 0.6, z + s.lz[k] * out * side, out * TEX_SCALE, v, earth.r * 0.85, earth.g * 0.85, earth.b * 0.85);
+                b = S.v(x + s.lx[k] * out * side, out ? y - off - 0.6 : y - 0.05, z + s.lz[k] * out * side, out * TEX_SCALE, v, earth.r * 0.85, earth.g * 0.85, earth.b * 0.85);
               }
               if (pa >= 0) {
                 if (side > 0) S.quad(pa, pb, a, b);
@@ -1042,7 +1200,7 @@ export class RoadNetwork {
     }
 
     for (const c of this.cells.values()) {
-      for (const [key, mat, far] of [['major', this.mats.asphalt, ROAD_FAR], ['minor', this.mats.asphalt, MINOR_FAR], ['struct', this.mats.concrete, ROAD_FAR]]) {
+      for (const [key, mat, far] of [['major', this.mats.asphalt, ROAD_FAR], ['minor', this.mats.asphalt, MINOR_FAR], ['struct', this.mats.structure, ROAD_FAR]]) {
         const g = c[key].toGeometry(key === 'struct');
         c[key] = null;
         if (!g) continue;
@@ -1498,7 +1656,9 @@ export class RoadNetwork {
       let score;
       // Staying on the road you are driving lets you climb a ramp step
       // (junction/bridge seams) instead of dropping under the deck.
-      const same = aligned || (pc !== null && prevRoad !== null && (pc.road === prevRoad || (pc.road.name !== '' && pc.road.name === prevRoad.name) || (pc.road.ref !== '' && pc.road.ref === prevRoad.ref)));
+      // Only pieces physically joined to the road we're on count: a parallel
+      // carriageway or flyover with the same ref/heading must not pull the car up.
+      const same = pc !== null && prevRoad !== null && linked(pc, prevRoad) && (aligned || pc.road === prevRoad || (pc.road.name !== '' && pc.road.name === prevRoad.name) || (pc.road.ref !== '' && pc.road.ref === prevRoad.ref));
       if (prevY === null) score = y; // lowest layer when unknown
       else if (y > prevY + (same ? 4.5 : 1.4)) return;
       else score = Math.abs(y - prevY) - (same ? 5 : 0);
@@ -1529,7 +1689,10 @@ export class RoadNetwork {
         const l2 = dx * dx + dz * dz;
         if (l2 < 1e-6) continue;
         const t = ((x - ax) * dx + (z - az) * dz) / l2;
-        if (t < -0.02 || t > 1.02) continue;
+        // elevated piece ends get ~2.5 m of overlap so seams between decks and
+        // ramps have no hole to drop through
+        const slack = pc.elevated ? 2.5 / Math.sqrt(l2) : 0.02;
+        if (t < (i === 1 ? -slack : -0.02) || t > (i === s.m - 1 ? 1 + slack : 1.02)) continue;
         const tc = t < 0 ? 0 : t > 1 ? 1 : t;
         const l = Math.sqrt(l2);
         const lat = ((x - ax) * dz - (z - az) * dx) / l; // + = left

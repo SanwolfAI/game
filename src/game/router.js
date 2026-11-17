@@ -75,7 +75,8 @@ export class Router {
       const b = id(pc.nB);
       if (a === b) continue;
       // car speed weighting: prefer main roads a little (time-like cost)
-      const w = pc.len / Math.max(8, pc.road.speed);
+      // lanes/passages only when nothing else gets there
+      const w = (pc.len / Math.max(8, pc.road.speed)) * (pc.road.rank <= 1 ? 4 : 1);
       nodes[a].out.push({ to: b, pc, fwd: true, w });
       if (!pc.road.oneway) nodes[b].out.push({ to: a, pc, fwd: false, w });
     }
