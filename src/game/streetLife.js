@@ -33,9 +33,9 @@ const R_BUILD = 230; // rebuild slots within this radius
 const R_MOVE = 70; // rebuild after moving this far
 const MAX_WALK = 300;
 const MAX_STAND = 260;
-const MAX_STALL = 70;
+const MAX_STALL = 160;
 const MAX_UMB = 40;
-const MAX_RACK = 30;
+const MAX_RACK = 60;
 const MAX_BARB = 14;
 const MAX_PARK = 140;
 const MAX_HEAD = 60;
@@ -230,6 +230,52 @@ function bottleGeo() {
   return mergeGeometries([b, n]);
 }
 
+// ---- real people: CC-BY figures baked into pose frames ----------------------
+// scripts: work/bake/bake.html poses the rigged Sketchfab figures (walk cycle,
+// standing, seated, arm up, arms forward) and bakes each pose to a static
+// mesh with one texture atlas per figure (src/assets/people/). Each pose is an
+// InstancedMesh, so the nearest people are real figures for a few draw calls.
+const NEAR = 70;
+const NEAR_R = 60;
+let REAL = null;
+
+export async function loadPeople(base = './src/assets/people/') {
+  try {
+    const meta = await (await fetch(base + 'people.json')).json();
+    const buf = await (await fetch(base + 'people.bin')).arrayBuffer();
+    const figs = [];
+    for (const f of meta.figs) {
+      const uv16 = new Uint16Array(buf, f.uvOff, f.nv * 2);
+      const uvf = new Float32Array(f.nv * 2);
+      for (let i = 0; i < uvf.length; i++) uvf[i] = uv16[i] / 65535;
+      const uv = new THREE.BufferAttribute(uvf, 2);
+      const idxArr = f.idx32 ? new Uint32Array(buf, f.idxOff, f.ni) : new Uint16Array(buf, f.idxOff, f.ni);
+      const index = new THREE.BufferAttribute(idxArr, 1);
+      const tex = await new THREE.TextureLoader().loadAsync(base + f.name + '.webp');
+      tex.flipY = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
+      const geos = {};
+      f.frames.forEach((name, k) => {
+        const p16 = new Int16Array(buf, f.frameOff[k], f.nv * 3);
+        const pf = new Float32Array(p16.length);
+        for (let i = 0; i < pf.length; i++) pf[i] = p16[i] / 1000;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(pf, 3));
+        g.setAttribute('uv', uv);
+        g.setIndex(index);
+        g.computeVertexNormals();
+        geos[name] = g;
+      });
+      figs.push({ name: f.name, geos, mat, frames: f.frames });
+    }
+    REAL = figs;
+  } catch (err) {
+    console.warn('[IZK] real people not loaded', err);
+  }
+  return REAL;
+}
+
 export class StreetLife {
   constructor(roads, hf, buildings, rng) {
     this.roads = roads;
@@ -300,6 +346,19 @@ export class StreetLife {
     this.mGlow = inst(new THREE.SphereGeometry(0.02, 4, 3), new THREE.MeshBasicMaterial({ color: 0xff6a1a, toneMapped: false }), MAX_HAND);
     this.props = [this.mFrame, this.mTop, this.mFrame2, this.mTable, this.mProduce, this.mRack, this.mGarment, this.mUmbPole, this.mUmbTop, this.mBarber, this.mChair, this.mLoad, this.mBottle, this.mGlow];
     for (const m of this.people) this.group.add(m);
+    // real figures (nearest people)
+    this.real = [];
+    if (REAL) {
+      for (const f of REAL) {
+        const byFrame = {};
+        for (const name of f.frames) {
+          const m = inst(f.geos[name], f.mat, NEAR);
+          this.group.add(m);
+          byFrame[name] = m;
+        }
+        this.real.push({ name: f.name, byFrame, counts: {} });
+      }
+    }
     for (const m of this.props) this.group.add(m);
 
     // parked cars: one instanced set per type, using the traffic models
@@ -397,6 +456,12 @@ export class StreetLife {
     return o;
   }
 
+  // A 40 m stretch of pavement that is one long run of joined gazebos.
+  #market(road, s, side, k) {
+    if (k < 0.6 || !WALK_CLS[road.cls] || WALK_CLS[road.cls] < 0.9) return false;
+    return hash(road.id2, Math.floor(s / 40), side + 101) < 0.22 * k;
+  }
+
   #y(x, z) {
     return this.roads.surfaceHeightAt ? this.roads.surfaceHeightAt(x, z, null) : this.hf.heightAt(x, z);
   }
@@ -464,6 +529,28 @@ export class StreetLife {
         }
       }
       if (!wk) continue;
+      // market rows: gazebos joined edge to edge along a whole stretch
+      if (wk >= 0.9) {
+        for (let side = -1; side <= 1; side += 2) {
+          for (let b0 = 0; b0 < road.len; b0 += 40) {
+            const mid = this.#pointAt(road, Math.min(road.len, b0 + 20));
+            if (Math.hypot(mid.x - px, mid.z - pz) > R) continue;
+            const k = this.intensity(mid.x, mid.z);
+            if (!this.#market(road, b0 + 1, side, k) || !day) continue;
+            for (let s = Math.max(8, b0 + 2); s < Math.min(road.len - 8, b0 + 40); s += 2.45) {
+              if (stalls.length >= MAX_STALL + MAX_RACK) break;
+              const p = this.#pointAt(road, s);
+              const lx = p.fz * side;
+              const lz = -p.fx * side;
+              const x = p.x + lx * (hw + 1.3);
+              const z = p.z + lz * (hw + 1.3);
+              if (this.#blocked(x + lx * 0.9, z + lz * 0.9, 0.5)) continue;
+              const h = hash(road.id2, Math.round(s * 10), side + 55);
+              stalls.push({ kind: h < 0.72 ? 'stall' : 'rack', joined: true, x, z, y: this.#y(x, z), yaw: Math.atan2(lx, lz), h: hash(road.id2, b0, side + 77) * 0.3 + h * 0.7, lx, lz, fx: p.fx, fz: p.fz, canopy: hash(road.id2, b0, side + 9) });
+            }
+          }
+        }
+      }
       // pavement slots every 5 m, both sides
       for (let s = 8; s < road.len - 8; s += 5) {
         const p = this.#pointAt(road, s);
@@ -479,11 +566,12 @@ export class StreetLife {
           if (!day && !evening) continue;
           // fixed features (same spot every visit)
           const ox = hw + WALK_W - 0.35;
-          if (day && k > 0.45 && h < 0.075 * k && stalls.length < MAX_STALL + MAX_UMB + MAX_RACK + MAX_BARB) {
+          if (day && k > 0.45 && h < 0.075 * k && stalls.length < MAX_STALL + MAX_UMB + MAX_RACK + MAX_BARB && !this.#market(road, s, side, k)) {
             const x = p.x + lx * (hw + 1.3);
             const z = p.z + lz * (hw + 1.3);
             if (this.#blocked(x + lx * 0.9, z + lz * 0.9, 0.6)) continue;
-            const kind = h < 0.03 * k ? 'stall' : h < 0.045 * k ? 'rack' : h < 0.06 * k ? 'umb' : 'barber';
+            // single sellers: own table, umbrella, rack, goods on a mat, or a barber
+            const kind = h < 0.022 * k ? 'stall' : h < 0.034 * k ? 'mat' : h < 0.046 * k ? 'rack' : h < 0.06 * k ? 'umb' : 'barber';
             stalls.push({ kind, x, z, y: this.#y(x, z), yaw: Math.atan2(lx, lz), h, lx, lz, fx: p.fx, fz: p.fz });
             continue;
           }
@@ -544,7 +632,10 @@ export class StreetLife {
         standers.push(this.#person(st.x - st.lx * 0.05, st.z - st.lz * 0.05, st.yaw + Math.PI, 'seated', r, st.y + 0.0));
         standers.push(this.#person(st.x + st.lx * 0.55, st.z + st.lz * 0.55, st.yaw + Math.PI, 'cut', (r * 7) % 1));
         if (r < 0.6) standers.push(this.#person(st.x + st.fx * 1.4, st.z + st.fz * 1.4, st.yaw + 2.2, 'seated', (r * 13) % 1, st.y, true));
+      } else if (st.kind === 'mat') {
+        standers.push(this.#person(vx + st.lx * 0.2, vz + st.lz * 0.2, st.yaw + Math.PI, 'seated', r, st.y - 0.12, false));
       } else {
+        if (st.joined && r > 0.8) continue; // a few stalls are minded by the neighbour
         standers.push(this.#person(vx, vz, st.yaw + Math.PI, r < 0.3 ? 'seated' : 'sell', r, st.y, r < 0.3));
         const nc = Math.floor(r * 3);
         for (let i = 0; i < nc; i++) {
@@ -642,6 +733,8 @@ export class StreetLife {
   // ---- per-frame ---------------------------------------------------------------
   update(dt, px, pz, hour, player = null, onCrash = null) {
     this.hour = hour;
+    this.px = px;
+    this.pz = pz;
     this.t += dt;
     this.frame++;
     if (Math.hypot(px - this.cx, pz - this.cz) > R_MOVE) this.#rebuild(px, pz);
@@ -801,7 +894,40 @@ export class StreetLife {
         this.mProduce.setColorAt(nStall, pick(PRODUCE, r));
         nStall++;
         this.mTop.setMatrixAt(nTop, m);
-        this.mTop.setColorAt(nTop++, pick(CANOPY, (r * 7) % 1));
+        this.mTop.setColorAt(nTop++, pick(CANOPY, st.joined ? (st.canopy + (st.h < 0.2 ? 0.5 : 0)) % 1 : (r * 7) % 1));
+      } else if (st.kind === 'mat' && nStall < MAX_STALL) {
+        // goods laid out on a cloth on the pavement
+        this._s.set(0.9, 0.22, 1.1);
+        m.compose(p, q, this._s);
+        this.mTable.setMatrixAt(nStall, m);
+        this.mProduce.setMatrixAt(nStall, m);
+        this.mProduce.setColorAt(nStall, pick(PRODUCE, (r * 3) % 1));
+        this._s.set(0, 0, 0);
+        m.compose(p, q, this._s);
+        this.mFrame.setMatrixAt(nStall, m);
+        this._s.set(1, 1, 1);
+        nStall++;
+      } else if (st.kind === 'rack' && st.joined && nRack < MAX_RACK && nStall < MAX_STALL) {
+        this.mFrame.setMatrixAt(nStall, m);
+        this._s.set(0, 0, 0);
+        m.compose(p, q, this._s);
+        this.mTable.setMatrixAt(nStall, m);
+        this.mProduce.setMatrixAt(nStall, m);
+        this._s.set(1, 1, 1);
+        nStall++;
+        q.setFromAxisAngle(this._Y, st.yaw);
+        m.compose(p, q, one);
+        this.mTop.setMatrixAt(nTop, m);
+        this.mTop.setColorAt(nTop++, pick(CANOPY, (st.canopy + (st.h < 0.2 ? 0.5 : 0)) % 1));
+        q.setFromAxisAngle(this._Y, st.yaw + Math.PI / 2);
+        m.compose(p, q, one);
+        this.mRack.setMatrixAt(nRack++, m);
+        for (let g = 0; g < 5; g++) {
+          this._p.set(st.x + st.fx * (g - 2) * 0.3, st.y, st.z + st.fz * (g - 2) * 0.3);
+          m.compose(this._p, q, one);
+          this.mGarment.setMatrixAt(nG, m);
+          this.mGarment.setColorAt(nG++, pick(CLOTH, (r * (g + 3) * 5.7) % 1));
+        }
       } else if (st.kind === 'rack' && nRack < MAX_RACK) {
         // rack along the pavement, under an umbrella
         q.setFromAxisAngle(this._Y, st.yaw + Math.PI / 2);
@@ -914,7 +1040,71 @@ export class StreetLife {
     const t = this.t;
     const day = this.hour >= 6 && this.hour < 18.5;
     const all = this.walkers;
+    const real = this.real;
+    let nReal = 0;
+    if (real.length) for (const f of real) for (const k in f.byFrame) f.counts[k] = 0;
+    const cx = this.px === undefined ? 0 : this.px;
+    const cz = this.pz === undefined ? 0 : this.pz;
+    const writeReal = (h) => {
+      // pick figure (stable per person) and pose frame
+      let fi;
+      const r = (h.phase * 0.618) % 1;
+      if (h.female) fi = r < 0.5 ? 0 : 2;
+      else fi = r < 0.78 ? 1 : 3;
+      fi = Math.min(fi, real.length - 1);
+      const f = real[fi];
+      let frame = 'stand';
+      switch (h.act) {
+        case 'walk': {
+          const c = ((h.phase / (Math.PI * 2)) % 1 + 1) % 1;
+          frame = 'walk' + Math.floor(c * 6);
+          break;
+        }
+        case 'seated':
+          frame = 'seated';
+          break;
+        case 'smoke':
+          frame = (t * 0.35 + h.phase) % 1 < 0.25 ? 'armup' : 'stand';
+          break;
+        case 'drink':
+          frame = (t * 0.25 + h.phase) % 1 < 0.2 ? 'armup' : 'stand2';
+          break;
+        case 'phone':
+          frame = 'armup';
+          break;
+        case 'cut':
+          frame = 'cut';
+          break;
+        case 'sell':
+          frame = Math.sin(t * 0.9 + h.phase) > 0.7 ? 'cut' : 'stand';
+          break;
+        default:
+          frame = r < 0.5 ? 'stand' : 'stand2';
+      }
+      const mesh = f.byFrame[frame] || f.byFrame.stand;
+      const i = f.counts[frame] || 0;
+      if (i >= NEAR) return false;
+      const sc = h.scale * 0.97;
+      this._q.setFromAxisAngle(this._Y, h.yaw);
+      this._s.set((h.phase * 7.7) % 1 < 0.5 ? -sc : sc, sc, sc);
+      this._p.set(h.x, h.y, h.z);
+      this._m.compose(this._p, this._q, this._s);
+      mesh.setMatrixAt(i, this._m);
+      f.counts[frame] = i + 1;
+      if (h.load && nLoad < MAX_HEAD) {
+        this._s.set(sc, sc, sc);
+        this._p.set(h.x, h.y + 1.86 * sc, h.z);
+        this._m.compose(this._p, this._q, this._s);
+        this.mLoad.setMatrixAt(nLoad, this._m);
+        this.mLoad.setColorAt(nLoad++, h.hair);
+      }
+      return true;
+    };
     const write = (h) => {
+      if (real.length && nReal < NEAR && Math.abs(h.x - cx) < NEAR_R && Math.abs(h.z - cz) < NEAR_R && writeReal(h)) {
+        nReal++;
+        return;
+      }
       if (n >= this.P) return;
       let swing = 0;
       let armL = 0;
@@ -1072,6 +1262,14 @@ export class StreetLife {
       write(h);
     }
     for (const w of all) write(w);
+    for (const f of real) {
+      for (const k in f.byFrame) {
+        const m = f.byFrame[k];
+        m.count = f.counts[k] || 0;
+        m.visible = m.count > 0;
+        if (m.count) m.instanceMatrix.needsUpdate = true;
+      }
+    }
     for (const mesh of this.people) {
       mesh.count = n;
       mesh.instanceMatrix.needsUpdate = true;

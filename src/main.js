@@ -16,7 +16,7 @@ import { Vehicle } from './game/vehicle.js';
 import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
-import { StreetLife } from './game/streetLife.js';
+import { StreetLife, loadPeople } from './game/streetLife.js';
 import { Input } from './game/input.js';
 import { honk, unlockAudio, tick, updateEngine, toggleMute } from './game/audio.js';
 import { HUD } from './ui/hud.js';
@@ -198,7 +198,7 @@ async function main() {
   const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
-  await Promise.race([Promise.all([loadCarModels(), props.load()]), new Promise((r) => setTimeout(r, 20000))]);
+  await Promise.race([Promise.all([loadCarModels(), props.load(), loadPeople()]), new Promise((r) => setTimeout(r, 20000))]);
 
   setLoad(90, 'Warming up the engine…');
   await nextFrame();

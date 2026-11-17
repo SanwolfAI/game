@@ -58,6 +58,8 @@ export class BigMap {
           "1991 BMW 325i (E30) — Pink Slip Kings" by micorlov, <a href="https://sketchfab.com/3d-models/1991-bmw-325i-e30-pink-slip-kings-f0399f2b18394643bf57d20ba3b72a98" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0 (optimised).<br>
           "Low-Poly BMW" by Luka.Fox, <a href="https://sketchfab.com/3d-models/low-poly-bmw-8dd6a439eed349b9a4d073ca20166ac3" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0.<br>
           "Toyota HiAce 2004" by Abdelrahman Elbaqsawi, <a href="https://sketchfab.com/3d-models/toyota-hiace-2004-0b7aa3f313e5469f83d6bf03a88299d1" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0.<br>
+          People: "Ps2 style Senegalese Casamance male and female" and "Ps2 style karnatid tamil indian male and female" by Humans of the World, <a href="https://sketchfab.com/humansoftheworld" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0; "Low-Poly Construction workers (animated)" by Jungle Jim, <a href="https://sketchfab.com/3d-models/low-poly-construction-workers-animated-7b62e6e1b58c476f8b421dd007a4ff90" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0 (posed and baked for the game).<br>
+          Terrain: AWS Terrain Tiles (SRTM, NASA / Mapzen). Street-level reference: Mapillary contributors, CC BY-SA 4.0.<br>
           Kenney City Kit Roads and Nature Kit (CC0). Textures: Poly Haven (CC0). SA road signs: SADC-RTSM drawings, Wikimedia Commons (public domain); direction boards drawn in-game in SARTSM style from OpenStreetMap names.
         </div>
       </details>`;

@@ -1,0 +1,135 @@
+<!doctype html><html><body><script type="module">
+import * as THREE from '/vendor/three/three.module.js';
+import { GLTFLoader } from '/vendor/three/loaders/GLTFLoader.js';
+const FIG = [
+  { file: '/models/people/senegalese_pair_hotw.glb', skin: 0, name: 'senF', idle: 'Armature.F|look around idle bored fix' },
+  { file: '/models/people/tamil_indian_pair_hotw.glb', skin: 1, name: 'tamM', idle: 'Armature.M|talk hand forward' },
+  { file: '/models/people/tamil_indian_pair_hotw.glb', skin: 0, name: 'tamF', idle: 'Armature.F|bashful' },
+  { file: '/models/people/construction_worker_jj.glb', skin: 0, name: 'work', idle: null, height: 1.82, tpose: true }
+];
+const W = 6;
+const POSES = [];
+for (let k = 0; k < W; k++) POSES.push({ name: 'walk' + k, walk: (k / W) * Math.PI * 2 });
+POSES.push({ name: 'stand', t: 0 }, { name: 'stand2', t: 0.5 }, { name: 'seated', seat: true }, { name: 'armup', armup: true }, { name: 'cut', cut: true });
+const loader = new GLTFLoader();
+const up = new THREE.Vector3(0, 1, 0);
+function rotW(bone, axis, ang) {
+  if (!bone || !ang) return;
+  const q = new THREE.Quaternion().setFromAxisAngle(axis, ang);
+  const pw = new THREE.Quaternion(); bone.parent.getWorldQuaternion(pw);
+  const bw = new THREE.Quaternion(); bone.getWorldQuaternion(bw);
+  bone.quaternion.copy(pw.invert().multiply(q.multiply(bw)));
+  bone.updateMatrixWorld(true);
+}
+const out = { figs: [] };
+const bins = [];
+const atlases = {};
+const cache = {};
+for (const F of FIG) {
+  const gltf = cache[F.file] || (cache[F.file] = await loader.loadAsync(F.file));
+  const scene = gltf.scene;
+  scene.updateMatrixWorld(true);
+  const sk = [];
+  scene.traverse((o) => { if (o.isSkinnedMesh) sk.push(o); });
+  // group by skeleton root bone (hips)
+  const roots = [];
+  for (const m of sk) { const r = m.skeleton.bones.find((b) => /^Hips|Hip_/.test(b.name)); if (!roots.includes(r)) roots.push(r); }
+  // which root is this figure: order roots by first appearance; skin index from json order = mesh order heuristics
+  const meshes = sk.filter((m) => m.skeleton.bones.includes(roots[F.skin === 0 ? 0 : 1]) && !/tongue|teeth|Hammer/i.test(m.name + (m.parent ? m.parent.name : '') + (m.material.name || '')) && !/isthmid/.test(m.material.name));
+  console.log(F.name, 'meshes', meshes.map((m) => m.name + '/' + m.material.name).join(', '));
+  const bones = meshes[0].skeleton.bones;
+  const B = (re) => bones.find((b) => re.test(b.name));
+  const bn = { hips: B(/^Hips_|CC_Base_Hip_/), head: B(/^Head_|CC_Base_Head_/), ul: B(/^LeftUpLeg_|CC_Base_L_Thigh/), ur: B(/^RightUpLeg_|CC_Base_R_Thigh/), ll: B(/^LeftLeg_|CC_Base_L_Calf/), lr: B(/^RightLeg_|CC_Base_R_Calf/), al: B(/^LeftArm_|CC_Base_L_Upperarm/), ar: B(/^RightArm_|CC_Base_R_Upperarm/), fl: B(/^LeftForeArm_|CC_Base_L_Forearm/), fr: B(/^RightForeArm_|CC_Base_R_Forearm/) };
+  console.log(F.name, Object.entries(bn).map(([k, b]) => k + ':' + (b ? b.name : 'MISSING')).join(' '));
+  const mixer = new THREE.AnimationMixer(scene);
+  const clip = F.idle ? gltf.animations.find((c) => c.name === F.idle) : null;
+  // materials -> atlas
+  const mats = [];
+  for (const m of meshes) if (m.material.map && !mats.includes(m.material)) mats.push(m.material);
+  const N = Math.ceil(Math.sqrt(mats.length));
+  const T = 512;
+  const cv = document.createElement('canvas'); cv.width = cv.height = N * T;
+  const cx = cv.getContext('2d');
+  mats.forEach((m, i) => { cx.drawImage(m.map.image, (i % N) * T, Math.floor(i / N) * T, T, T); });
+  atlases[F.name] = cv.toDataURL('image/webp', 0.86);
+  // static topology
+  let nv = 0; const idx = []; const uvs = []; const meshInfo = [];
+  for (const m of meshes) {
+    const g = m.geometry; const n = g.attributes.position.count;
+    const mi = mats.indexOf(m.material); const tx = mi % N, ty = Math.floor(mi / N);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < n; i++) {
+      let u = uv ? uv.getX(i) : 0.5, v = uv ? uv.getY(i) : 0.5;
+      if (u < 0 || u > 1) u -= Math.floor(u); if (v < 0 || v > 1) v -= Math.floor(v);
+      if (mi < 0) { u = 0.001; v = 0.001; }
+      uvs.push((tx + u) / N, (ty + v) / N);
+    }
+    if (g.index) for (let i = 0; i < g.index.count; i++) idx.push(g.index.getX(i) + nv); else for (let i = 0; i < n; i++) idx.push(i + nv);
+    meshInfo.push({ m, n, base: nv }); nv += n;
+  }
+  const frames = [];
+  let ref = null;
+  for (const P of POSES) {
+    mixer.stopAllAction();
+    for (const b of bones) if (b.userData.q0) b.quaternion.copy(b.userData.q0); else b.userData.q0 = b.quaternion.clone();
+    if (clip) { const a = mixer.clipAction(clip); a.reset().play(); mixer.setTime(P.t !== undefined ? P.t * clip.duration : 0); }
+    scene.updateMatrixWorld(true);
+    // body frame
+    const hp = new THREE.Vector3(); bn.hips.getWorldPosition(hp);
+    const hd = new THREE.Vector3(); bn.head.getWorldPosition(hd);
+    // forward from feet: toes ahead of ankles -> use eyes mesh center
+    if (!ref) {
+      const eye = meshes.find((m) => /eye/i.test(m.name + m.parent.name)) ;
+      const box = new THREE.Box3().setFromObject(eye || meshes[0]);
+      const ec = box.getCenter(new THREE.Vector3());
+      const f = ec.sub(hd); f.y = 0; f.normalize();
+      ref = { f, A: new THREE.Vector3().crossVectors(f, up).normalize() };
+    }
+    const A = ref.A;
+    if (F.tpose) { rotW(bn.al, ref.f, -1.3); rotW(bn.ar, ref.f, 1.3); }
+    if (P.walk !== undefined) {
+      const s = Math.sin(P.walk), c = Math.cos(P.walk);
+      rotW(bn.ul, A, 0.42 * s); rotW(bn.ur, A, -0.42 * s);
+      rotW(bn.ll, A, -(0.08 + 0.55 * Math.max(0, -Math.sin(P.walk - 0.9))));
+      rotW(bn.lr, A, -(0.08 + 0.55 * Math.max(0, Math.sin(P.walk - 0.9))));
+      rotW(bn.al, A, -0.35 * s); rotW(bn.ar, A, 0.35 * s);
+      rotW(bn.fl, A, 0.25); rotW(bn.fr, A, 0.25);
+    }
+    if (P.seat) { rotW(bn.ul, A, 1.45); rotW(bn.ur, A, 1.4); rotW(bn.ll, A, -1.5); rotW(bn.lr, A, -1.45); rotW(bn.al, A, 0.5); rotW(bn.ar, A, 0.5); }
+    if (P.armup) { rotW(bn.ar, A, 0.9); rotW(bn.fr, A, 1.7); }
+    if (P.cut) { rotW(bn.al, A, 1.0); rotW(bn.ar, A, 1.1); rotW(bn.fl, A, 0.7); rotW(bn.fr, A, 0.6); }
+    scene.updateMatrixWorld(true);
+    const pos = new Float32Array(nv * 3);
+    const v = new THREE.Vector3();
+    for (const { m, n, base } of meshInfo) {
+      m.skeleton.update();
+      for (let i = 0; i < n; i++) { v.fromBufferAttribute(m.geometry.attributes.position, i); m.applyBoneTransform(i, v); v.applyMatrix4(m.matrixWorld); pos.set([v.x, v.y, v.z], (base + i) * 3); }
+      if (!m.userData.ok) { let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, Math.abs(pos[(base + i) * 3 + 1])); m.userData.ok = 1; console.log('mesh', m.name, 'maxY', mx.toFixed(2)); }
+    }
+    frames.push({ P, pos, hp: hp.clone() });
+  }
+  // normalise: centre on stand-frame hips, ground at stand min y, face +Z
+  const st = frames.find((f) => f.P.name === 'stand');
+  let miny = Infinity; let maxy = -Infinity; for (let i = 1; i < st.pos.length; i += 3) { miny = Math.min(miny, st.pos[i]); maxy = Math.max(maxy, st.pos[i]); }
+  const S = F.height ? F.height / (maxy - miny) : 1;
+  const yaw = Math.atan2(ref.f.x, ref.f.z);
+  const cy = Math.cos(-yaw), sy = Math.sin(-yaw);
+  const fdata = [];
+  for (const fr of frames) {
+    const p = fr.pos; let dy = -miny;
+    if (fr.P.seat) dy = 0.54 / S - fr.hp.y;
+    const q = new Int16Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i] - st.hp.x, z = p[i + 2] - st.hp.z;
+      const rx = x * cy + z * sy, rz = -x * sy + z * cy;
+      q[i] = Math.round(rx * S * 1000); q[i + 1] = Math.round((p[i + 1] + dy) * S * 1000); q[i + 2] = Math.round(rz * S * 1000);
+    }
+    fdata.push(q);
+  }
+  const height = (Math.max.apply(null, Array.from(fdata[W]).filter((_, i) => i % 3 === 1))) / 1000;
+  out.figs.push({ name: F.name, nv, ni: idx.length, frames: POSES.map((p) => p.name), height, mats: mats.map((m) => m.name), alpha: mats.map((m) => m.transparent || m.alphaTest > 0) });
+  bins.push({ uv: Array.from(uvs, (u) => Math.round(Math.min(1, Math.max(0, u)) * 65535)), idx, frames: fdata.map((a) => Array.from(a)) });
+}
+window.__out = { meta: out, bins, atlases };
+window.__done = true;
+</script></body></html>
