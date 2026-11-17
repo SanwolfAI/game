@@ -76,7 +76,7 @@ export class CarLights {
       this.group.add(s);
     }
 
-    this.spot = new THREE.SpotLight(0xfff0d8, 0, 85, 0.55, 0.65, 1.2);
+    this.spot = new THREE.SpotLight(0xfff4e2, 0, 110, 0.55, 0.5, 1.0);
     this.spot.target.position.set(0, 0, 30);
     this.group.add(this.spot, this.spot.target);
 
@@ -141,7 +141,7 @@ export class CarLights {
       this.ambers[0].visible = this.ambers[1].visible = !!blink.left;
       this.ambers[2].visible = this.ambers[3].visible = !!blink.right;
     }
-    const hs = on ? 1.1 + k * 0.5 : 0;
+    const hs = on ? 1.4 + k * 0.7 : 0;
     for (const s of this.heads) {
       s.visible = on;
       s.scale.set(hs, hs * 0.6, 1);
@@ -159,12 +159,14 @@ export class CarLights {
       s.scale.set(0.55, 0.4, 1);
     }
     this.revMat.opacity = 0.9;
-    this.spot.intensity = on ? (high ? 75 : 38) * Math.max(k, night) : 0;
-    this.spot.distance = high ? 170 : 85;
-    this.spot.angle = high ? 0.42 : 0.55;
-    this.pool.scale.set(high ? 11 : 9, 1, high ? 60 : 34);
+    // Bright halogen/LED beams: strong spot + a bright additive road pool.
+    const nk = Math.max(k, night, 0.6);
+    this.spot.intensity = on ? (high ? 260 : 150) * nk : 0;
+    this.spot.distance = high ? 220 : 110;
+    this.spot.angle = high ? 0.45 : 0.58;
+    this.pool.scale.set(high ? 14 : 11, 1, high ? 75 : 42);
     this.pool.visible = on;
-    this.pool.material.opacity = (high ? 0.5 : 0.42) * Math.max(night, 0.15) * (on ? 1 : 0);
+    this.pool.material.opacity = (high ? 1.0 : 0.9) * Math.max(night, 0.35) * (on ? 1 : 0);
     void camDist;
   }
 }

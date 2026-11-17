@@ -27,12 +27,14 @@ import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
 import { loadSave, writeSave, clearSave } from './game/save.js';
 import { Medians } from './world/medians.js';
+import { Weather } from './world/weather.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
-const SKY_DUSK = new THREE.Color(0xd97a4d);
+const SKY_DUSK = new THREE.Color(0xe6a27a); // faint warm haze only while the sun is just above the horizon
+const SKY_TWILIGHT = new THREE.Color(0x24406e); // natural blue hour
 const MOON_COLOR = new THREE.Color(0x9db4ff);
 
 const loadFill = document.getElementById('load-fill');
@@ -211,6 +213,7 @@ async function main() {
 
   const stars = buildStars();
   scene.add(stars);
+  const weather = new Weather(scene);
   const moonDisc = new THREE.Mesh(
     new THREE.SphereGeometry(120, 16, 12),
     new THREE.MeshBasicMaterial({ color: 0xe8edff, fog: false })
@@ -461,7 +464,7 @@ async function main() {
     }
 
     sun.position.copy(sunDir).multiplyScalar(1800);
-    sun.intensity = solar.day * (2.3 + (season.id === 'winter' ? 0.5 : 0.2));
+    sun.intensity = solar.day * (2.3 + (season.id === 'winter' ? 0.5 : 0.2)) * (1 - weather.cur.cloud * 0.75);
     sunColor.setHex(season.sun);
     sunColor.lerp(new THREE.Color(0xff8d4d), solar.golden * 0.7);
     sun.color.copy(sunColor);
@@ -470,16 +473,19 @@ async function main() {
     moon.intensity = solar.night * 0.42;
     moon.color.copy(MOON_COLOR);
 
-    const sky = SKY_NIGHT.clone().lerp(daySky, solar.day);
-    sky.lerp(SKY_DUSK, solar.golden * 0.55);
+    // Natural sky: navy night -> blue hour -> day blue. Only a light warm haze at
+    // sunrise/sunset while the sun is still up (no orange sky after dark).
+    const sky = solar.day < 0.5 ? SKY_NIGHT.clone().lerp(SKY_TWILIGHT, solar.day * 2) : SKY_TWILIGHT.clone().lerp(daySky, (solar.day - 0.5) * 2);
+    sky.lerp(SKY_DUSK, solar.golden * 0.16 * Math.min(1, solar.day * 2) * (1 - solar.night));
+    weather.applySky(sky, solar.day);
     scene.background.copy(sky);
 
     fogColor.copy(sky).lerp(daySky, 0.18);
     scene.fog.color.copy(fogColor);
-    scene.fog.near = 750 - solar.night * 320;
-    scene.fog.far = 5200 - solar.night * 2300;
+    scene.fog.near = (750 - solar.night * 320) * weather.cur.fog;
+    scene.fog.far = (5200 - solar.night * 2300) * weather.cur.fog;
 
-    hemi.intensity = 0.3 + solar.day * 1.35;
+    hemi.intensity = (0.3 + solar.day * 1.35) * (1 - weather.cur.cloud * 0.25) + weather.flash * 2.5;
     hemiSky.copy(sky).lerp(daySky, 0.4);
     hemiGround.setHex(season.ground);
     hemi.color.copy(hemiSky);
@@ -494,9 +500,9 @@ async function main() {
     if (terrain.ocean.material.uniforms) terrain.ocean.material.uniforms.uSunDir.value.copy(sunDir);
     scene.environmentIntensity = 0.12 + solar.day * 0.88;
     WORLD.sky.value.copy(sky);
-    stars.material.opacity = solar.night * 0.95;
+    stars.material.opacity = solar.night * 0.95 * (1 - weather.cur.cloud);
     stars.position.copy(camera.position);
-    moonDisc.visible = solar.night > 0.05;
+    moonDisc.visible = solar.night > 0.05 && weather.cur.cloud < 0.6;
     moonDisc.position.copy(camera.position).addScaledVector(moonDir, 7000);
 
     return { season, solar };
@@ -623,6 +629,7 @@ async function main() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = gameClock.tick();
+    weather.update(dt, camera, seasonForDate(now).id, now.getHours());
     const { season, solar } = updateEnvironment(now);
     const ent = entity();
     clockSaveTimer += dt;
@@ -718,7 +725,7 @@ async function main() {
       camera.updateProjectionMatrix();
     }
 
-    hud.updateTime(now, season, solar.night > 0.5);
+    hud.updateTime(now, season, solar.night > 0.5, weather.label);
     hud.update(dt, ent);
     hud.updateDestination(gps);
     minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
@@ -755,7 +762,7 @@ async function main() {
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();

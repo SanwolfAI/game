@@ -63,9 +63,9 @@ export class HUD {
     this.clock.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
-  updateTime(date, season, night) {
+  updateTime(date, season, night, weather = '') {
     this.clock.textContent = formatDurbanTime(date);
-    if (this.clockLabel) this.clockLabel.textContent = night ? 'Durban · night' : 'Durban · day';
+    if (this.clockLabel) this.clockLabel.textContent = (night ? 'Durban · night' : 'Durban · day') + (weather ? ` · ${weather}` : '');
     if (this.dateEl) this.dateEl.textContent = formatDurbanDate(date);
     if (this.seasonEl) this.seasonEl.textContent = `${season.name} · ${season.months}`;
   }

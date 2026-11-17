@@ -54,8 +54,22 @@ const DETAIL_OUT = 760; // dispose them beyond this
 const ROAD_FAR = 4200; // hide arterial asphalt beyond this (fog covers it)
 const MINOR_FAR = 2000; // hide residential asphalt beyond this
 const MESH_CELL = 800; // asphalt mesh cell size (m)
-const G_BRIDGE = 0.12; // max bridge ramp grade
-const G_APPROACH = 0.08; // embankment grade on approach roads
+// Real SA freeway grades are gentle (SANRAL ~4-6%; urban flyovers up to ~8%).
+// Mapillary GPS altitudes along 425 Durban bridges show decks barely rise above
+// their approaches, so decks stay level and the ramps start early.
+const G_BRIDGE = 0.07; // max bridge ramp grade (minor roads)
+const G_BRIDGE_FWY = 0.05; // motorway / trunk bridges
+const G_APPROACH = 0.06; // embankment grade on approach roads
+const G_APPROACH_FWY = 0.045;
+const LAYER_H = 6.8; // deck height per OSM layer over roads/rail (5.1 m SANRAL clearance + deck)
+const FWY = { motorway: 1, motorway_link: 1, trunk: 1, trunk_link: 1 };
+const gradeB = (pc) => (FWY[pc.road.cls] ? G_BRIDGE_FWY : G_BRIDGE);
+const gradeA = (pc) => (FWY[pc.road.cls] ? G_APPROACH_FWY : G_APPROACH);
+// smooth min (quadratic) so crests and sags are rounded vertical curves
+function smin(a, b, k) {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.min(a, b) - h * h * k * 0.25;
+}
 const TEX_SCALE = 1 / 5; // texture repeats every 5 m
 
 function sampleHeight(hf, x, z) {
@@ -182,6 +196,7 @@ export class RoadNetwork {
         ref: r.r || '',
         oneway,
         bridge: !!r.b,
+        layer: r.L || 1,
         lanes,
         laneW: spec.laneW,
         width,
@@ -582,6 +597,9 @@ export class RoadNetwork {
         }
         if (hf.isWater(x, z)) C = Math.max(C, 4.5);
       }
+      // Stacked interchanges: OSM layer 2/3 flyovers sit over the layer below.
+      const L = pc.road.layer || 1;
+      if (L > 1) C = Math.max(C, LAYER_H * L);
       pc.C = C;
     }
     // Bridge chains share one clearance (union-find over shared nodes).
@@ -629,14 +647,14 @@ export class RoadNetwork {
       node.fixed = true;
     }
     // Propagate embankment ramps through short approach pieces.
-    for (let it = 0; it < 4; it++) {
+    for (let it = 0; it < 10; it++) {
       for (const node of rnodes.values()) {
         if (node.fixed) continue;
         let best = 0;
         for (const e of node.ends) {
           if (e.pc.bridge) continue;
           const other = e.atStart ? e.pc.nB : e.pc.nA;
-          const v = other.off - G_APPROACH * e.pc.len;
+          const v = other.off - gradeA(e.pc) * e.pc.len;
           if (v > best) best = v;
         }
         node.off = best;
@@ -649,11 +667,17 @@ export class RoadNetwork {
     const oA = pc.nA.off;
     const oB = pc.nB.off;
     if (pc.bridge) {
-      const v = Math.min(pc.C, oA + G_BRIDGE * d, oB + G_BRIDGE * (pc.len - d));
+      const g = gradeB(pc);
+      const k = Math.min(3, pc.C * 0.5);
+      // round the crest only where a ramp meets the level deck mid-piece, so
+      // the shared node heights at the ends stay exact
+      let v = oA < pc.C - k ? smin(pc.C, oA + g * d, k) : Math.min(pc.C, oA + g * d);
+      v = oB < pc.C - k ? smin(v, oB + g * (pc.len - d), k) : Math.min(v, oB + g * (pc.len - d));
       return v > 0 ? v : 0;
     }
     if (oA <= 0 && oB <= 0) return 0;
-    const v = Math.max(oA - G_APPROACH * d, oB - G_APPROACH * (pc.len - d));
+    const g = gradeA(pc);
+    const v = Math.max(oA - g * d, oB - g * (pc.len - d));
     return v > 0 ? v : 0;
   }
 
@@ -765,8 +789,15 @@ export class RoadNetwork {
     const m = xs.length;
     const ys = new Float32Array(m);
     const offs = new Float32Array(m);
+    // Bridge decks span straight between their abutments instead of dipping
+    // into the valley/river below them.
+    const gA = sampleHeight(hf, xs[0], zs[0]);
+    const gB = sampleHeight(hf, xs[m - 1], zs[m - 1]);
+    const dS = ds[0];
+    const dL = Math.max(1e-3, ds[m - 1] - dS);
     for (let i = 0; i < m; i++) {
-      const g = Math.max(sampleHeight(hf, xs[i], zs[i]), pc.bridge ? 1.0 : -0.2);
+      let g = Math.max(sampleHeight(hf, xs[i], zs[i]), pc.bridge ? 1.0 : -0.2);
+      if (pc.bridge) g = Math.max(g, gA + (gB - gA) * ((ds[i] - dS) / dL));
       offs[i] = this.#offsetAt(pc, ds[i]);
       // Higher classes sit a few mm higher so unconnected overlaps never z-fight.
       ys[i] = g + ROAD_LIFT + offs[i] + pc.road.rank * 0.012;

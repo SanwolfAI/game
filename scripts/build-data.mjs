@@ -80,6 +80,7 @@ const roads = raw.roads.map(r => {
     w: Number(r.tags.lanes) || 0,
     o: r.tags.oneway === 'yes' || r.tags.oneway === '1' ? 1 : 0,
     b: r.tags.bridge === 'yes' ? 1 : 0,
+    ...(r.tags.bridge === 'yes' && Number(r.tags.layer) > 1 ? { L: Number(r.tags.layer) } : {}),
     p: simp
   };
 });

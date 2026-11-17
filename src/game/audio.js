@@ -215,3 +215,55 @@ export function crashSound(intensity = 0.5, dist = 0) {
   osc.start(t);
   osc.stop(t + 0.32);
 }
+
+// Thunder: low rolling noise, delayed/quieter with distance (0..1 near..far).
+export function thunderSound(far = 0.5) {
+  const audio = context();
+  if (!audio || muted || audio.state === 'suspended') return;
+  const t = audio.currentTime + far * 2.5;
+  const len = 2.8 + far * 1.5;
+  const buf = audio.createBuffer(1, Math.floor(audio.sampleRate * len), audio.sampleRate);
+  const d = buf.getChannelData(0);
+  let v = 0;
+  for (let i = 0; i < d.length; i++) {
+    const f = i / d.length;
+    v = v * 0.985 + (Math.random() * 2 - 1) * 0.15; // brown-ish noise
+    const env = Math.min(1, f * 18) * Math.pow(1 - f, 1.4) * (0.7 + 0.3 * Math.sin(f * 23 + Math.random()));
+    d[i] = v * env * 3;
+  }
+  const src = audio.createBufferSource();
+  src.buffer = buf;
+  const lp = audio.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 420 - far * 250;
+  const g = audio.createGain();
+  g.gain.value = 0.55 * (1 - far * 0.6);
+  src.connect(lp).connect(g).connect(audio.destination);
+  src.start(t);
+}
+
+let rain = null;
+// Rain hiss loop, level 0..1.
+export function setRainLevel(level) {
+  const audio = context();
+  if (!audio || audio.state === 'suspended') return;
+  if (!rain) {
+    if (level < 0.02) return;
+    const buf = audio.createBuffer(1, audio.sampleRate * 2, audio.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.004 ? 2.5 : 1);
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const bp = audio.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2600;
+    bp.Q.value = 0.5;
+    const g = audio.createGain();
+    g.gain.value = 0;
+    src.connect(bp).connect(g).connect(audio.destination);
+    src.start();
+    rain = { g };
+  }
+  rain.g.gain.setTargetAtTime(muted ? 0 : level * 0.16, audio.currentTime, 0.4);
+}
