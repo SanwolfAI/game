@@ -260,7 +260,9 @@ export class Input {
       else this.wheelDeg -= Math.sign(this.wheelDeg) * step;
     }
     // smooth (anti-jitter) steering output, + = left
-    const steerTarget = -this.wheelDeg / WHEEL_LOCK_DEG;
+    // steering sensitivity (☰ menu): >1 = less wheel needed for the same turn
+    const sens = this.steerSens || 1;
+    const steerTarget = Math.max(-1, Math.min(1, (-this.wheelDeg / WHEEL_LOCK_DEG) * sens));
     this.steer += (steerTarget - this.steer) * Math.min(1, dt * 16);
     if (Math.abs(this.steer) < 0.002 && steerTarget === 0) this.steer = 0;
 

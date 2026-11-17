@@ -272,6 +272,9 @@
       #menu p { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
       #menu button { display: block; width: 100%; margin: 8px 0; padding: 11px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 0; color: #fff; background: #2e7d4f; }
       #menu button#m-new { background: #8a3b2e; }
+      #menu .m-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; color: #fff; }
+      #menu .m-row button { display: inline-block; width: 44px; margin: 0; padding: 8px 0; font-size: 20px; }
+      #menu .m-row b { min-width: 44px; text-align: center; }
       #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
       #touch #t-signals .tbtn { position: relative; width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
       #touch #t-signals #t-lights { width: 50px; font-size: 10px; }
@@ -555,6 +558,9 @@
         <h3>Paused</h3>
         <p>Your spot, car, camera, GPS and time save automatically.</p>
         <button id="m-resume" type="button">Resume</button>
+        <div class="m-row">Steering sensitivity
+          <button id="m-sdn" type="button">−</button><b id="m-sval">1.0×</b><button id="m-sup" type="button">+</button>
+        </div>
         <button id="m-new" type="button">New game (back to the CBD)</button>
       </div>
     </div>

@@ -622,6 +622,23 @@ async function main() {
     const menu = document.getElementById('menu');
     document.getElementById('t-menu')?.addEventListener('pointerup', () => menu?.classList.add('open'));
     document.getElementById('m-resume')?.addEventListener('click', () => menu?.classList.remove('open'));
+    // steering sensitivity, saved on the phone
+    let sens = 1;
+    try {
+      sens = Number(localStorage.getItem('izk-steer-sens')) || 1;
+    } catch {}
+    const sval = document.getElementById('m-sval');
+    const applySens = (v) => {
+      sens = Math.round(Math.max(0.5, Math.min(2.5, v)) * 10) / 10;
+      input.steerSens = sens;
+      if (sval) sval.textContent = sens.toFixed(1) + '×';
+      try {
+        localStorage.setItem('izk-steer-sens', String(sens));
+      } catch {}
+    };
+    applySens(sens);
+    document.getElementById('m-sdn')?.addEventListener('click', () => applySens(sens - 0.1));
+    document.getElementById('m-sup')?.addEventListener('click', () => applySens(sens + 0.1));
     document.getElementById('m-new')?.addEventListener('click', () => {
       saveBlocked = true;
       clearSave();

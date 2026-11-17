@@ -13,11 +13,11 @@ const CAR_RADIUS = 2.1;
 // Tuned 17 Nov 2026 (Bheko: too slow). 0-100 / top: Gusheshe ~6.7 s / 226 km/h,
 // Polo ~8.5 s / 187, Hilux ~9.3 s / 180, SAPS ~7.4 s / 201, Quantum ~12 s / 151.
 const PHYS = {
-  gusheshe: { a0: 4.6, vk: 20, vmax: 63, mass: 1200 },
-  quantum: { a0: 3.4, vk: 14, vmax: 42, mass: 2300 },
-  polo: { a0: 4.0, vk: 17, vmax: 52, mass: 1100 },
-  hilux: { a0: 3.8, vk: 16, vmax: 50, mass: 1900 },
-  saps: { a0: 4.3, vk: 19, vmax: 56, mass: 2100 }
+  gusheshe: { a0: 7.2, vk: 30, vmax: 72, mass: 1200 },
+  quantum: { a0: 5.2, vk: 22, vmax: 50, mass: 2300 },
+  polo: { a0: 6.2, vk: 26, vmax: 62, mass: 1100 },
+  hilux: { a0: 5.8, vk: 24, vmax: 58, mass: 1900 },
+  saps: { a0: 6.6, vk: 28, vmax: 66, mass: 2100 }
 };
 
 function physicsFor(spec) {
