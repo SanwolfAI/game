@@ -117,6 +117,19 @@ function buildStars() {
   return points;
 }
 
+// Crash guard: a launch that never reaches a stable ~20 s of play (whole-phone
+// freeze, GPU hang, killed WebView) leaves this flag behind, so the next
+// launch starts in SAFE MODE: low resolution, no street life/real people,
+// fresh spawn. ?safe=1 forces it, ?safe=0 skips it.
+const BOOT_KEY = 'izk-boot';
+const qs0 = new URLSearchParams(location.search);
+let lastBoot = null;
+try { lastBoot = localStorage.getItem(BOOT_KEY); } catch {}
+const SAFE = qs0.get('safe') === '1' || (qs0.get('safe') !== '0' && lastBoot === 'running');
+const MOBILE = /Android|Mobi|iPhone|iPad/i.test(navigator.userAgent || '') || ((navigator.maxTouchPoints || 0) > 0 && Math.min(screen.width, screen.height) < 900);
+const setBoot = (v) => { try { v ? localStorage.setItem(BOOT_KEY, v) : localStorage.removeItem(BOOT_KEY); } catch {} };
+if (SAFE) setBoot(null);
+
 async function main() {
   window.__izkStarted = true;
   setLoad(6, 'Loading OpenStreetMap data…');
@@ -198,14 +211,16 @@ async function main() {
   const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
-  await Promise.race([Promise.all([loadCarModels(), props.load(), loadPeople()]), new Promise((r) => setTimeout(r, 20000))]);
+  await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadPeople()]), new Promise((r) => setTimeout(r, 20000))]);
 
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  // Phones: 1x pixels, no MSAA, default GPU mode. A Hisense-class GPU hung
+  // the whole device at 2x + MSAA with the full city on the first frame.
+  const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
+  renderer.setPixelRatio(SAFE ? Math.min(devicePixelRatio || 1, 0.75) : Math.min(devicePixelRatio || 1, MOBILE ? 1 : 2));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
@@ -261,7 +276,7 @@ async function main() {
   vehicle.medians = medians;
   // Autosave: carry on exactly where the last session stopped.
   const params0 = new URLSearchParams(location.search);
-  const saved = params0.get('new') === '1' ? null : loadSave();
+  const saved = params0.get('new') === '1' || SAFE ? null : loadSave();
   if (saved) {
     if (saved.car && saved.car !== vehicle.typeId && VEHICLE_TYPES.some((t) => t.id === saved.car)) vehicle.setType(saved.car);
     vehicle.restore(saved.x, saved.z, saved.yaw || 0);
@@ -276,6 +291,11 @@ async function main() {
   // Street life first: it marks CBD kerb lanes as parking before traffic spawns.
   const streetLife = new StreetLife(roads, hf, buildings, mulberry32(40421));
   scene.add(streetLife.group);
+  // Street life joins a few seconds after the controls appear (spreads the
+  // shader compile and upload); never in safe mode.
+  streetLife.group.visible = false;
+  let streetLifeOn = false;
+  let streetLifeDelay = SAFE ? Infinity : 4;
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
   traffic.props = props;
   traffic.player = vehicle;
@@ -639,6 +659,10 @@ async function main() {
     applySens(sens);
     document.getElementById('m-sdn')?.addEventListener('click', () => applySens(sens - 0.1));
     document.getElementById('m-sup')?.addEventListener('click', () => applySens(sens + 0.1));
+    document.getElementById('m-safe')?.addEventListener('click', () => {
+      saveBlocked = true;
+      location.href = location.pathname + '?safe=1';
+    });
     document.getElementById('m-new')?.addEventListener('click', () => {
       saveBlocked = true;
       clearSave();
@@ -659,8 +683,53 @@ async function main() {
   addEventListener('pointerdown', unlockOnce, { passive: true });
   addEventListener('keydown', unlockOnce);
 
+  let frameErrShown = false;
+  let bootFrames = 0;
+  let bootTime = 0;
+  let slowFrames = 0;
+  let lastT = performance.now();
   function frame() {
     requestAnimationFrame(frame);
+    const t = performance.now();
+    const raw = (t - lastT) / 1000;
+    lastT = t;
+    try {
+      frameBody(raw);
+    } catch (err) {
+      console.error(err);
+      if (!frameErrShown && window.__izkShowError) {
+        frameErrShown = true;
+        window.__izkShowError('in-game error: ' + (err && err.message ? err.message : String(err)));
+      }
+    }
+  }
+  function frameBody(raw) {
+    // crash guard: clear the boot flag once ~20 s ran fine
+    if (bootFrames >= 0) {
+      bootFrames++;
+      bootTime += Math.min(raw, 1);
+      if (bootTime > 20 && bootFrames > 200) {
+        setBoot(null);
+        bootFrames = -1;
+      }
+    }
+    // watchdog: several very slow frames -> drop street life for this run
+    if (raw > 0.7 && bootTime > 1) {
+      slowFrames++;
+      if (slowFrames >= 3 && streetLifeOn) {
+        streetLifeOn = false;
+        streetLifeDelay = Infinity;
+        streetLife.group.visible = false;
+        hud.toast('Phone struggling: street life turned off', 3);
+      }
+    }
+    if (!streetLifeOn && streetLifeDelay !== Infinity) {
+      streetLifeDelay -= Math.min(raw, 0.1);
+      if (streetLifeDelay <= 0) {
+        streetLifeOn = true;
+        streetLife.group.visible = true;
+      }
+    }
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = gameClock.tick();
     weather.update(dt, camera, seasonForDate(now).id, now.getHours());
@@ -751,7 +820,7 @@ async function main() {
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);
     realLandmarks.update(camera.position.x, camera.position.z);
-    streetLife.update(dt, ent.x, ent.z, now.getHours() + now.getMinutes() / 60, inVehicle ? vehicle : null, traffic.onCrash);
+    if (streetLifeOn) streetLife.update(dt, ent.x, ent.z, now.getHours() + now.getMinutes() / 60, inVehicle ? vehicle : null, traffic.onCrash);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -798,6 +867,12 @@ async function main() {
   // Small debug handle for automated checks / console tinkering.
   window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
+  try {
+    renderer.compile(scene, camera); // warm shaders on the loading screen
+  } catch {}
+  setBoot('running');
+  addEventListener('pagehide', () => { if (bootFrames < 0 || bootTime > 3) setBoot(null); });
+  if (SAFE) setTimeout(() => hud.toast('Safe mode: last start froze, so graphics are lowered (☰ → New game for normal)', 6), 4500);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
