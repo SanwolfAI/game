@@ -341,7 +341,7 @@ export class Props {
           const d = hf.signedCoastDistance(x, z);
           if (d < 30 || d > 120 || rng() < 0.35) continue;
           if (!this.#free(x, z, 2, 2)) continue;
-          add(rng() < 0.7 ? 'palm' : 'palmBend', x, hf.heightAt(x, z) - 0.2, z, rng() * 6.283, 8 + rng() * 5, 0.85 + rng() * 0.3);
+          if (!hf.isSeaLevel(x, z)) add(rng() < 0.7 ? 'palm' : 'palmBend', x, hf.heightAt(x, z) - 0.2, z, rng() * 6.283, 8 + rng() * 5, 0.85 + rng() * 0.3);
         }
       }
     }
@@ -411,7 +411,7 @@ export class Props {
             const x = s.xs[k] + s.lx[k] * off * side;
             const z = s.zs[k] + s.lz[k] * off * side;
             if (this.#free(x, z, 1.5, 1.2)) {
-              if (coastD < 220 && coastD > 0) add('palm', x, hf.heightAt(x, z) - 0.2, z, rng() * 6.283, 8 + rng() * 4, 0.9 + rng() * 0.2);
+              if (coastD < 220 && coastD > 0 && !hf.isSeaLevel(x, z)) add('palm', x, hf.heightAt(x, z) - 0.2, z, rng() * 6.283, 8 + rng() * 4, 0.9 + rng() * 0.2);
               else tree(x, z, 0.95);
             }
           }

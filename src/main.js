@@ -130,9 +130,26 @@ async function main() {
   const coastXZ = extendCoast(data.coast.map(([lon, lat]) => toXZ(lon, lat)));
   const bounds = worldBounds(coastXZ, data);
 
-  setLoad(26, 'Carving hills and coastline…');
+  setLoad(26, 'Shaping real terrain and rivers…');
   await nextFrame();
-  const hf = new Heightfield(coastXZ, bounds, 80);
+  let dem = null;
+  try {
+    const [mr, br] = await Promise.all([fetch('./src/data/durban-dem.json'), fetch('./src/data/durban-dem.bin')]);
+    if (mr.ok && br.ok) dem = { meta: await mr.json(), data: new Int16Array(await br.arrayBuffer()) };
+  } catch {
+    dem = null;
+  }
+  let waterPre = null;
+  try {
+    const wr = await fetch('./src/data/durban-water.json');
+    waterPre = wr.ok ? await wr.json() : null;
+  } catch {
+    waterPre = null;
+  }
+  const rivers = waterPre ? waterPre.rivers.filter((r) => r.k === 'river').map((r) => ({ xz: r.p.map(([lon, lat]) => toXZ(lon, lat)), w: r.w })) : null;
+  const areas = waterPre ? (waterPre.areas || []).map((a) => a.p.map(([lon, lat]) => toXZ(lon, lat))) : null;
+  const roadLines = data.roads.filter((r) => !r.b).map((r) => r.p.map(([lon, lat]) => toXZ(lon, lat)));
+  const hf = new Heightfield(coastXZ, bounds, 80, { dem, rivers, areas, roads: roadLines });
 
   const loadJson = async (url) => {
     try {
@@ -142,7 +159,7 @@ async function main() {
       return null;
     }
   };
-  const [areaData, featData, waterData, lmData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json'), loadJson('./src/data/durban-water.json'), loadJson('./src/data/durban-landmarks.json')]);
+  const [areaData, featData, waterData, lmData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json'), Promise.resolve(waterPre), loadJson('./src/data/durban-landmarks.json')]);
   setLoad(40, 'Paving the ground…');
   await nextFrame();
   const coverBox = { minX: -11760, maxX: 9470, minZ: -19760, maxZ: 11300 };

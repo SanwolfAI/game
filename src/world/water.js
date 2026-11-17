@@ -57,6 +57,29 @@ export class Water {
     return this.hf.heightAt(x, z);
   }
 
+  // height of the rendered (decimated, triangulated) terrain
+  #ry(x, z) {
+    const hf = this.hf;
+    const step = hf.renderStep || 1;
+    if (step <= 1) return hf.heightAt(x, z);
+    const cell = hf.cell * step;
+    const cols = Math.floor((hf.cols - 1) / step) + 1;
+    const rows = Math.floor((hf.rows - 1) / step) + 1;
+    const fx = Math.min(Math.max((x - hf.minX) / cell, 0), cols - 1.001);
+    const fz = Math.min(Math.max((z - hf.minZ) / cell, 0), rows - 1.001);
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const tx = fx - ix;
+    const tz = fz - iz;
+    const H = (a, c) => hf.height[hf.idx(Math.min(a * step, hf.cols - 1), Math.min(c * step, hf.rows - 1))];
+    if (tx + tz <= 1) {
+      const ha = H(ix, iz);
+      return ha + (H(ix + 1, iz) - ha) * tx + (H(ix, iz + 1) - ha) * tz;
+    }
+    const hc = H(ix + 1, iz + 1);
+    return hc + (H(ix, iz + 1) - hc) * (1 - tx) + (H(ix + 1, iz) - hc) * (1 - tz);
+  }
+
   #ribbon(G, xz, width, lift) {
     const n = xz.length;
     if (n < 2) return;
@@ -86,7 +109,9 @@ export class Water {
       const lz = -dx;
       if (i > 0) along += Math.hypot(x - P[i - 1][0], z - P[i - 1][1]);
       // water lies flat across: lowest of the two banks and the centre
-      const y = Math.min(this.#y(x, z), this.#y(x + lx * hw, z + lz * hw), this.#y(x - lx * hw, z - lz * hw)) + lift;
+      // follows the river bed downhill, and never hides under the (decimated)
+      // rendered ground at the centreline
+      const y = Math.max(Math.min(this.#y(x, z), this.#y(x + lx * hw, z + lz * hw), this.#y(x - lx * hw, z - lz * hw)), this.#ry(x, z) - 0.05) + lift;
       G.pos.push(x + lx * hw, y, z + lz * hw, x - lx * hw, y, z - lz * hw);
       G.uv.push(0, along / 24, width / 24, along / 24);
       if (i > 0) {

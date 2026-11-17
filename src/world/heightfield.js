@@ -1,4 +1,4 @@
-import { toXZ } from '../core/geo.js';
+import { toXZ, toLonLat } from '../core/geo.js';
 import { clamp, smoothstep } from '../core/utils.js';
 
 // Low-poly hills placed on their real KZN locations.
@@ -23,7 +23,10 @@ const FLATS = [
 ];
 
 export class Heightfield {
-  constructor(coastXZ, bounds, cell = 80) {
+  // opts.dem: { meta, data: Int16Array } real SRTM terrain (scripts/build-dem.py)
+  // opts.rivers: [{ xz: [[x,z],...], w }] carved as valleys that flow downhill
+  constructor(coastXZ, bounds, cell = 80, opts = {}) {
+    this.dem = opts.dem || null;
     this.cell = cell;
     this.minX = bounds.minX;
     this.minZ = bounds.minZ;
@@ -50,7 +53,11 @@ export class Heightfield {
     this.#floodOcean();
     this.#coastDistance(coastXZ);
     this.#buildHeight();
-    this.#smooth(2);
+    if (this.dem && opts.roads) this.#landUnderRoads(opts.roads);
+    this.#smooth(this.dem ? 1 : 2);
+    if (opts.rivers) this.#carveRivers(opts.rivers);
+    this.lake = new Uint8Array(n);
+    if (opts.areas) this.#carveAreas(opts.areas);
   }
 
   idx(ix, iz) {
@@ -231,7 +238,157 @@ export class Heightfield {
     return h;
   }
 
+  // True where the real DEM says open water at sea level (harbour, lagoons).
+  isSeaLevel(x, z) {
+    const ix = Math.round((x - this.minX) / this.cell);
+    const iz = Math.round((z - this.minZ) / this.cell);
+    if (ix >= 0 && iz >= 0 && ix < this.cols && iz < this.rows && this.lake[this.idx(ix, iz)]) return true;
+    for (const [ox, oz] of [[0, 0], [60, 0], [-60, 0], [0, 60], [0, -60]]) if (this.isWater(x + ox, z + oz)) return true;
+    if (this.renderedHeightAt(x, z) < 0.4) return true;
+    const h = this.demAt(x, z);
+    return h !== null && h < 0.6;
+  }
+
+  // Real ground height (m) from the DEM grid, or null outside it.
+  demAt(x, z) {
+    const D = this.dem;
+    if (!D) return null;
+    const [lon, lat] = toLonLat(x, z);
+    const m = D.meta;
+    const fx = (lon - m.lon0) / m.dlon;
+    const fy = (m.lat1 - lat) / m.dlat;
+    if (fx < 0 || fy < 0 || fx >= m.cols - 1 || fy >= m.rows - 1) return null;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    const u = fx - ix;
+    const v = fy - iy;
+    const d = D.data;
+    const i = iy * m.cols + ix;
+    const a = d[i] * (1 - u) + d[i + 1] * u;
+    const b = d[i + m.cols] * (1 - u) + d[i + m.cols + 1] * u;
+    return (a * (1 - v) + b * v) * m.scale;
+  }
+
+  // Rivers: walk each waterway downstream (OSM draws them in flow direction),
+  // keep the bed always falling, and dig a valley around it.
+  #carveRivers(rivers) {
+    const { cols, rows, height, cell } = this;
+    for (const r of rivers) {
+      const P = [];
+      for (let i = 0; i < r.xz.length - 1; i++) {
+        const [ax, az] = r.xz[i];
+        const [bx, bz] = r.xz[i + 1];
+        const k = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 30));
+        for (let j = 0; j < k; j++) P.push([ax + ((bx - ax) * j) / k, az + ((bz - az) * j) / k]);
+      }
+      P.push(r.xz[r.xz.length - 1]);
+      if (P.length < 2) continue;
+      let bed = Infinity;
+      const beds = new Float32Array(P.length);
+      for (let i = 0; i < P.length; i++) {
+        const h = this.heightAt(P[i][0], P[i][1]);
+        bed = Math.min(bed, h);
+        beds[i] = Math.max(bed, -0.6);
+      }
+      const R = Math.max(150, (r.w || 10) * 0.5 + 110); // valley half-width
+      const depth = Math.min(3, 1 + (r.w || 10) * 0.05);
+      for (let i = 0; i < P.length; i++) {
+        const [px, pz] = P[i];
+        // channel never dips below sea level, so low coastal land isn't flooded
+        const b = Math.max(beds[i] - depth, -0.25);
+        const x0 = Math.max(0, Math.floor((px - R - this.minX) / cell));
+        const x1 = Math.min(cols - 1, Math.ceil((px + R - this.minX) / cell));
+        const z0 = Math.max(0, Math.floor((pz - R - this.minZ) / cell));
+        const z1 = Math.min(rows - 1, Math.ceil((pz + R - this.minZ) / cell));
+        for (let iz = z0; iz <= z1; iz++) {
+          for (let ix = x0; ix <= x1; ix++) {
+            const i = iz * cols + ix;
+            if (this.water[i]) continue;
+            const dd = Math.hypot(this.minX + ix * cell - px, this.minZ + iz * cell - pz) / R;
+            if (dd >= 1) continue;
+            const t = dd * dd * (3 - 2 * dd); // smooth valley sides
+            const h = b + (height[i] - b) * t;
+            if (h < height[i]) height[i] = h;
+          }
+        }
+      }
+    }
+  }
+
+  // Roads are ground truth: wharves, the Point and reclaimed land that the
+  // coastline flood marked as sea become dry land wherever a road runs.
+  #landUnderRoads(roads) {
+    const { cols, rows, cell, water, height } = this;
+    const mark = (x, z) => {
+      const cx = Math.round((x - this.minX) / cell);
+      const cz = Math.round((z - this.minZ) / cell);
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ix = cx + dx;
+          const iz = cz + dz;
+          if (ix < 0 || iz < 0 || ix >= cols || iz >= rows) continue;
+          const i = iz * cols + ix;
+          if (!water[i]) continue;
+          water[i] = 0;
+          const hd = this.demAt(this.minX + ix * cell, this.minZ + iz * cell);
+          height[i] = Math.max(hd === null ? 1.2 : hd, 1.2);
+        }
+      }
+    };
+    for (const pts of roads) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, az] = pts[i];
+        const [bx, bz] = pts[i + 1];
+        const k = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 40));
+        for (let j = 0; j <= k; j++) mark(ax + ((bx - ax) * j) / k, az + ((bz - az) * j) / k);
+      }
+    }
+  }
+
+  // Lakes, dams and the harbour: lower the ground inside each OSM water polygon
+  // a little below its shoreline so the water surface covers it cleanly.
+  #carveAreas(areas) {
+    const { cols, rows, height, cell } = this;
+    for (const ring of areas) {
+      if (ring.length < 3) continue;
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      let z0 = Infinity;
+      let z1 = -Infinity;
+      let shore = Infinity;
+      for (const [x, z] of ring) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (z < z0) z0 = z;
+        if (z > z1) z1 = z;
+        shore = Math.min(shore, this.heightAt(x, z));
+      }
+      const bed = shore - 1.2;
+      const ix0 = Math.max(0, Math.ceil((x0 - this.minX) / cell));
+      const ix1 = Math.min(cols - 1, Math.floor((x1 - this.minX) / cell));
+      const iz0 = Math.max(0, Math.ceil((z0 - this.minZ) / cell));
+      const iz1 = Math.min(rows - 1, Math.floor((z1 - this.minZ) / cell));
+      for (let iz = iz0; iz <= iz1; iz++) {
+        const pz = this.minZ + iz * cell;
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const px = this.minX + ix * cell;
+          let inside = false;
+          for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+            const [ax, az] = ring[a];
+            const [bx, bz] = ring[b];
+            if (az > pz !== bz > pz && px < ((bx - ax) * (pz - az)) / (bz - az) + ax) inside = !inside;
+          }
+          if (!inside) continue;
+          const i = iz * cols + ix;
+          this.lake[i] = 1;
+          if (height[i] > bed) height[i] = bed;
+        }
+      }
+    }
+  }
+
   #buildHeight() {
+    if (this.dem) return this.#buildHeightDem();
     const { cols, rows, water, dist, height } = this;
     for (let iz = 0; iz < rows; iz++) {
       const z = this.minZ + iz * this.cell;
@@ -256,6 +413,36 @@ export class Heightfield {
         }
         if (d < 0) h = Math.min(h, -0.4);
         height[i] = h;
+      }
+    }
+  }
+
+  #buildHeightDem() {
+    const { cols, rows, water, dist, height, cdist } = this;
+    for (let iz = 0; iz < rows; iz++) {
+      const z = this.minZ + iz * this.cell;
+      for (let ix = 0; ix < cols; ix++) {
+        const x = this.minX + ix * this.cell;
+        const i = this.idx(ix, iz);
+        if (water[i]) {
+          // The coastline floods the whole harbour; wharves, the Point and the
+          // Bluff are real dry land in the DEM, so give them back.
+          const hd = this.demAt(x, z);
+          if (hd !== null && hd > 0.3 && cdist[i] < 4000) {
+            water[i] = 0;
+            height[i] = Math.max(hd, 0.8);
+            continue;
+          }
+          height[i] = this.#profile(-dist[i]);
+          continue;
+        }
+        const prof = this.#profile(dist[i]);
+        let h = this.demAt(x, z);
+        if (h === null) h = prof;
+        h = Math.max(h, 0.8);
+        // keep the tuned beach profile right at the shoreline
+        const w = smoothstep(60, 300, cdist[i]);
+        height[i] = Math.min(prof, 6) * (1 - w) + h * w;
       }
     }
   }
@@ -308,6 +495,28 @@ export class Heightfield {
     const top = d00 + (d10 - d00) * tx;
     const bot = d01 + (d11 - d01) * tx;
     return top + (bot - top) * tz;
+  }
+
+  // Height of the drawn (decimated, triangulated) terrain mesh.
+  renderedHeightAt(x, z) {
+    const step = this.renderStep || 1;
+    if (step <= 1) return this.heightAt(x, z);
+    const cell = this.cell * step;
+    const cols = Math.floor((this.cols - 1) / step) + 1;
+    const rows = Math.floor((this.rows - 1) / step) + 1;
+    const fx = clamp((x - this.minX) / cell, 0, cols - 1.001);
+    const fz = clamp((z - this.minZ) / cell, 0, rows - 1.001);
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const tx = fx - ix;
+    const tz = fz - iz;
+    const H = (a, c) => this.height[this.idx(Math.min(a * step, this.cols - 1), Math.min(c * step, this.rows - 1))];
+    if (tx + tz <= 1) {
+      const ha = H(ix, iz);
+      return ha + (H(ix + 1, iz) - ha) * tx + (H(ix, iz + 1) - ha) * tz;
+    }
+    const hc = H(ix + 1, iz + 1);
+    return hc + (H(ix, iz + 1) - hc) * (1 - tx) + (H(ix + 1, iz) - hc) * (1 - tz);
   }
 
   heightAt(x, z) {
