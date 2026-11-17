@@ -146,7 +146,7 @@
       }
       #speed-row { display: flex; align-items: baseline; gap: 8px; }
       #speed-val {
-        font-size: 42px;
+        font-size: 48px;
         font-weight: 800;
         line-height: 1;
         font-variant-numeric: tabular-nums;
@@ -264,6 +264,14 @@
       }
       #touch .tbtn.active { background: rgba(255, 207, 92, 0.34); }
       #touch .tbtn.small { width: 52px; height: 52px; font-size: 11px; letter-spacing: 0.5px; }
+      #touch .tbtn.small#t-menu { position: absolute; right: 204px; top: 10px; width: 40px; height: 40px; font-size: 18px; }
+      #menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); z-index: 50; }
+      #menu.open { display: flex; }
+      #menu .panel { padding: 18px 20px; min-width: 240px; text-align: center; }
+      #menu h3 { margin: 0 0 6px; font-size: 18px; }
+      #menu p { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
+      #menu button { display: block; width: 100%; margin: 8px 0; padding: 11px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 0; color: #fff; background: #2e7d4f; }
+      #menu button#m-new { background: #8a3b2e; }
       #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
       #touch #t-signals .tbtn { position: relative; width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
       #touch #t-signals #t-lights { width: 50px; font-size: 10px; }
@@ -410,8 +418,9 @@
         #dest-name, #dest-distance { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #dest-distance { letter-spacing: 0.3px; }
         #toast { top: 150px; }
-        #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 128px; padding: 7px 12px 8px; }
-        #speed-val { font-size: 30px; }
+        #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 150px; padding: 7px 14px 8px; }
+        #speed-val { font-size: 40px; }
+        #speed-unit { font-size: 13px; }
         #t-wheel { left: 14px; bottom: 12px; width: 150px; height: 150px; }
         #t-gas { right: 12px; bottom: 12px; width: 58px; height: 118px; }
         #t-brake { right: 80px; bottom: 12px; width: 78px; height: 92px; }
@@ -426,6 +435,7 @@
         #t-cycle { right: 120px; top: 92px; }
         #t-gps { right: 174px; top: 92px; }
         #t-map { right: 228px; top: 92px; }
+        #touch .tbtn.small#t-menu { right: 202px; top: 10px; width: 40px; height: 40px; font-size: 17px; }
       }
       @media (max-width: 560px) {
         #place { left: 14px; top: 198px; }
@@ -531,6 +541,7 @@
       <div class="tbtn small" id="t-gps" data-action="destination" data-press="true">GPS</div>
       <div class="tbtn small" id="t-map" data-action="map" data-press="true">MAP</div>
       <div class="tbtn small" id="t-mute" data-action="mute" data-press="true">SND</div>
+      <div class="tbtn small" id="t-menu" aria-label="Menu">☰</div>
       <div id="t-signals">
         <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator">◀</div>
         <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards">▲</div>
@@ -539,6 +550,14 @@
       </div>
     </div>
 
+    <div id="menu">
+      <div class="panel">
+        <h3>Paused</h3>
+        <p>Your spot, car, camera, GPS and time save automatically.</p>
+        <button id="m-resume" type="button">Resume</button>
+        <button id="m-new" type="button">New game (back to the CBD)</button>
+      </div>
+    </div>
     <div id="loading">
       <h1>Izinja <span>zase Kasi</span></h1>
       <p>IZK · Durban, KwaZulu-Natal</p>

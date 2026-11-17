@@ -25,6 +25,8 @@ import { GPS } from './game/gps.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
+import { loadSave, writeSave, clearSave } from './game/save.js';
+import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xd97a4d);
@@ -227,6 +229,14 @@ async function main() {
   const input = new Input();
   const vehicle = new Vehicle(hf, roads, city, input);
   scene.add(vehicle.group);
+  // Autosave: carry on exactly where the last session stopped.
+  const params0 = new URLSearchParams(location.search);
+  const saved = params0.get('new') === '1' ? null : loadSave();
+  if (saved) {
+    if (saved.car && saved.car !== vehicle.typeId && VEHICLE_TYPES.some((t) => t.id === saved.car)) vehicle.setType(saved.car);
+    vehicle.restore(saved.x, saved.z, saved.yaw || 0);
+    if (saved.lights) vehicle.lightMode = saved.lights;
+  }
 
   const [vx, vz] = vehicle.forward;
   const player = new Player(hf, city, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
@@ -259,6 +269,7 @@ async function main() {
     }
   });
   bigmap.features = featData?.features || null;
+  if (saved && saved.dest && Number.isFinite(saved.dest.x)) gps.setDestination(saved.dest.x, saved.dest.z, saved.dest.name || 'Map pin');
   document.getElementById('map-box')?.addEventListener('click', () => {
     const e = entity();
     bigmap.show(e.x, e.z, e.yaw);
@@ -281,6 +292,7 @@ async function main() {
     { name: 'Orbit: drag to turn, pinch to zoom', orbit: true },
     { name: 'High camera', dist: 18, height: 8.5, ahead: 12, look: 1.2 }
   ];
+  if (saved && Number.isInteger(saved.cam) && saved.cam >= 0 && saved.cam < CAM_MODES.length) camMode = saved.cam;
   const cockpit = buildCockpit();
   vehicle.group.add(cockpit);
   const camTmp = new THREE.Vector3();
@@ -533,7 +545,48 @@ async function main() {
   // overrides the start hour and ?resume=1 continues the last saved clock.
   const params = new URLSearchParams(location.search);
   const startHour = params.has('time') ? Number(params.get('time')) || 0 : 8;
-  const gameClock = params.get('resume') === '1' ? GameClock.load({ startHour }) : new GameClock({ startHour });
+  const gameClock = params.get('resume') === '1' || (saved && !params.has('time')) ? GameClock.load({ startHour }) : new GameClock({ startHour });
+  let saveTimer = 0;
+  let saveBlocked = false;
+  function saveNow() {
+    if (saveBlocked) return;
+    gameClock.save();
+    writeSave({
+      x: Math.round(vehicle.x * 10) / 10,
+      z: Math.round(vehicle.z * 10) / 10,
+      yaw: Math.round(vehicle.yaw * 1000) / 1000,
+      car: vehicle.typeId,
+      lights: vehicle.lightMode,
+      cam: camMode,
+      onFoot: !inVehicle,
+      px: Math.round(player.x * 10) / 10,
+      pz: Math.round(player.z * 10) / 10,
+      pyaw: player.yaw || 0,
+      dest: gps.dest ? { x: gps.dest.x, z: gps.dest.z, name: gps.dest.name } : null
+    });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+  addEventListener('pagehide', saveNow);
+  addEventListener('beforeunload', saveNow);
+  // Menu: Resume / New game (back to the CBD start, clears the save).
+  {
+    const menu = document.getElementById('menu');
+    document.getElementById('t-menu')?.addEventListener('pointerup', () => menu?.classList.add('open'));
+    document.getElementById('m-resume')?.addEventListener('click', () => menu?.classList.remove('open'));
+    document.getElementById('m-new')?.addEventListener('click', () => {
+      saveBlocked = true;
+      clearSave();
+      location.reload();
+    });
+  }
+  if (saved && saved.onFoot && Number.isFinite(saved.px)) {
+    inVehicle = false;
+    player.placeAt(saved.px, saved.pz, saved.pyaw || 0, null);
+    player.group.visible = true;
+    camSnap = true;
+  }
   let helpTimer = 0;
   let clockSaveTimer = 0;
 
@@ -552,6 +605,11 @@ async function main() {
     if (clockSaveTimer > 10) {
       clockSaveTimer = 0;
       gameClock.save();
+    }
+    saveTimer += dt;
+    if (saveTimer > 3) {
+      saveTimer = 0;
+      saveNow();
     }
 
     if (input.takePressed('camera')) {
@@ -663,7 +721,7 @@ async function main() {
   // Small debug handle for automated checks / console tinkering.
   window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, dirSigns, gps, bigmap };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
-  hud.toast(`Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
+  hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
 

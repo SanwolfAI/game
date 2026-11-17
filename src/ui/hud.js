@@ -119,7 +119,7 @@ export class HUD {
     const speed = Math.round(vehicle.speedKmh);
     if (speed !== this.lastSpeed) {
       this.speedVal.textContent = speed;
-      this.speedFill.style.width = `${Math.min(100, (speed / 180) * 100)}%`;
+      this.speedFill.style.width = `${Math.min(100, (speed / 240) * 100)}%`;
       this.lastSpeed = speed;
     }
 

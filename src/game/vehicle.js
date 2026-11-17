@@ -10,18 +10,20 @@ const CAR_RADIUS = 2.1;
 // Per-vehicle driving physics derived from the catalogue spec.
 // a0: launch acceleration (m/s²), vk: speed where engine power starts to limit
 // thrust, vmax: top speed (m/s), brake: full-pedal deceleration (~0.9 g).
+// Tuned 17 Nov 2026 (Bheko: too slow). 0-100 / top: Gusheshe ~6.7 s / 226 km/h,
+// Polo ~8.5 s / 187, Hilux ~9.3 s / 180, SAPS ~7.4 s / 201, Quantum ~12 s / 151.
 const PHYS = {
-  gusheshe: { a0: 4.5, mass: 1200 },
-  quantum: { a0: 3.0, mass: 2300 },
-  polo: { a0: 3.5, mass: 1100 },
-  hilux: { a0: 3.1, mass: 1900 },
-  saps: { a0: 3.6, mass: 2100 }
+  gusheshe: { a0: 4.6, vk: 20, vmax: 63, mass: 1200 },
+  quantum: { a0: 3.4, vk: 14, vmax: 42, mass: 2300 },
+  polo: { a0: 4.0, vk: 17, vmax: 52, mass: 1100 },
+  hilux: { a0: 3.8, vk: 16, vmax: 50, mass: 1900 },
+  saps: { a0: 4.3, vk: 19, vmax: 56, mass: 2100 }
 };
 
 function physicsFor(spec) {
-  const p = PHYS[spec.id] || { a0: 3.4, mass: 1500 };
-  const vk = 12;
-  const vmax = spec.max * 0.82; // Horus top speeds were arcade-high; keep them brisk but real-ish
+  const p = PHYS[spec.id] || { a0: 3.8, vk: 16, vmax: spec.max, mass: 1500 };
+  const vk = p.vk;
+  const vmax = p.vmax;
   const roll = 0.13;
   // drag coefficient so full power balances resistance at vmax
   const drag = Math.max(0.00005, (p.a0 * (vk / vmax) - roll) / (vmax * vmax));
@@ -29,7 +31,7 @@ function physicsFor(spec) {
     a0: p.a0,
     vk,
     vmax,
-    vmaxBoost: spec.boost * 0.82,
+    vmaxBoost: vmax * 1.25,
     vmaxR: 9,
     roll,
     drag,
@@ -95,6 +97,18 @@ export class Vehicle {
     this.typeId = id;
     this.spec = vehicleType(id);
     this.phys = physicsFor(this.spec);
+  }
+
+  // Put the car back where a save left it (stopped).
+  restore(x, z, yaw) {
+    this.x = x;
+    this.z = z;
+    this.yaw = yaw;
+    this.speed = 0;
+    this.lateral = 0;
+    this.y = null;
+    this.vy = 0;
+    this.#place();
   }
 
   cycleType() {
