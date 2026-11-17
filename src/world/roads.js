@@ -1826,11 +1826,15 @@ export class RoadNetwork {
   // Lanes in one direction of travel, and the offset of lane i (0 = kerb /
   // slow lane on the left, SA keep-left) from the centreline, toward the
   // driver's left as the traffic AI applies it.
+  // CBD streets with kerbside parking (road.parking, set by StreetLife) give
+  // up their kerb lane(s): moving traffic uses the lanes beside the parked cars.
   lanesPerDir(road) {
-    return road.oneway ? Math.max(1, road.lanes) : Math.max(1, Math.floor(road.lanes / 2));
+    const n = road.oneway ? Math.max(1, road.lanes) : Math.max(1, Math.floor(road.lanes / 2));
+    return road.parking && !this.rawLanes ? Math.max(1, n - road.parking) : n;
   }
 
-  laneOffsetAt(road, i) {
+  laneOffsetAt(road, i, raw = false) {
+    if (road.parking && !raw) i += 1;
     if (road.oneway) {
       const spec = specFor(road.cls);
       return road.width / 2 - spec.shoulderL - road.laneW * (i + 0.5);

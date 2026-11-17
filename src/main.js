@@ -16,7 +16,7 @@ import { Vehicle } from './game/vehicle.js';
 import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
-import { Pedestrians } from './game/pedestrians.js';
+import { StreetLife } from './game/streetLife.js';
 import { Input } from './game/input.js';
 import { honk, unlockAudio, tick, updateEngine, toggleMute } from './game/audio.js';
 import { HUD } from './ui/hud.js';
@@ -273,6 +273,9 @@ async function main() {
   player.roads = roads;
   scene.add(player.group);
 
+  // Street life first: it marks CBD kerb lanes as parking before traffic spawns.
+  const streetLife = new StreetLife(roads, hf, buildings, mulberry32(40421));
+  scene.add(streetLife.group);
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
   traffic.props = props;
   traffic.player = vehicle;
@@ -289,9 +292,6 @@ async function main() {
   };
   scene.add(traffic.group);
 
-  const pedestrians = new Pedestrians(hf, city, mulberry32(40421), vehicle.x, vehicle.z);
-  pedestrians.roads = roads;
-  scene.add(pedestrians.group);
 
   const hud = new HUD();
   input.gearListeners.push((g) => hud.toast(g === 'D' ? 'Drive' : g === 'R' ? 'Reverse' : 'Neutral', 0.9));
@@ -734,7 +734,7 @@ async function main() {
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);
     realLandmarks.update(camera.position.x, camera.position.z);
-    pedestrians.update(dt, ent.x, ent.z);
+    streetLife.update(dt, ent.x, ent.z, now.getHours() + now.getMinutes() / 60, inVehicle ? vehicle : null, traffic.onCrash);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -779,7 +779,7 @@ async function main() {
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
