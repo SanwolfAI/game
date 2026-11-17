@@ -36,6 +36,7 @@ function physicsFor(spec) {
     roll,
     drag,
     brake: p.mass > 2000 ? 9.0 : 10.0,
+    mass: p.mass,
     wheelbase: p.mass > 2000 ? 3.0 : 2.55,
     grip: 7.2 * (spec.handling / 1.5)
   };
@@ -62,6 +63,9 @@ export class Vehicle {
     this.vy = 0;
     this.accel = 0;
     this.yawRate = 0;
+    this.knockX = 0;
+    this.knockZ = 0;
+    this.spin = 0;
     this.bodyPitch = 0;
     this.bodyRoll = 0;
 
@@ -277,8 +281,18 @@ export class Vehicle {
 
     const prevX = this.x;
     const prevZ = this.z;
-    this.x += (fx * this.speed + rx * this.lateral) * dt;
-    this.z += (fz * this.speed + rz * this.lateral) * dt;
+    this.x += (fx * this.speed + rx * this.lateral + this.knockX) * dt;
+    this.z += (fz * this.speed + rz * this.lateral + this.knockZ) * dt;
+    // crash knock: sideways shove and spin that bleed off over ~half a second
+    if (this.knockX || this.knockZ || this.spin) {
+      this.yaw += this.spin * dt;
+      const k = Math.max(0, 1 - dt * 3.2);
+      this.knockX *= k;
+      this.knockZ *= k;
+      this.spin *= Math.max(0, 1 - dt * 2.5);
+      if (Math.abs(this.knockX) + Math.abs(this.knockZ) < 0.05) this.knockX = this.knockZ = 0;
+      if (Math.abs(this.spin) < 0.01) this.spin = 0;
+    }
 
     const tiltTarget = handbrake ? -this.steer * 0.05 * steerSpeed : 0;
     this.driftTilt += (tiltTarget - this.driftTilt) * Math.min(1, dt * 6);

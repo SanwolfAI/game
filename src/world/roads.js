@@ -1152,13 +1152,14 @@ export class RoadNetwork {
 
     // Bridge piers (instanced boxes), only where there is room on the ground.
     const piers = [];
+    const caps = [];
     for (const pc of pieces) {
       if (!pc.bridge) continue;
       const s = pc.s;
-      let next = 14;
+      let next = 12;
       for (let k = 1; k < s.m; k++) {
         if (s.ds[k] < next) continue;
-        next = s.ds[k] + 26;
+        next = s.ds[k] + 22;
         if (s.offs[k] < 2.2) continue;
         const x = s.xs[k];
         const z = s.zs[k];
@@ -1166,7 +1167,8 @@ export class RoadNetwork {
         const top = s.ys[k] - 1.3;
         if (top - g < 1.5) continue;
         const under = this.nearestRoad(x, z, 25, (r) => !r.bridge && r !== pc.road);
-        const offsets = pc.hw > 6 ? [-pc.hw * 0.55, pc.hw * 0.55] : [0];
+        const offsets = pc.hw > 9 ? [-pc.hw * 0.62, 0, pc.hw * 0.62] : pc.hw > 5 ? [-pc.hw * 0.5, pc.hw * 0.5] : [0];
+        let placed = 0;
         for (const o of offsets) {
           const px = x + s.lx[k] * o;
           const pz = z + s.lz[k] * o;
@@ -1175,12 +1177,36 @@ export class RoadNetwork {
             if (u && u.dist < u.road.width / 2 + 1) continue;
           }
           piers.push(px, g - 0.5, pz, top - g + 0.5, Math.atan2(s.lx[k], s.lz[k]));
+          placed++;
         }
+        // pier cap (crosshead beam) under the deck, across its full width
+        if (placed) caps.push(x, top - 1.0, z, pc.hw * 1.9, Math.atan2(s.lx[k], s.lz[k]));
       }
+    }
+    if (caps.length) {
+      const count = caps.length / 5;
+      const geo = new THREE.BoxGeometry(1, 1.05, 1.9);
+      geo.translate(0, 0.5, 0);
+      const mesh = new THREE.InstancedMesh(geo, this.mats.pier, count);
+      const m4 = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const up = new THREE.Vector3(0, 1, 0);
+      const p = new THREE.Vector3();
+      const sc = new THREE.Vector3();
+      for (let k = 0; k < count; k++) {
+        p.set(caps[k * 5], caps[k * 5 + 1], caps[k * 5 + 2]);
+        // box x axis runs across the deck (lateral direction)
+        q.setFromAxisAngle(up, caps[k * 5 + 4] - Math.PI / 2);
+        sc.set(caps[k * 5 + 3], 1, 1);
+        m4.compose(p, q, sc);
+        mesh.setMatrixAt(k, m4);
+      }
+      mesh.name = 'bridgePierCaps';
+      this.group.add(mesh);
     }
     if (piers.length) {
       const count = piers.length / 5;
-      const geo = new THREE.BoxGeometry(1.4, 1, 1.4);
+      const geo = new THREE.CylinderGeometry(0.85, 0.95, 1, 10);
       geo.translate(0, 0.5, 0);
       const mesh = new THREE.InstancedMesh(geo, this.mats.pier, count);
       const m4 = new THREE.Matrix4();
@@ -1764,6 +1790,22 @@ export class RoadNetwork {
     const perSide = Math.max(1, Math.floor(road.lanes / 2));
     const lane = Math.floor(rng() * perSide);
     return road.laneW * (lane + 0.5);
+  }
+
+  // Lanes in one direction of travel, and the offset of lane i (0 = kerb /
+  // slow lane on the left, SA keep-left) from the centreline, toward the
+  // driver's left as the traffic AI applies it.
+  lanesPerDir(road) {
+    return road.oneway ? Math.max(1, road.lanes) : Math.max(1, Math.floor(road.lanes / 2));
+  }
+
+  laneOffsetAt(road, i) {
+    if (road.oneway) {
+      const spec = specFor(road.cls);
+      return road.width / 2 - spec.shoulderL - road.laneW * (i + 0.5);
+    }
+    const perSide = Math.max(1, Math.floor(road.lanes / 2));
+    return road.laneW * (perSide - 1 - i + 0.5);
   }
 
   // Node lookup used by the traffic AI.

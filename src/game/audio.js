@@ -147,3 +147,71 @@ export function updateEngine(dt, kmh, throttle, running, cars) {
     tv.gain.gain.setTargetAtTime(gain * gain * 20, t, 0.15);
   }
 }
+
+// Another driver's hooter, quieter with distance (impatient traffic).
+export function honkFar(dist = 10, pitch = 1, long = false) {
+  const audio = context();
+  if (!audio || muted) return;
+  if (audio.state === 'suspended') return;
+  const vol = Math.min(0.09, 0.9 / Math.max(6, dist));
+  if (vol < 0.006) return;
+  const t = audio.currentTime;
+  const len = long ? 0.75 : 0.32;
+  const beeps = long ? 1 : 2;
+  for (let b = 0; b < beeps; b++) {
+    const t0 = t + b * 0.42;
+    for (const freq of [370 * pitch, 466 * pitch]) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+      gain.gain.setValueAtTime(vol, t0 + len - 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t0);
+      osc.stop(t0 + len + 0.02);
+    }
+  }
+}
+
+// Crash: a low thump plus a burst of crunching noise. intensity 0..1.
+let lastCrash = 0;
+export function crashSound(intensity = 0.5, dist = 0) {
+  const audio = context();
+  if (!audio || muted) return;
+  if (audio.state === 'suspended') return;
+  const t = audio.currentTime;
+  if (t - lastCrash < 0.25) return;
+  lastCrash = t;
+  const vol = Math.min(0.5, (0.12 + intensity * 0.38) * Math.min(1, 12 / Math.max(12, dist)));
+  if (vol < 0.01) return;
+  const len = 0.35 + intensity * 0.5;
+  const buf = audio.createBuffer(1, Math.floor(audio.sampleRate * len), audio.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const f = i / d.length;
+    // crunchy: random noise with clicky debris near the start
+    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - f, 2.2) * (Math.random() < 0.02 ? 1.6 : 1);
+  }
+  const src = audio.createBufferSource();
+  src.buffer = buf;
+  const lp = audio.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1800 + intensity * 2500;
+  const g = audio.createGain();
+  g.gain.value = vol;
+  src.connect(lp).connect(g).connect(audio.destination);
+  src.start(t);
+  const osc = audio.createOscillator();
+  const og = audio.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(95, t);
+  osc.frequency.exponentialRampToValueAtTime(38, t + 0.25);
+  og.gain.setValueAtTime(vol * 1.4, t);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  osc.connect(og).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + 0.32);
+}

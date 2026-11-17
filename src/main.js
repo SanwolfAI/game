@@ -245,6 +245,18 @@ async function main() {
 
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
   traffic.props = props;
+  traffic.player = vehicle;
+  traffic.playerActive = true;
+  traffic.buildings = buildings;
+  let shake = 0;
+  let crashToastCd = 0;
+  traffic.onCrash = (impact) => {
+    shake = Math.min(0.6, Math.max(shake, impact * 0.03));
+    if (impact > 6 && crashToastCd <= 0) {
+      hud.toast(impact > 14 ? 'Hard crash!' : 'Bumped another car', 1.2);
+      crashToastCd = 2;
+    }
+  };
   scene.add(traffic.group);
 
   const pedestrians = new Pedestrians(hf, city, mulberry32(40421), vehicle.x, vehicle.z);
@@ -664,12 +676,21 @@ async function main() {
     ent.update(dt);
     hud.updateGear?.(inVehicle ? input.gear : '');
     updateCamera(dt, !cameraReady || camSnap);
+    if (shake > 0.01) {
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.y += (Math.random() - 0.5) * shake;
+      camera.position.z += (Math.random() - 0.5) * shake;
+      shake *= Math.max(0, 1 - dt * 6);
+    } else shake = 0;
+    if (crashToastCd > 0) crashToastCd -= dt;
     cameraReady = true;
     camSnap = false;
 
     const arrival = gps.update(ent.x, ent.z, ent.yaw);
     if (arrival) hud.toast(`Arrived at ${arrival.name}`, 3);
 
+    traffic.playerActive = inVehicle;
+    traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
     traffic.update(dt, ent.x, ent.z);
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
