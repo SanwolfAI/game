@@ -497,6 +497,35 @@ export class BigMap {
         }
       }
     }
+    // real landmarks: big ones from mid zoom, everything named up close
+    if (this.landmarks && this.landmarkCats && mpp < 7) {
+      const BIG = { hospital: 1, mall: 1, stadium: 1, campus: 1, station: 1, police: 1 };
+      const font = '700 10px "Trebuchet MS", sans-serif';
+      for (const l of this.landmarks) {
+        if (mpp >= 2.4 && !BIG[l.k]) continue;
+        const cat = this.landmarkCats[l.k];
+        if (!cat) continue;
+        const x = X(l.x);
+        const y = Y(l.z);
+        if (x < 0 || x > W || y < 0 || y > H) continue;
+        ctx.font = font;
+        const w = ctx.measureText(l.n).width + 22;
+        if (!fits(x - 8, y - 9, w, 18)) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = cat.color;
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 9px "Trebuchet MS", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(cat.icon, x, y + 3);
+        ctx.textAlign = 'left';
+        text(l.n, x + 10, y + 4, font, '#ffffff', 'rgba(10,18,26,0.85)');
+      }
+    }
     // points of interest up close: motorway exits
     if (mpp < 3 && this.features) {
       const font = '600 10px "Trebuchet MS", sans-serif';
