@@ -321,6 +321,22 @@ export class Vehicle {
   }
 
   #resolveCollisions() {
+    // median barriers (concrete / Armco): solid, scrape along them
+    if (this.medians) {
+      const m = this.medians.collide(this.x, this.z, 1.0);
+      if (m && (this.y === null || Math.abs((this.y || 0) - m.y) < 2.5)) {
+        this.x = m.x;
+        this.z = m.z;
+        const fx = Math.sin(this.yaw);
+        const fz = Math.cos(this.yaw);
+        const into = -(fx * m.nx + fz * m.nz) * Math.sign(this.speed);
+        if (into > 0.25) {
+          this.speed *= 1 - into * 0.7;
+          this.spin += (fx * m.nz - fz * m.nx) * Math.sign(this.speed) * into * 0.8;
+        }
+        this.lateral *= 0.3;
+      }
+    }
     const hit = this.city.buildings ? this.city.buildings.collide(this.x, this.z, 1.25) : null;
     if (hit) {
       this.x = hit.x;

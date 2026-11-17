@@ -26,6 +26,8 @@ import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
 import { loadSave, writeSave, clearSave } from './game/save.js';
+import { Medians } from './world/medians.js';
+import { Water } from './world/water.js';
 import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
@@ -137,7 +139,7 @@ async function main() {
       return null;
     }
   };
-  const [areaData, featData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json')]);
+  const [areaData, featData, waterData] = await Promise.all([loadJson('./src/data/durban-areas.json'), loadJson('./src/data/durban-features.json'), loadJson('./src/data/durban-water.json')]);
   setLoad(40, 'Paving the ground…');
   await nextFrame();
   const coverBox = { minX: -11760, maxX: 9470, minZ: -19760, maxZ: 11300 };
@@ -224,11 +226,16 @@ async function main() {
   scene.add(props.group);
   const dirSigns = new DirSigns({ roads, features: featData?.features });
   scene.add(dirSigns.group);
+  const medians = new Medians(roads);
+  scene.add(medians.group);
+  const water = new Water(waterData, hf);
+  scene.add(water.group);
   scene.add(landmarks);
 
   const input = new Input();
   const vehicle = new Vehicle(hf, roads, city, input);
   scene.add(vehicle.group);
+  vehicle.medians = medians;
   // Autosave: carry on exactly where the last session stopped.
   const params0 = new URLSearchParams(location.search);
   const saved = params0.get('new') === '1' ? null : loadSave();
@@ -696,6 +703,7 @@ async function main() {
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     props.update(camera.position.x, camera.position.z, dt, 1);
     dirSigns.update(camera.position.x, camera.position.z);
+    water.update(dt);
     pedestrians.update(dt, ent.x, ent.z);
 
     const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
@@ -740,7 +748,7 @@ async function main() {
   props.update(camera.position.x, camera.position.z, 0, 12);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, dirSigns, gps, bigmap };
+  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, traffic, buildings, city, props, dirSigns, gps, bigmap, medians, water };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
