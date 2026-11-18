@@ -30,6 +30,7 @@ import { Medians } from './world/medians.js';
 import { Weather } from './world/weather.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
+import { Grounds } from './world/grounds.js';
 import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
@@ -269,6 +270,14 @@ async function main() {
   const realLandmarks = new LandmarkLayer(lmData, { roads, hf });
   scene.add(realLandmarks.group);
   scene.add(landmarks);
+  // hospital / clinic / police / fire-station grounds (real OSM outlines)
+  let grounds = null;
+  try {
+    grounds = new Grounds(await loadJson('./src/data/durban-grounds.json'), { roads, hf, buildings });
+    scene.add(grounds.group);
+  } catch (err) {
+    console.warn('[IZK] grounds not built', err);
+  }
 
   const input = new Input();
   const vehicle = new Vehicle(hf, roads, city, input);
@@ -887,7 +896,7 @@ async function main() {
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     renderer.compile(scene, camera); // warm shaders on the loading screen
