@@ -1,6 +1,6 @@
 // Keyboard + touch input with analog driving controls.
 //
-// Touch: a steering wheel you turn with your finger (900° lock-to-lock, with
+// Touch: a steering wheel you turn with your finger (600° lock-to-lock, with
 // finger rotation scaled 2.5x so ±180° of finger travel reaches full lock),
 // self-centring when released; analog accelerator / brake pedals (press lower
 // on the pedal for more); a D / R / N gear selector.
@@ -46,9 +46,9 @@ const PRESS_ACTIONS = {
   KeyU: 'mute'
 };
 
-export const WHEEL_LOCK_DEG = 450; // ±450° = 900° lock-to-lock
+export const WHEEL_LOCK_DEG = 300; // ±300° = 600° lock-to-lock (quick rack, less winding)
 const FINGER_GAIN = 3.5; // wheel degrees per finger degree
-const KEY_STEER_RATE = 870; // °/s when steering with keys
+const KEY_STEER_RATE = 900; // °/s when steering with keys
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 

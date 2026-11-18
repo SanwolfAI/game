@@ -38,7 +38,7 @@ function physicsFor(spec) {
     brake: p.mass > 2000 ? 9.0 : 10.0,
     mass: p.mass,
     wheelbase: p.mass > 2000 ? 3.0 : 2.55,
-    grip: 7.2 * (spec.handling / 1.5)
+    grip: 8.6 * (spec.handling / 1.5)
   };
 }
 
@@ -258,9 +258,9 @@ export class Vehicle {
 
     // ---- steering: bicycle model, speed-sensitive lock, grip limited --------
     const steerIn = input.steer ?? ((input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0));
-    this.steer += (steerIn - this.steer) * Math.min(1, dt * 14);
+    this.steer += (steerIn - this.steer) * Math.min(1, dt * 22);
     const speedAbs = Math.abs(this.speed);
-    const maxAngle = (34 * Math.PI) / 180 / (1 + speedAbs / 13); // 34° parked, ~10° at 110 km/h
+    const maxAngle = (38 * Math.PI) / 180 / (1 + speedAbs / 20); // 38° parked (tight kerb-to-kerb turn), ~15° at 110 km/h
     const delta = this.steer * maxAngle;
     this.delta = delta;
     let yawRate = (this.speed / ph.wheelbase) * Math.tan(delta);
