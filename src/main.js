@@ -31,6 +31,7 @@ import { Weather } from './world/weather.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
+import { Kasi } from './world/kasi.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
@@ -283,6 +284,19 @@ async function main() {
     scene.add(grounds.group);
   } catch (err) {
     console.warn('[IZK] grounds not built', err);
+  }
+  // township dressing: container spazas + wooden electricity poles (Umlazi, KwaMashu)
+  let kasi = null;
+  try {
+    kasi = new Kasi({ roads, hf, buildings });
+    scene.add(kasi.group);
+    if (buildings) {
+      const solid = buildings.collide.bind(buildings);
+      buildings.collide = (x, z, r) => solid(x, z, r) || kasi.collide(x, z, r);
+    }
+    console.log('[IZK] kasi', kasi.spazas.length, 'spazas', kasi.poles.length, 'poles', Math.round(kasi.ms), 'ms');
+  } catch (err) {
+    console.warn('[IZK] kasi not built', err);
   }
   // harbour: ships at real quays, gantry cranes, tugs, outer anchorage, piers
   let harbour = null;
@@ -963,6 +977,7 @@ async function main() {
     }
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
+    if (kasi) kasi.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);
@@ -1008,11 +1023,12 @@ async function main() {
   updateCamera(0, true);
   roads.update(camera.position.x, camera.position.z, 1e9); // build nearby road detail up front
   if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
+  if (kasi) kasi.update(camera.position.x, camera.position.z);
   props.update(camera.position.x, camera.position.z, 0, 12);
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { kasi, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     renderer.compile(scene, camera); // warm shaders on the loading screen
