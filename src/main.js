@@ -865,7 +865,8 @@ async function main() {
         streetLife.group.visible = true;
       }
     }
-    const dt = Math.min(clock.getDelta(), 0.05);
+    // real time up to 0.1 s per frame, so slow frames don't turn into slow motion
+    const dt = Math.min(clock.getDelta(), 0.1);
     const now = gameClock.tick();
     weather.update(dt, camera, seasonForDate(now).id, now.getHours());
     const { season, solar } = updateEnvironment(now);
@@ -930,7 +931,11 @@ async function main() {
     if (helpTimer > 16) hud.hideHelp();
 
     input.update(dt, inVehicle ? vehicle.speed : 0);
-    ent.update(dt);
+    // car/player physics in small steps so a long frame stays stable
+    {
+      const n = Math.ceil(dt / 0.034);
+      for (let k = 0; k < n; k++) ent.update(dt / n);
+    }
     hud.updateGear?.(inVehicle ? input.gear : '');
     updateCamera(dt, !cameraReady || camSnap);
     if (shake > 0.01) {
@@ -952,7 +957,10 @@ async function main() {
     traffic.playerActive = inVehicle;
     traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
     traffic.busy = streetLife.busyAt(ent.x, ent.z, now.getHours() + now.getMinutes() / 60);
-    traffic.update(dt, ent.x, ent.z);
+    {
+      const n = Math.ceil(dt / 0.05);
+      for (let k = 0; k < n; k++) traffic.update(dt / n, ent.x, ent.z);
+    }
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     props.update(camera.position.x, camera.position.z, dt, 1);
