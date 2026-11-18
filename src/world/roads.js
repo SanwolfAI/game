@@ -542,6 +542,8 @@ export class RoadNetwork {
     this.#computeElevation(pieces, rnodes);
     this.#computeJoins(rnodes);
     for (const pc of pieces) this.#samplePiece(pc);
+    this.#stitchEnds(pieces, rnodes);
+    this.#liftOverRoads(pieces);
     for (const node of rnodes.values()) this.#finishNode(node);
     this.#buildProfiles(pieces);
     this.#buildSurfaceIndex(pieces, rnodes);
@@ -659,6 +661,116 @@ export class RoadNetwork {
         }
         node.off = best;
       }
+    }
+  }
+
+  // Decks must clear the road they cross: >= 5.1 m under the soffit (SANRAL)
+  // plus ~1.3 m of deck. Where a ramp or a rising road under the bridge
+  // leaves less, lift the deck locally and ease it back at <= 7%.
+  #liftOverRoads(pieces) {
+    const NEED = 6.5;
+    let lifted = 0;
+    for (const pc of pieces) {
+      if (!pc.bridge) continue;
+      const s = pc.s;
+      const m = s.m;
+      const req = new Float32Array(m);
+      let any = false;
+      for (let k = 0; k < m; k++) {
+        const u = this.nearestRoad(s.xs[k], s.zs[k], 20, (q) => !q.bridge && q !== pc.road && !(q.name && q.name === pc.road.name) && !(q.ref && q.ref === pc.road.ref));
+        if (!u || u.dist > u.road.width / 2 + 0.5) continue;
+        const gy = this.hf.heightAt(u.x, u.z) + ROAD_LIFT;
+        const r = gy + NEED - s.ys[k];
+        if (r > 0.05) {
+          req[k] = Math.min(r, 9);
+          any = true;
+        }
+      }
+      if (!any) continue;
+      lifted++;
+      for (let i = 0; i < m; i++) {
+        let R = 0;
+        for (let k = 0; k < m; k++) {
+          if (!req[k]) continue;
+          const v = req[k] - 0.07 * Math.abs(s.ds[i] - s.ds[k]);
+          if (v > R) R = v;
+        }
+        // keep the piece ends where they are (seams stay closed)
+        R = Math.min(R, 0.07 * Math.min(s.ds[i] - s.ds[0], s.ds[m - 1] - s.ds[i]));
+        if (R > 0) {
+          s.ys[i] += R;
+          s.offs[i] += R;
+        }
+      }
+      pc.elevated = true;
+    }
+    this.liftStats = lifted;
+  }
+
+  // Make piece ends meet: pieces sharing a node (or elevated ends of the same
+  // road a few metres apart where OSM left a gap) get one common end height,
+  // and the change is ramped back along each piece at <= 6% so there is no
+  // step to climb or drop through at a deck/ramp seam.
+  #stitchEnds(pieces, rnodes) {
+    const groups = [];
+    for (const node of rnodes.values()) {
+      if (node.ends.length < 2) continue;
+      if (!node.ends.some((e) => e.pc.bridge || e.pc.nA.off > 0 || e.pc.nB.off > 0)) continue;
+      groups.push(node.ends.map((e) => ({ pc: e.pc, start: e.atStart })));
+    }
+    // loose elevated ends of the same road / ref within 6 m
+    const loose = [];
+    for (const node of rnodes.values()) {
+      if (node.ends.length !== 1) continue;
+      const e = node.ends[0];
+      if (!(e.pc.bridge || e.pc.nA.off > 0 || e.pc.nB.off > 0)) continue;
+      const s = e.pc.s;
+      const k = e.atStart ? 0 : s.m - 1;
+      loose.push({ pc: e.pc, start: e.atStart, x: s.xs[k], z: s.zs[k], used: false });
+    }
+    for (let i = 0; i < loose.length; i++) {
+      const a = loose[i];
+      if (a.used) continue;
+      for (let j = i + 1; j < loose.length; j++) {
+        const b = loose[j];
+        if (b.used || b.pc === a.pc) continue;
+        const ra = a.pc.road;
+        const rb = b.pc.road;
+        const same = (ra.name && ra.name === rb.name) || (ra.ref && ra.ref === rb.ref) || ra.cls === rb.cls;
+        if (!same || Math.hypot(a.x - b.x, a.z - b.z) > 6) continue;
+        a.used = b.used = true;
+        groups.push([a, b]);
+        break;
+      }
+    }
+    let fixed = 0;
+    for (const g of groups) {
+      let sum = 0;
+      for (const e of g) sum += e.start ? e.pc.s.ys[0] : e.pc.s.ys[e.pc.s.m - 1];
+      const target = sum / g.length;
+      for (const e of g) {
+        const s = e.pc.s;
+        const m = s.m;
+        const k = e.start ? 0 : m - 1;
+        const d = target - s.ys[k];
+        if (Math.abs(d) < 0.05) continue;
+        fixed++;
+        const len = s.ds[m - 1] - s.ds[0];
+        const D = Math.min(len * 0.5, Math.max(10, Math.abs(d) / 0.06));
+        for (let i = 0; i < m; i++) {
+          const dist = e.start ? s.ds[i] - s.ds[0] : s.ds[m - 1] - s.ds[i];
+          if (dist >= D) continue;
+          const w = 1 - dist / D;
+          const dd = d * w * w * (3 - 2 * w); // smooth ease
+          s.ys[i] += dd;
+          s.offs[i] = Math.max(0, s.offs[i] + dd);
+        }
+      }
+    }
+    this.stitchStats = { groups: groups.length, fixed };
+    for (const pc of pieces) {
+      const s = pc.s;
+      if (!pc.elevated && pc.bridge !== true) pc.elevated = maxOf(s.offs) > 0.05 && (pc.bridge || pc.nA.off > 0 || pc.nB.off > 0);
     }
   }
 

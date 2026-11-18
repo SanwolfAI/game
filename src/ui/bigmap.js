@@ -472,7 +472,7 @@ export class BigMap {
       if (x < -50 || x > W + 50 || y < -20 || y > H + 20) continue;
       const font = lm ? 'italic 600 11px "Trebuchet MS", sans-serif' : big ? '700 13px "Trebuchet MS", sans-serif' : '600 11px "Trebuchet MS", sans-serif';
       ctx.font = font;
-      const label = big ? p.name.toUpperCase() : p.name;
+      const label = p.name;
       const w = ctx.measureText(label).width;
       if (!fits(x - w / 2, y - 12, w, 15)) continue;
       text(label, x - w / 2, y, font, lm ? '#ffd6a0' : '#f4f7fa', 'rgba(10,18,26,0.85)');

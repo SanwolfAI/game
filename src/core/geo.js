@@ -22,7 +22,7 @@ export function dist2d(ax, az, bx, bz) {
 export const CURATED_PLACES = [
   { name: 'Durban CBD', lon: 31.0218, lat: -29.8587, r: 1100, kind: 'city' },
   { name: 'Golden Mile Beachfront', lon: 31.0305, lat: -29.8775, r: 900, kind: 'beach' },
-  { name: 'The Point / uShaka', lon: 31.0281, lat: -29.8706, r: 420, kind: 'landmark' },
+  { name: 'uShaka Marine World', lon: 31.0281, lat: -29.8706, r: 420, kind: 'landmark' },
   { name: 'Kings Park / Moses Mabhida', lon: 31.0255, lat: -29.8339, r: 900, kind: 'landmark' },
   { name: 'Durban Harbour / Bluff', lon: 31.045, lat: -29.893, r: 900, kind: 'landmark' },
   { name: 'Victoria Street Market', lon: 31.0209, lat: -29.857, r: 350, kind: 'landmark' },

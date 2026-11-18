@@ -11,7 +11,7 @@ import { Buildings } from './world/buildings.js';
 import { Props } from './world/props.js';
 import { DirSigns } from './world/dirSigns.js';
 import { WORLD } from './world/worldLight.js';
-import { buildLandmarks } from './world/landmarks.js';
+import { buildLandmarks, MABHIDA } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
 import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
@@ -206,6 +206,10 @@ async function main() {
   setLoad(82, 'Building Durban landmarks…');
   await nextFrame();
   const landmarks = buildLandmarks(hf, city);
+  if (buildings) {
+    const [mx, mz] = toXZ(MABHIDA.lon, MABHIDA.lat);
+    buildings.exclude(mx, mz, MABHIDA.a, MABHIDA.b, MABHIDA.ux, MABHIDA.uz);
+  }
 
   setLoad(84, 'Planting trees and street lights…');
   await nextFrame();

@@ -471,6 +471,30 @@ export class Buildings {
     return false;
   }
 
+  // Hide OSM footprints inside an ellipse (a hand-built landmark replaces them).
+  // ux,uz = unit vector of the a axis.
+  exclude(cx, cz, a, b, ux, uz) {
+    const r = Math.max(a, b);
+    let n = 0;
+    for (let gx = Math.floor((cx - r) / CELL); gx <= Math.floor((cx + r) / CELL); gx++) {
+      for (let gz = Math.floor((cz - r) / CELL); gz <= Math.floor((cz + r) / CELL); gz++) {
+        const cell = this.cells.get(gx * 100000 + gz);
+        if (!cell) continue;
+        for (const i of cell.ids) {
+          const dx = this.cx[i] - cx;
+          const dz = this.cz[i] - cz;
+          const p = (dx * ux + dz * uz) / a;
+          const q = (-dx * uz + dz * ux) / b;
+          if (p * p + q * q < 1) {
+            this.state[i] = 2;
+            n++;
+          }
+        }
+      }
+    }
+    return n;
+  }
+
   #accept(i) {
     let st = this.state[i];
     if (st) return st === 1;

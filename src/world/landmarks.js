@@ -45,73 +45,180 @@ function groundAt(hf, x, z) {
 }
 
 const PLACE = {
-  mabhida: { lon: 31.0255, lat: -29.8339 },
   ushaka: { lon: 31.0281, lat: -29.8706 },
   harbour: { lon: 31.045, lat: -29.893 },
   market: { lon: 31.0209, lat: -29.857 }
 };
 
-// Moses Mabhida Stadium: 56 000-seat bowl crossed by its 106 m arch.
+// Moses Mabhida Stadium, placed on its real OSM footprint (relation 318673,
+// centre -29.82900, 31.03037) with the arch on its real axis (OSM way
+// 172893308: 379 m long, running NNE-SSW, splitting into two legs at the
+// south end). Bowl ~260 x 240 m, PTFE roof hung from the arch by cables,
+// mosaic seating, striped pitch, paved podium. OSM footprints inside are
+// hidden (buildings.exclude) so nothing else stands in the bowl.
+export const MABHIDA = { lon: 31.030366, lat: -29.828995, ux: 0.3302, uz: -0.9439, a: 150, b: 140 };
+
+function canvasTex(w, h, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(rx, ry);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+// strip between ellipse rings; rings = [[a, b, y, v], ...]
+function ellipseStrip(rings, seg, uRep, material) {
+  const pos = [];
+  const uv = [];
+  const idx = [];
+  const cols = seg + 1;
+  for (const [a, b, y, v] of rings) {
+    for (let k = 0; k <= seg; k++) {
+      const t = (k / seg) * Math.PI * 2;
+      pos.push(Math.cos(t) * a, y, Math.sin(t) * b);
+      uv.push((k / seg) * uRep, v);
+    }
+  }
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let k = 0; k < seg; k++) {
+      const p = r * cols + k;
+      idx.push(p, p + cols, p + 1, p + 1, p + cols, p + cols + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, material);
+}
+
 function mabhidaStadium(hf) {
   const group = new THREE.Group();
   group.name = 'landmark-mabhida';
-  const [px, pz] = landPoint(hf, ...toXZ(PLACE.mabhida.lon, PLACE.mabhida.lat));
+  const M = MABHIDA;
+  const [px, pz] = toXZ(M.lon, M.lat);
   const y = groundAt(hf, px, pz);
   group.position.set(px, y, pz);
+  group.rotation.y = Math.atan2(-M.uz, M.ux); // local +X = arch axis (NNE)
+  const SEG = 96;
 
-  const bowl = new THREE.Mesh(
-    new THREE.CylinderGeometry(118, 118, 24, 48, 1, true),
-    new THREE.MeshLambertMaterial({ color: 0xe8e7e2, side: THREE.DoubleSide })
-  );
-  bowl.position.y = 12;
-  bowl.scale.z = 0.72;
-  group.add(bowl);
+  // paved podium with a skirt down to the ground
+  const paving = canvasTex(64, 64, (g) => {
+    g.fillStyle = '#c9c4ba';
+    g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = 'rgba(90,85,78,0.35)';
+    for (let i = 0; i <= 64; i += 16) {
+      g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 64); g.moveTo(0, i); g.lineTo(64, i); g.stroke();
+    }
+  }, 60, 4);
+  const podMat = new THREE.MeshLambertMaterial({ map: paving, side: THREE.DoubleSide });
+  group.add(ellipseStrip([[150, 140, -6, 0], [150, 140, 0.35, 0.1], [118, 108, 0.35, 1]], SEG, 1, podMat));
 
-  const roof = new THREE.Mesh(
-    new THREE.CylinderGeometry(126, 126, 3.2, 48, 1, true),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-  );
-  roof.position.y = 24.6;
-  roof.scale.z = 0.72;
-  group.add(roof);
+  // white ribbed facade, leaning outward
+  const ribs = canvasTex(64, 64, (g) => {
+    g.fillStyle = '#f2f1ec';
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = '#c9cdd0';
+    g.fillRect(0, 0, 10, 64);
+    g.fillStyle = 'rgba(40,60,70,0.55)';
+    for (let r = 8; r < 64; r += 16) g.fillRect(14, r, 50, 5);
+  }, 70, 1);
+  group.add(ellipseStrip([[118, 108, 0.3, 0], [131, 121, 42, 1]], SEG, 1, new THREE.MeshLambertMaterial({ map: ribs, side: THREE.DoubleSide })));
 
-  const pitch = new THREE.Mesh(new THREE.CylinderGeometry(102, 102, 1.4, 40), mat(0x3f7d3a));
-  pitch.position.y = 0.8;
-  pitch.scale.z = 0.7;
+  // seating bowl: mosaic seats, three tiers
+  const seats = canvasTex(128, 128, (g) => {
+    const pal = ['#1f5f8b', '#2a7a9b', '#3e8f7a', '#c46a2b', '#8a3b2e', '#d9a441', '#2d4d6b', '#5f7f3a'];
+    g.fillStyle = '#6c6c68';
+    g.fillRect(0, 0, 128, 128);
+    for (let r = 0; r < 16; r++) {
+      for (let c = 0; c < 32; c++) {
+        const n = Math.sin(c * 0.41 + r * 0.73) + Math.sin(c * 0.13 - r * 0.29) * 1.3;
+        g.fillStyle = pal[Math.abs(Math.floor(n * 2.7 + 8)) % pal.length];
+        g.fillRect(c * 4, r * 8, 4, 5);
+      }
+    }
+  }, 120, 6);
+  const seatMat = new THREE.MeshLambertMaterial({ map: seats, side: THREE.DoubleSide });
+  group.add(ellipseStrip([[66, 48, 1.2, 0], [86, 70, 9, 0.33], [88, 72, 10.5, 0.36], [104, 90, 20, 0.62], [106, 92, 22, 0.66], [124, 112, 38, 1]], SEG, 1, seatMat));
+
+  // pitch: surround + mown stripes
+  group.add(ellipseStrip([[66, 48, 0.6, 0], [0.1, 0.1, 0.6, 1]], 48, 1, mat(0x2f6b34)));
+  const grass = canvasTex(256, 64, (g) => {
+    for (let i = 0; i < 16; i++) {
+      g.fillStyle = i % 2 ? '#3f8a3a' : '#4d9b44';
+      g.fillRect(i * 16, 0, 16, 64);
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.9)';
+    g.lineWidth = 1.5;
+    g.strokeRect(1, 1, 254, 62);
+    g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 64); g.stroke();
+    g.beginPath(); g.arc(128, 32, 9, 0, Math.PI * 2); g.stroke();
+    g.strokeRect(1, 14, 40, 36);
+    g.strokeRect(215, 14, 40, 36);
+  });
+  grass.wrapS = grass.wrapT = THREE.ClampToEdgeWrapping;
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(105, 68), new THREE.MeshLambertMaterial({ map: grass }));
+  pitch.rotation.x = -Math.PI / 2;
+  pitch.position.y = 0.7;
   group.add(pitch);
 
-  const track = new THREE.Mesh(new THREE.CylinderGeometry(112, 112, 0.5, 40), mat(0xa8493c));
-  track.position.y = 1.7;
-  track.scale.z = 0.71;
-  group.add(track);
-
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    const mx = Math.cos(a) * 124;
-    const mz = Math.sin(a) * 124 * 0.72;
-    box(group, 2.4, 30, 2.4, mx, 15, mz, 0xd8d8d2, -a);
-    const light = cone(group, 1.5, 1.8, mx, 30.6, mz, 0xfff3c0, 6);
-    light.material = new THREE.MeshBasicMaterial({ color: 0xfff3c0 });
+  // PTFE roof membrane with steel edge rings
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0xf7f6f2, side: THREE.DoubleSide, transparent: true, opacity: 0.88, emissive: 0x202020 });
+  group.add(ellipseStrip([[134, 124, 43.5, 0], [112, 100, 45.5, 0.5], [84, 70, 46.5, 1]], SEG, 1, roofMat));
+  group.add(ellipseStrip([[84, 70, 46.5, 0], [84, 70, 45.3, 1]], SEG, 1, mat(0x9aa0a4)));
+  // floodlights along the inner roof edge
+  const fl = new THREE.InstancedMesh(new THREE.BoxGeometry(3, 0.8, 1.4), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }), 48);
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  for (let i = 0; i < 48; i++) {
+    const t = (i / 48) * Math.PI * 2;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -t);
+    m4.compose(new THREE.Vector3(Math.cos(t) * 86, 45.6, Math.sin(t) * 72), q, new THREE.Vector3(1, 1, 1));
+    fl.setMatrixAt(i, m4);
   }
+  group.add(fl);
 
-  const arch = new THREE.Mesh(
-    new THREE.TorusGeometry(94, 3.4, 10, 60, Math.PI),
-    mat(0xf4f4f0)
-  );
-  arch.position.y = 0.4;
-  group.add(arch);
-
-  for (let i = 2; i <= 8; i++) {
-    const t = i / 10;
-    const a = Math.PI * t;
-    const ax = Math.cos(a) * 94;
-    const ay = Math.sin(a) * 94;
-    if (ay < 26) continue;
-    box(group, 0.22, ay - 24, 0.22, ax, 24 + (ay - 24) / 2, 0, 0xd0d0ca);
+  // the arch: 379 m long, 106 m high, splitting into two legs at the south (-X) end
+  const H = 106;
+  const L = 189;
+  const archY = (x) => H * Math.pow(Math.max(0, 1 - (x / L) * (x / L)), 0.85);
+  const archMat = new THREE.MeshLambertMaterial({ color: 0xf6f6f2 });
+  const mkTube = (pts, r) => group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 64, r, 8, false), archMat));
+  const main = [];
+  for (let x = -110; x <= L; x += 8) main.push(new THREE.Vector3(Math.min(x, L), archY(Math.min(x, L)) - (x >= L ? 1 : 0), 0));
+  mkTube(main, 2.6);
+  for (const side of [-1, 1]) {
+    const leg = [];
+    for (let x = -L; x <= -102; x += 8) {
+      const t = (x + 110) / (-L + 110); // 0 at split, 1 at foot
+      leg.push(new THREE.Vector3(x, archY(x) - (x <= -L ? 1 : 0), side * 16 * Math.max(0, Math.min(1, t)) ** 0.8));
+    }
+    leg.push(new THREE.Vector3(-102, archY(-102), 0));
+    mkTube(leg, 1.9);
   }
+  // cables from the arch down to the roof's inner ring
+  const cab = [];
+  for (let x = -78; x <= 78; x += 6) {
+    const ay = archY(x);
+    const zr = 70 * Math.sqrt(Math.max(0, 1 - (x / 84) * (x / 84)));
+    cab.push(x, ay - 2, 0, x, 46.5, zr, x, ay - 2, 0, x, 46.5, -zr);
+  }
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.Float32BufferAttribute(cab, 3));
+  group.add(new THREE.LineSegments(cg, new THREE.LineBasicMaterial({ color: 0x8a9096 })));
+  // SkyCar near the north foot
+  const car = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 4), mat(0xd23c3c));
+  car.position.set(140, archY(140) + 3.4, 0);
+  car.rotation.z = -0.75;
+  group.add(car);
 
-  group.rotation.y = 0.4;
-  return { group, colliders: [{ x: px, z: pz, r: 112 }] };
+  return { group, colliders: [{ x: px, z: pz, r: 122 }] };
 }
 
 // uShaka Marine World: ship-shaped aquarium with colourful slide towers.
