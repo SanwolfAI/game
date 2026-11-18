@@ -28,6 +28,7 @@ import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
 import { loadSave, writeSave, clearSave } from './game/save.js';
 import { Medians } from './world/medians.js';
 import { Weather } from './world/weather.js';
+import { Sharpen, sharpenTextures } from './world/sharpen.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
@@ -245,6 +246,8 @@ async function main() {
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
+  // crisp frames: edge smoothing + light sharpen in one pass (?sharp=0 turns it off)
+  const sharp = new Sharpen(renderer, { off: SAFE || new URLSearchParams(location.search).get('sharp') === '0' });
 
   const scene = new THREE.Scene();
   const skyDay = new THREE.Color(0x9fc6e2);
@@ -373,7 +376,7 @@ async function main() {
     const v = Math.abs(vehicle.speed || 0);
     if (v < 0.5) return;
     const r = vehicle.surfRoad;
-    const near = r ? null : roads.nearestRoad(ent.x, ent.z, 8);
+    const near = r ? null : roads.nearestRoad(vehicle.x, vehicle.z, 8);
     const rd = r || (near && near.dist < near.road.width / 2 + 0.5 ? near.road : null);
     let k = rd ? ROUGH[rd.cls] ?? 0.6 : 2.2; // off the road: veld / gravel
     if (rd && rd.unpaved) k = Math.max(k, 1.8);
@@ -386,7 +389,7 @@ async function main() {
     camera.position.x += Math.sin(feelT * 1.9 + 0.4) * amp * 0.4;
     // potholes / joints: deterministic per 7 m cell on rough roads
     if (k >= 0.4) {
-      const cell = Math.floor(ent.x / 7) * 92821 + Math.floor(ent.z / 7) * 68917 + (rd ? rd.id % 1000 : 7);
+      const cell = Math.floor(vehicle.x / 7) * 92821 + Math.floor(vehicle.z / 7) * 68917 + (rd ? rd.id % 1000 : 7);
       if (cell !== lastHole) {
         lastHole = cell;
         const h = Math.abs(Math.sin(cell * 12.9898) * 43758.5453) % 1;
@@ -620,7 +623,7 @@ async function main() {
 
     fogColor.copy(sky).lerp(daySky, 0.18);
     scene.fog.color.copy(fogColor);
-    scene.fog.near = (750 - solar.night * 320) * weather.cur.fog * fogRange;
+    scene.fog.near = (1100 - solar.night * 600) * weather.cur.fog * fogRange;
     scene.fog.far = (5200 - solar.night * 2300) * weather.cur.fog * fogRange;
 
     hemi.intensity = (0.3 + solar.day * 1.35) * (1 - weather.cur.cloud * 0.25) + weather.flash * 2.5;
@@ -705,6 +708,7 @@ async function main() {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    sharp.resize();
   }
   addEventListener('resize', onResize);
 
@@ -864,11 +868,16 @@ async function main() {
         const cur = renderer.getPixelRatio();
         const maxPx = Math.min(devicePixelRatio || 1, 2);
         const rg = roads.range;
+        // Sharpness first: never drop below 1x pixels; give up draw
+        // distance (down to half), then the sharpen pass, before blur.
         if (avg > 0.03) {
-          if (rg > 0.6) setRange(Math.max(0.6, rg - 0.15));
-          else if (cur > 0.85) renderer.setPixelRatio(Math.max(0.85, cur - 0.25));
+          if (rg > 0.5) setRange(Math.max(0.5, rg - 0.15));
+          else if (cur > 1) renderer.setPixelRatio(Math.max(1, cur - 0.25));
+          else if (sharp.enabled && avg > 0.04) sharp.enabled = false;
+          else if (cur > 0.85 && avg > 0.045) renderer.setPixelRatio(0.85);
         } else if (avg < 0.021) {
-          if (cur < maxPx) renderer.setPixelRatio(Math.min(maxPx, cur + 0.25));
+          if (cur < 1) renderer.setPixelRatio(1);
+          else if (cur < maxPx) renderer.setPixelRatio(Math.min(maxPx, cur + 0.25));
           else if (rg < 1) setRange(Math.min(1, rg + 0.1));
         }
         resT = resSum = resN = 0;
@@ -1028,7 +1037,7 @@ async function main() {
     }
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
 
-    renderer.render(scene, camera);
+    sharp.render(scene, camera);
   }
 
   setLoad(100, 'Ready');
@@ -1047,6 +1056,7 @@ async function main() {
   window.__izk = { kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
+    sharpenTextures(scene, renderer);
     renderer.compile(scene, camera); // warm shaders on the loading screen
   } catch {}
   setBoot('running');
