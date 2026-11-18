@@ -78,7 +78,9 @@ export class Router {
       // lanes/passages only when nothing else gets there
       const w = (pc.len / Math.max(8, pc.road.speed)) * (pc.road.rank <= 1 ? 4 : 1);
       nodes[a].out.push({ to: b, pc, fwd: true, w });
-      if (!pc.road.oneway) nodes[b].out.push({ to: a, pc, fwd: false, w });
+      // one-way roads also get a costly reverse edge, used only when no legal
+      // route exists (so the GPS always shows a line)
+      nodes[b].out.push({ to: a, pc, fwd: false, w: pc.road.oneway ? w * 8 : w, rev: !!pc.road.oneway });
     }
     this.nodes = nodes;
     this.index = index;
@@ -91,6 +93,26 @@ export class Router {
       if (!l) this.grid.set(k, (l = []));
       l.push(i);
     }
+    // connected pieces of the network: goals snap to the main one, so a tap
+    // near an isolated stub or far from any road still gets a route
+    const comp = new Int32Array(nodes.length).fill(-1);
+    const adj = nodes.map(() => []);
+    for (let i = 0; i < nodes.length; i++) for (const e of nodes[i].out) { adj[i].push(e.to); adj[e.to].push(i); }
+    let best = -1, bestSize = 0;
+    for (let i = 0, c = 0; i < nodes.length; i++, c++) {
+      if (comp[i] >= 0) { c--; continue; }
+      const st = [i];
+      comp[i] = c;
+      let size = 0;
+      while (st.length) {
+        const u = st.pop();
+        size++;
+        for (const w of adj[u]) if (comp[w] < 0) { comp[w] = c; st.push(w); }
+      }
+      if (size > bestSize) { bestSize = size; best = c; }
+    }
+    this.comp = comp;
+    this.mainComp = best;
     this.built = true;
   }
 
@@ -101,7 +123,7 @@ export class Router {
     return e.fwd ? a : b;
   }
 
-  nearestNode(x, z, maxR = 600) {
+  nearestNode(x, z, maxR = 600, mainOnly = false) {
     if (!this.built) this.#build();
     let best = -1;
     let bd = maxR;
@@ -113,6 +135,7 @@ export class Router {
         const l = this.grid.get(b * 100000 + a);
         if (!l) continue;
         for (const i of l) {
+          if (mainOnly && this.comp[i] !== this.mainComp) continue;
           const n = this.nodes[i];
           const d = Math.hypot(n.x - x, n.z - z);
           if (d < bd) {
@@ -130,7 +153,8 @@ export class Router {
   route(sx, sz, fx, fz, tx, tz) {
     if (!this.built) this.#build();
     const nodes = this.nodes;
-    const goal = this.nearestNode(tx, tz, 800);
+    let goal = this.nearestNode(tx, tz, 800, true);
+    if (goal < 0) goal = this.nearestNode(tx, tz, 6000, true);
     if (goal < 0) return null;
     // start: both ends of the piece we are on (if known), else nearest node
     const starts = [];
@@ -152,40 +176,47 @@ export class Router {
       if (n < 0) return null;
       starts.push([n, 0]);
     }
-    const N = nodes.length;
-    const g = new Float64Array(N).fill(Infinity);
-    const prev = new Int32Array(N).fill(-1);
-    const prevEdge = new Array(N);
-    const heap = new Heap();
-    const gx = nodes[goal].x;
-    const gz = nodes[goal].z;
-    const H = (i) => Math.hypot(nodes[i].x - gx, nodes[i].z - gz) / 30; // admissible (30 m/s)
-    for (const [s, c] of starts) {
-      if (c < g[s]) {
-        g[s] = c;
-        heap.push(c + H(s), s);
-      }
-    }
-    let found = false;
-    let pops = 0;
-    while (heap.size) {
-      const u = heap.pop();
-      if (u === goal) {
-        found = true;
-        break;
-      }
-      if (++pops > 400000) break;
-      const gu = g[u];
-      for (const e of nodes[u].out) {
-        const ng = gu + e.w;
-        if (ng < g[e.to]) {
-          g[e.to] = ng;
-          prev[e.to] = u;
-          prevEdge[e.to] = e;
-          heap.push(ng + H(e.to), e.to);
+    let g, prev, prevEdge, found = false;
+    const search = (allowRev) => {
+      const N = nodes.length;
+      g = new Float64Array(N).fill(Infinity);
+      prev = new Int32Array(N).fill(-1);
+      prevEdge = new Array(N);
+      const heap = new Heap();
+      const gx = nodes[goal].x;
+      const gz = nodes[goal].z;
+      const H = (i) => Math.hypot(nodes[i].x - gx, nodes[i].z - gz) / 30; // admissible (30 m/s)
+      for (const [s, c] of starts) {
+        if (c < g[s]) {
+          g[s] = c;
+          heap.push(c + H(s), s);
         }
       }
-    }
+      found = false;
+      let pops = 0;
+      while (heap.size) {
+        const u = heap.pop();
+        if (u === goal) {
+          found = true;
+          break;
+        }
+        if (++pops > 400000) break;
+        const gu = g[u];
+        for (const e of nodes[u].out) {
+          if (e.rev && !allowRev) continue;
+          const ng = gu + e.w;
+          if (ng < g[e.to]) {
+            g[e.to] = ng;
+            prev[e.to] = u;
+            prevEdge[e.to] = e;
+            heap.push(ng + H(e.to), e.to);
+          }
+        }
+      }
+
+      return found;
+    };
+    if (!search(false)) search(true); // one-ways against the flow only if nothing legal
     if (!found) return null;
     const chain = [];
     for (let v = goal; prev[v] >= 0; v = prev[v]) chain.push(prevEdge[v]);
