@@ -31,6 +31,18 @@ const SHACK = ['#9b5a3a', '#7d8a93', '#6f7f8a', '#a8a39a', '#4f6f8f', '#8d6e4f',
 const TILE_ROOF = ['#9b4a32', '#7c3b2a', '#4a4a4c', '#5d3a2c', '#3c4148', '#8a5a3c', '#6b6b66'].map(hex);
 // rural KZN homesteads: bright painted block houses, white/cream rondavels with thatch
 const RURAL_WALLS = ['#9fd3b5', '#f2b8c6', '#a9cbe8', '#f4e3a1', '#f7f5ee', '#e8b48a', '#c5e3a5', '#f0f0f0'].map(hex);
+// Wealthy suburbs (world metres, radius): big plots become mansions.
+// Umhlanga Rocks/Prestondale, La Lucia, Glenashley, Durban North,
+// Morningside/Berea, Westville, Kloof.
+const RICH = [[5900, -15400, 1600], [4600, -12000, 1500], [2900, -9300, 1500], [1300, -7600, 1300], [-1600, -3000, 900], [-8900, -3200, 1500], [-18000, -7600, 1800]];
+const MANSION_WALLS = ['#ffffff', '#f7f3ea', '#efe8da', '#e6dfd2', '#d9d4cb', '#f3ead6', '#c9c3b8'].map(hex);
+const MANSION_ROOF = ['#3a3d42', '#2f3236', '#55483f', '#8a4a32', '#9b5a3c', '#474b50'].map(hex);
+const POOL_WATER = hex('#2fb6d8');
+const POOL_DECK = hex('#f2efe8');
+const richAt = (x, z) => {
+  for (const [rx, rz, r] of RICH) if ((x - rx) * (x - rx) + (z - rz) * (z - rz) < r * r) return true;
+  return false;
+};
 const THATCH = ['#b8995e', '#a88a52', '#c2a56c', '#9c8150'].map(hex);
 const IRON_ROOF = ['#9aa0a3', '#8a4a3a', '#4f6a55', '#b5b8b9', '#7a7f82'].map(hex);
 const CBD_WALLS = ['#f2efe8', '#e6e1d6', '#d9d6cf', '#efe6d6', '#cfd5da', '#e9e4dc', '#d8cbb6'].map(hex);
@@ -275,6 +287,7 @@ export class Buildings {
     s.roofLayer = LAYER.roofFlat;
     s.roofTint = WHITE;
     s.lit = 3;
+    s.pool = false;
     if (kind === KIND.roof || kind === KIND.construction && A < 40) {
       s.skip = true;
       return s;
@@ -314,7 +327,25 @@ export class Buildings {
       type = 'rural';
     }
 
+    // rich suburbs: large homes become mansions
+    if (!industrial && !beach && (type === 'house' || ((type === 'flats' || type === 'shop') && A < 900 && (kind === KIND.house || kind === KIND.yes))) && A > 140 && richAt(x, z)) type = 'mansion';
+
     switch (type) {
+      case 'mansion': {
+        const modern = rng() < 0.4;
+        const fl = A > 450 && rng() < 0.5 ? 3 : 2;
+        h = fl * 3.5;
+        s.floorH = 3.5;
+        s.wall = rng() < 0.15 ? LAYER.facebrick : LAYER.house;
+        s.wallTint = s.wall === LAYER.facebrick ? WHITE : pick(MANSION_WALLS);
+        s.roof = 'hip';
+        s.roofLayer = modern ? LAYER.roofIron : LAYER.roofTile;
+        s.roofTint = pick(MANSION_ROOF);
+        s.lit = 5;
+        s.bay = 4.8; // wide picture windows
+        s.pool = true;
+        break;
+      }
       case 'rural': {
         const roundish = A < 45 && rng() < 0.55;
         h = 2.6 + rng() * 0.4;
@@ -789,6 +820,36 @@ export class Buildings {
     void w;
   }
 
+  // Swimming pool with a white deck in the garden of a mansion: tries
+  // four spots around the house, skipping roads and other buildings.
+  #pool(B, i) {
+    const cx = this.cx[i];
+    const cz = this.cz[i];
+    const r = Math.sqrt(this.area[i]) * 0.62 + 5.5;
+    const rot = ((i * 0.381966) % 1) * Math.PI * 2;
+    for (let k = 0; k < 4; k++) {
+      const a = rot + k * Math.PI / 2;
+      const px = cx + Math.cos(a) * r;
+      const pz = cz + Math.sin(a) * r;
+      if (this.blocked(px, pz, 5)) continue;
+      const nr = this.roads && this.roads.nearestRoad(px, pz, 14);
+      if (nr && nr.dist < nr.road.width / 2 + 5) continue;
+      const y = this.hf.heightAt(px, pz) + 0.07;
+      const ux = Math.cos(a);
+      const uz = Math.sin(a);
+      const quad = (hw, hl, yy, c) => {
+        // long side across the radial direction
+        const ax = -uz * hl, az = ux * hl, bx = ux * hw, bz = uz * hw;
+        const p0 = [px - ax - bx, pz - az - bz], p1 = [px + ax - bx, pz + az - bz], p2 = [px + ax + bx, pz + az + bz], p3 = [px - ax + bx, pz - az + bz];
+        for (const p of [p0, p2, p1, p0, p3, p2, p0, p1, p2, p0, p2, p3]) B.v(p[0], yy, p[1], 0, 1, 0, c, p[0] / 12, p[1] / 12, LAYER.roofFlat, 0);
+        B.tris += 4;
+      };
+      quad(3.4, 5.6, y, POOL_DECK);
+      quad(2.2, 4.2, y + 0.03, POOL_WATER);
+      return;
+    }
+  }
+
   #buildNear(cell) {
     const B = new GeoBuf();
     for (const i of cell.ids) {
@@ -796,6 +857,7 @@ export class Buildings {
       if (s.skip || s.h >= TALL) continue;
       if (!this.#accept(i)) continue;
       this.#emitBuilding(B, i, s);
+      if (s.pool) this.#pool(B, i);
     }
     const g = B.geometry();
     if (g) {
