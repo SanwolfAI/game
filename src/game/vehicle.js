@@ -54,6 +54,13 @@ export class Vehicle {
     this.z = spawn ? spawn.z : 0;
     let yaw = spawn ? Math.atan2(spawn.dirX, spawn.dirZ) : 0;
     if (spawn && !this.#roadForwardOk(spawn, yaw)) yaw += Math.PI;
+    // SA drives on the left: start in the left lane, not on the centre line
+    if (spawn && spawn.road) {
+      const w = spawn.road.width || 7;
+      const off = spawn.road.oneway ? 0 : Math.max(0, w / 4);
+      this.x -= Math.cos(yaw) * off;
+      this.z += Math.sin(yaw) * off;
+    }
     this.yaw = yaw;
     this.speed = 0;
     this.steer = 0;

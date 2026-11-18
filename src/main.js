@@ -123,7 +123,7 @@ function buildStars() {
 // Crash guard: a launch that never reaches a stable ~20 s of play (whole-phone
 // freeze, GPU hang, killed WebView) leaves this flag behind, so the next
 // launch starts in SAFE MODE: low resolution, no street life/real people,
-// fresh spawn. ?safe=1 forces it, ?safe=0 skips it.
+// (keeps the autosave). ?safe=1 forces it, ?safe=0 skips it.
 const BOOT_KEY = 'izk-boot';
 const qs0 = new URLSearchParams(location.search);
 let lastBoot = null;
@@ -307,7 +307,7 @@ async function main() {
   vehicle.medians = medians;
   // Autosave: carry on exactly where the last session stopped.
   const params0 = new URLSearchParams(location.search);
-  const saved = params0.get('new') === '1' || SAFE ? null : loadSave();
+  const saved = params0.get('new') === '1' ? null : loadSave(); // safe mode keeps your place too
   if (saved) {
     if (saved.car && saved.car !== vehicle.typeId && VEHICLE_TYPES.some((t) => t.id === saved.car)) vehicle.setType(saved.car);
     vehicle.restore(saved.x, saved.z, saved.yaw || 0);
@@ -780,7 +780,7 @@ async function main() {
     if (bootFrames >= 0) {
       bootFrames++;
       bootTime += Math.min(raw, 1);
-      if (bootTime > 20 && bootFrames > 200) {
+      if (bootTime > 8 && bootFrames > 80) {
         setBoot(null);
         bootFrames = -1;
       }
