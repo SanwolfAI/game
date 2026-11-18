@@ -30,7 +30,8 @@ jobs:
           cp index.html $A/
           cp -r vendor $A/
           rsync -a --exclude data src/ $A/src/
-          cp src/data/durban-game.json src/data/durban-buildings.bin src/data/durban-areas.json src/data/durban-features.json $A/src/data/
+          # every runtime data file (the raw OSM dump and caches stay out)
+          rsync -a --exclude durban-osm.json --exclude places-raw.json --exclude cache src/data/ $A/src/data/
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -69,7 +70,8 @@ jobs:
           cp index.html site/
           cp -r vendor site/
           rsync -a --exclude data src/ site/src/
-          cp src/data/durban-game.json src/data/durban-buildings.bin src/data/durban-areas.json src/data/durban-features.json site/src/data/
+          # every runtime data file (the raw OSM dump and caches stay out)
+          rsync -a --exclude durban-osm.json --exclude places-raw.json --exclude cache src/data/ site/src/data/
           touch site/.nojekyll
       - uses: actions/configure-pages@v5
         with:
