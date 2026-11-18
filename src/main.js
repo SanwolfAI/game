@@ -18,7 +18,7 @@ import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { StreetLife, loadPeople } from './game/streetLife.js';
 import { Input } from './game/input.js';
-import { honk, unlockAudio, tick, updateEngine, toggleMute } from './game/audio.js';
+import { honk, unlockAudio, tick, updateEngine, toggleMute, pauseAudio } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
@@ -705,16 +705,35 @@ async function main() {
       dest: gps.dest ? { x: gps.dest.x, z: gps.dest.z, name: gps.dest.name } : null
     });
   }
+  // Pause: the world stops while the menu is open or the phone is locked /
+  // the app is in the background; sound goes quiet too.
+  let paused = false;
+  const menuEl = document.getElementById('menu');
+  const setPaused = (on) => {
+    paused = on;
+    pauseAudio(on);
+  };
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveNow();
+    if (document.visibilityState === 'hidden') {
+      saveNow();
+      menuEl?.classList.add('open'); // come back to the pause menu
+      setPaused(true);
+    }
   });
   addEventListener('pagehide', saveNow);
   addEventListener('beforeunload', saveNow);
   // Menu: Resume / New game (back to the CBD start, clears the save).
   {
     const menu = document.getElementById('menu');
-    document.getElementById('t-menu')?.addEventListener('pointerup', () => menu?.classList.add('open'));
-    document.getElementById('m-resume')?.addEventListener('click', () => menu?.classList.remove('open'));
+    document.getElementById('t-menu')?.addEventListener('pointerup', () => {
+      menu?.classList.add('open');
+      setPaused(true);
+    });
+    document.getElementById('m-resume')?.addEventListener('click', () => {
+      menu?.classList.remove('open');
+      setPaused(false);
+      lastT = performance.now();
+    });
     // steering sensitivity, saved on the phone
     let sens = 1;
     try {
@@ -752,7 +771,9 @@ async function main() {
   let clockSaveTimer = 0;
 
   // Audio needs a user gesture before it can start (Android WebView too).
-  const unlockOnce = () => unlockAudio();
+  const unlockOnce = () => {
+    if (!paused) unlockAudio();
+  };
   addEventListener('pointerdown', unlockOnce, { passive: true });
   addEventListener('keydown', unlockOnce);
 
@@ -768,11 +789,20 @@ async function main() {
     fogRange = r;
   };
   let lastT = performance.now();
+  let beatT = 0;
   function frame() {
     requestAnimationFrame(frame);
     const t = performance.now();
     const raw = (t - lastT) / 1000;
     lastT = t;
+    // tell the Android app we're alive (its freeze watchdog), once a second
+    if (window.IZKNative && t - beatT > 1000) {
+      beatT = t;
+      try {
+        window.IZKNative.ping();
+      } catch {}
+    }
+    if (paused) return; // nothing moves; the last frame stays on screen
     try {
       frameBody(raw);
     } catch (err) {

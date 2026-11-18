@@ -10,7 +10,7 @@ function context() {
 
 export function honk() {
   const audio = context();
-  if (!audio) return;
+  if (!audio || pausedAudio) return;
   if (audio.state === 'suspended') audio.resume();
   const t = audio.currentTime;
   for (const freq of [392, 494]) {
@@ -28,7 +28,17 @@ export function honk() {
   }
 }
 
+// Pause: silence everything (menu open, phone locked, app in background).
+let pausedAudio = false;
+export function pauseAudio(on) {
+  pausedAudio = on;
+  if (!ctx) return;
+  if (on && ctx.state === 'running') ctx.suspend();
+  else if (!on && ctx.state === 'suspended') ctx.resume();
+}
+
 export function unlockAudio() {
+  if (pausedAudio) return;
   const audio = context();
   if (audio && audio.state === 'suspended') audio.resume();
 }
