@@ -375,7 +375,7 @@ export class Props {
         const rank = road.rank;
         const rural = road.rural || road.unpaved;
         const hasWalk = !!specFor(road.cls).walk && !rural;
-        const lampSpacing = rural ? 0 : rank >= 9 ? 70 : rank >= 5 ? 34 : 0;
+        const lampSpacing = rural ? 55 : rank >= 9 ? 70 : rank >= 5 ? 34 : 0;
         const coastD = hf.signedCoastDistance(s.xs[run.i0], s.zs[run.i0]);
         const cbd = Math.hypot(s.xs[run.i0], s.zs[run.i0]) < 1300;
         const treeSpacing = rural ? 0 : !cbd && rank <= 6 && rank >= 2 ? (coastD < 220 ? 16 : 17) : 0;
