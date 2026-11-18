@@ -85,7 +85,7 @@ function pointAlong(road, dir, dist) {
   return { x: p[0], z: p[1], fx: 0, fz: 1 };
 }
 
-const COUNTS = { gusheshe: 24, quantum: 28, polo: 21, hilux: 16, saps: 9 };
+const COUNTS = { gusheshe: 28, quantum: 36, polo: 26, hilux: 18, saps: 9 };
 // Spawn weight by road class: busy arterials and the CBD, quiet side streets.
 const CLASS_WEIGHT = { motorway: 1, trunk: 1, primary: 1, secondary: 0.85, motorway_link: 0.5, trunk_link: 0.5, primary_link: 0.5, secondary_link: 0.45, tertiary: 0.5, tertiary_link: 0.35, unclassified: 0.14, residential: 0.1, living_street: 0.05, service: 0, pedestrian: 0 };
 const SPAWN_R = 650;
@@ -171,7 +171,10 @@ export class Traffic {
     let mid = null;
     for (let tries = 0; tries < 30; tries++) {
       const a = this.rng() * Math.PI * 2;
-      const r = minR + Math.sqrt(this.rng()) * (SPAWN_R - minR);
+      // busy CBD: pack the cars into the streets around you
+      const sr = SPAWN_R * (1 - 0.62 * (this.busy || 0));
+      const mr = Math.min(minR, sr * 0.55);
+      const r = mr + Math.sqrt(this.rng()) * (sr - mr);
       const sx = px + Math.cos(a) * r;
       const sz = pz + Math.sin(a) * r;
       const near = this.roads.nearestRoad(sx, sz, 90);
@@ -529,7 +532,7 @@ export class Traffic {
       const P = this.player;
       const d = P ? Math.hypot(P.x - car.px, P.z - car.pz) : 99;
       if (d < 70) honkFar(d, car.taxi ? 1.18 : 0.9 + this.rng() * 0.2, !car.taxi && this.rng() < 0.4);
-      car.honkCd = car.taxi ? 2.5 + this.rng() * 2 : 5 + this.rng() * 5;
+      car.honkCd = (car.taxi ? 2.5 + this.rng() * 2 : 5 + this.rng() * 5) / (1 + 1.6 * (this.busy || 0));
     }
     // lane changes
     if (car.laneChangeCd > 0) car.laneChangeCd -= dt;
@@ -856,7 +859,7 @@ export class Traffic {
           const pp = pointAlong(car.edge.road, car.dir, car.dist);
           cx = pp.x + pp.fz * car.lane;
           cz = pp.z - pp.fx * car.lane;
-          if (this.hf.isWater(cx, cz) || Math.hypot(cx - px, cz - pz) > 800) {
+          if (this.hf.isWater(cx, cz) || Math.hypot(cx - px, cz - pz) > 800 - 440 * (this.busy || 0)) {
             this.#relocate(car, px, pz);
             const q = pointAlong(car.edge.road, car.dir, car.dist);
             cx = q.x + q.fz * car.lane;

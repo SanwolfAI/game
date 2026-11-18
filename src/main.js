@@ -221,7 +221,7 @@ async function main() {
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
   renderer.setPixelRatio(SAFE ? Math.min(devicePixelRatio || 1, 0.75) : Math.min(devicePixelRatio || 1, MOBILE ? 1 : 2));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
 
@@ -834,6 +834,7 @@ async function main() {
 
     traffic.playerActive = inVehicle;
     traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
+    traffic.busy = streetLife.busyAt(ent.x, ent.z, now.getHours() + now.getMinutes() / 60);
     traffic.update(dt, ent.x, ent.z);
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);

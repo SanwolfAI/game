@@ -344,6 +344,13 @@ export class StreetLife {
     this.mLoad = inst(headLoadGeo(), lam({}), MAX_HEAD, true);
     this.mBottle = inst(bottleGeo(), lam({ color: 0x5a3a12 }), MAX_HAND);
     this.mGlow = inst(new THREE.SphereGeometry(0.02, 4, 3), new THREE.MeshBasicMaterial({ color: 0xff6a1a, toneMapped: false }), MAX_HAND);
+    const drum = new THREE.CylinderGeometry(0.29, 0.29, 0.88, 10, 1, true);
+    drum.translate(0, 0.44, 0);
+    this.mDrum = inst(drum, lam({ color: 0x6b3a22, side: THREE.DoubleSide }), 24);
+    const flame = new THREE.ConeGeometry(0.26, 0.55, 7);
+    flame.translate(0, 1.12, 0);
+    this.mFlame = inst(flame, new THREE.MeshBasicMaterial({ color: 0xff7a1a, toneMapped: false, transparent: true, opacity: 0.85 }), 24);
+    this.group.add(this.mDrum, this.mFlame);
     this.props = [this.mFrame, this.mTop, this.mFrame2, this.mTable, this.mProduce, this.mRack, this.mGarment, this.mUmbPole, this.mUmbTop, this.mBarber, this.mChair, this.mLoad, this.mBottle, this.mGlow];
     for (const m of this.people) this.group.add(m);
     // real figures (nearest people)
@@ -480,6 +487,7 @@ export class StreetLife {
     const day = this.hour >= 6 && this.hour < 18.5;
     const evening = this.hour >= 17 || this.hour < 2;
     const stalls = [];
+    const drums = [];
     const standers = [];
     const parked = [];
     const slots = [];
@@ -583,6 +591,30 @@ export class StreetLife {
             const z = p.z + lz * (hw + WALK_W - 0.5);
             if (this.#blocked(x, z, 0.4)) continue;
             const n = 2 + Math.floor(hash(road.id2, Math.round(s), 3) * (evening ? 4 : 3));
+            const night = this.hour >= 19 || this.hour < 5;
+            if (night && g < groupP * 0.45 && drums.length < 24) {
+              // izinyoka / phara round a fire drum
+              drums.push({ x, z, y: this.#y(x, z) });
+              const m = 2 + Math.floor(hash(road.id2, Math.round(s), 4) * 3);
+              for (let i = 0; i < m; i++) {
+                const a = (i / m) * Math.PI * 2 + g * 5;
+                const qx = x + Math.cos(a) * 0.95;
+                const qz = z + Math.sin(a) * 0.95;
+                const r = hash(road.id2, Math.round(s) + i, 13);
+                const ph = this.#person(qx, qz, Math.atan2(x - qx, z - qz), i % 2 ? 'smoke' : 'phara', r);
+                ph.ragged = true;
+                standers.push(ph);
+              }
+              continue;
+            }
+            if (night && g < groupP * 0.7) {
+              // night-shift security guard on a door
+              const r = hash(road.id2, Math.round(s), 17);
+              const gd = this.#person(x, z, Math.atan2(-lx, -lz), 'wait', r);
+              gd.worker = true;
+              standers.push(gd);
+              continue;
+            }
             const act = evening && g < groupP * 0.5 ? 'drink' : g < groupP * 0.35 ? 'smoke' : 'chat';
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2 + g * 9;
@@ -646,6 +678,7 @@ export class StreetLife {
     }
 
     this.stalls = stalls;
+    this.drums = drums;
     standers.sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
     this.standers = standers.slice(0, MAX_STAND);
     parked.sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
@@ -702,6 +735,14 @@ export class StreetLife {
       w.dir = this.rng() < 0.5 ? 1 : -1;
       w.off = sl.road.width / 2 + 0.45 + this.rng() * (WALK_W - 0.9);
       w.speed = 1.0 + this.rng() * 0.6;
+      if (this.hour >= 19 || this.hour < 5) {
+        // night: shift workers heading to/from work, and phara drifting slowly
+        if (this.rng() < 0.45) w.worker = true;
+        else {
+          w.ragged = true;
+          w.speed = 0.55 + this.rng() * 0.3;
+        }
+      }
       w.yt = 0;
       w.flee = 0;
       return w;
@@ -730,6 +771,13 @@ export class StreetLife {
     w.dir = -w.dir; // dead end: turn round
   }
 
+  // How packed the streets should be here right now (0..1): CBD by day is full.
+  busyAt(x, z, hour) {
+    const k = this.intensity(x, z);
+    const dayK = hour >= 6.5 && hour < 18 ? 1 : hour >= 5.5 && hour < 20 ? 0.5 : 0.1;
+    return Math.min(1, k * dayK);
+  }
+
   // ---- per-frame ---------------------------------------------------------------
   update(dt, px, pz, hour, player = null, onCrash = null) {
     this.hour = hour;
@@ -737,6 +785,11 @@ export class StreetLife {
     this.pz = pz;
     this.t += dt;
     this.frame++;
+    const phase = hour >= 19 || hour < 5 ? 2 : hour >= 18.5 || hour < 6 ? 1 : 0;
+    if (phase !== this.dayPhase) {
+      this.dayPhase = phase;
+      this.cx = Infinity;
+    }
     if (Math.hypot(px - this.cx, pz - this.cz) > R_MOVE) this.#rebuild(px, pz);
     const k = this.intensity(px, pz);
     const day = hour >= 6 && hour < 19;
@@ -787,6 +840,7 @@ export class StreetLife {
     this.#writePeople();
     // cigarette glow follows the night
     this.mGlow.visible = WORLD.night ? WORLD.night.value > 0.2 : false;
+    this.mFlame.material.opacity = 0.65 + Math.sin(this.t * 17) * 0.12 + Math.sin(this.t * 31) * 0.08;
   }
 
   // ---- parked car collisions (player) -------------------------------------------
@@ -1002,6 +1056,16 @@ export class StreetLife {
     set(this.mUmbTop, nU);
     set(this.mBarber, nB);
     set(this.mChair, nC);
+    let nD = 0;
+    for (const d of this.drums || []) {
+      q.identity();
+      p.set(d.x, d.y, d.z);
+      m.compose(p, q, one);
+      this.mDrum.setMatrixAt(nD, m);
+      this.mFlame.setMatrixAt(nD++, m);
+    }
+    set(this.mDrum, nD);
+    set(this.mFlame, nD);
     this.#writeParked();
   }
 
@@ -1049,7 +1113,8 @@ export class StreetLife {
       // pick figure (stable per person) and pose frame
       let fi;
       const r = (h.phase * 0.618) % 1;
-      if (h.female) fi = r < 0.5 ? 0 : 2;
+      if (h.worker) fi = 3;
+      else if (h.female) fi = r < 0.5 ? 0 : 2;
       else fi = r < 0.78 ? 1 : 3;
       fi = Math.min(fi, real.length - 1);
       const f = real[fi];
@@ -1071,6 +1136,9 @@ export class StreetLife {
           break;
         case 'phone':
           frame = 'armup';
+          break;
+        case 'phara':
+          frame = 'stand2';
           break;
         case 'cut':
           frame = 'cut';
@@ -1166,6 +1234,11 @@ export class StreetLife {
         case 'browse':
           lean = 0.12;
           armR = -0.7;
+          break;
+        case 'phara':
+          lean = 0.3;
+          armL = -0.6;
+          armR = -0.6;
           break;
         case 'phone':
           armR = -2.5;
