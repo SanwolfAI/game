@@ -687,6 +687,8 @@ async function main() {
   let bootFrames = 0;
   let bootTime = 0;
   let slowFrames = 0;
+  let streetLifeAge = 0;
+  let resT = 0, resSum = 0, resN = 0;
   let lastT = performance.now();
   function frame() {
     requestAnimationFrame(frame);
@@ -713,10 +715,29 @@ async function main() {
         bootFrames = -1;
       }
     }
-    // watchdog: several very slow frames -> drop street life for this run
-    if (raw > 0.7 && bootTime > 1) {
+    // dynamic resolution on phones: start at 1x (safe), step up to 1.5x
+    // while frames stay smooth, step back down when they don't.
+    if (MOBILE && !SAFE) {
+      resT += Math.min(raw, 0.1);
+      resSum += raw;
+      resN++;
+      if (resT > 6) {
+        const avg = resSum / resN;
+        const cur = renderer.getPixelRatio();
+        const max = Math.min(devicePixelRatio || 1, 1.5);
+        let next = cur;
+        if (avg < 0.036 && cur < max) next = Math.min(max, cur + 0.25);
+        else if (avg > 0.07 && cur > 1) next = Math.max(1, cur - 0.25);
+        if (next !== cur) renderer.setPixelRatio(next);
+        resT = resSum = resN = 0;
+      }
+    }
+    // watchdog: very slow frames well after street life appeared (not the
+    // one-off hitch when it first shows) -> drop street life for this run
+    if (streetLifeOn) streetLifeAge += Math.min(raw, 0.1);
+    if (raw > 0.9 && streetLifeOn && streetLifeAge > 5) {
       slowFrames++;
-      if (slowFrames >= 3 && streetLifeOn) {
+      if (slowFrames >= 5) {
         streetLifeOn = false;
         streetLifeDelay = Infinity;
         streetLife.group.visible = false;
