@@ -32,6 +32,7 @@ import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
 import { Harbour } from './world/harbour.js';
+import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
@@ -290,6 +291,14 @@ async function main() {
     scene.add(harbour.group);
   } catch (err) {
     console.warn('[IZK] harbour not built', err);
+  }
+  // Metrorail trains on the real railway lines
+  let trains = null;
+  try {
+    trains = new Trains(roads, hf);
+    scene.add(trains.group);
+  } catch (err) {
+    console.warn('[IZK] trains not built', err);
   }
 
   const input = new Input();
@@ -888,6 +897,7 @@ async function main() {
     } else shake = 0;
     roadFeel(dt);
     if (harbour) harbour.update(dt, performance.now() / 1000);
+    if (trains) trains.update(dt, ent.x, ent.z);
     if (crashToastCd > 0) crashToastCd -= dt;
     cameraReady = true;
     camSnap = false;
@@ -950,7 +960,7 @@ async function main() {
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     renderer.compile(scene, camera); // warm shaders on the loading screen
