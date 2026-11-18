@@ -373,11 +373,12 @@ export class Props {
         const s = pc.s;
         if (pc.elevated) continue;
         const rank = road.rank;
-        const hasWalk = !!specFor(road.cls).walk;
-        const lampSpacing = rank >= 9 ? 70 : rank >= 5 ? 34 : 0;
+        const rural = road.rural || road.unpaved;
+        const hasWalk = !!specFor(road.cls).walk && !rural;
+        const lampSpacing = rural ? 0 : rank >= 9 ? 70 : rank >= 5 ? 34 : 0;
         const coastD = hf.signedCoastDistance(s.xs[run.i0], s.zs[run.i0]);
         const cbd = Math.hypot(s.xs[run.i0], s.zs[run.i0]) < 1300;
-        const treeSpacing = !cbd && rank <= 6 && rank >= 2 ? (coastD < 220 ? 16 : 17) : 0;
+        const treeSpacing = rural ? 0 : !cbd && rank <= 6 && rank >= 2 ? (coastD < 220 ? 16 : 17) : 0;
         for (let k = run.i0; k <= run.i1; k++) {
           const d = pc.d0 + s.ds[k];
           const dPrev = k > run.i0 ? pc.d0 + s.ds[k - 1] : d - 0.001;

@@ -348,6 +348,8 @@ async function main() {
     const near = r ? null : roads.nearestRoad(ent.x, ent.z, 8);
     const rd = r || (near && near.dist < near.road.width / 2 + 0.5 ? near.road : null);
     let k = rd ? ROUGH[rd.cls] ?? 0.6 : 2.2; // off the road: veld / gravel
+    if (rd && rd.unpaved) k = Math.max(k, 1.8);
+    else if (rd && rd.rural) k *= 1.3;
     if (rd && rd.bridge) k *= 0.6;
     const vf = Math.min(1, v / 30);
     feelT += dt * (18 + v * 1.5);

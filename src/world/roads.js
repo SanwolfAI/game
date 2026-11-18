@@ -207,6 +207,8 @@ export class RoadNetwork {
         cum,
         len: cum[pts.length - 1],
         raw: r.p,
+        unpaved: !!r.u,
+        rural: false,
         id2: this.roads.length,
         prof: null
       });
@@ -217,6 +219,7 @@ export class RoadNetwork {
       if (pts.length > 1) this.rail.push({ pts, name: r.n || '' });
     }
 
+    this.#markRural();
     this.welds = this.#weld();
     this.#buildGraph();
     this.#buildIndex();
@@ -548,6 +551,48 @@ export class RoadNetwork {
     this.#buildProfiles(pieces);
     this.#buildSurfaceIndex(pieces, rnodes);
     this.#buildMeshes(pieces, rnodes);
+  }
+
+  // Rural = few roads around (under ~3 km of road per km², looked at over a
+  // 1.5 km square). Rural roads get no kerbs, pavements or street lights and
+  // feel rougher; houses there are built as rural homesteads.
+  #markRural() {
+    const C = 500;
+    const g = new Map();
+    for (const r of this.roads) {
+      for (let i = 1; i < r.pts.length; i++) {
+        const a = r.pts[i - 1];
+        const b = r.pts[i];
+        const k = Math.floor(a[0] / C) * 100000 + Math.floor(a[1] / C);
+        g.set(k, (g.get(k) || 0) + Math.hypot(b[0] - a[0], b[1] - a[1]));
+      }
+    }
+    this.densityGrid = g;
+    for (const r of this.roads) {
+      if (r.rank >= 7) continue; // highways stay as built
+      const m = r.pts[Math.floor(r.pts.length / 2)];
+      r.rural = this.ruralAt(m[0], m[1]);
+    }
+  }
+
+  // Small CBD streets that get the textured street (pavements built in).
+  isCbdStreet(pc) {
+    if (pc.elevated || pc.bridge || pc.road.rank > 3 || pc.road.unpaved) return false;
+    const s = pc.s;
+    const m = s.m >> 1;
+    return Math.abs(s.xs[m]) < 1700 && Math.abs(s.zs[m]) < 1500;
+  }
+
+  // km of road per km² around (x, z) is below 3: open country / rural village
+  ruralAt(x, z) {
+    const g = this.densityGrid;
+    if (!g) return false;
+    const C = 500;
+    const cx = Math.floor(x / C);
+    const cz = Math.floor(z / C);
+    let L = 0;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) L += g.get((cx + i) * 100000 + cz + j) || 0;
+    return L / 2250 < 3 && Math.hypot(x, z) > 5000;
   }
 
   #computeElevation(pieces, rnodes) {
@@ -1089,6 +1134,7 @@ export class RoadNetwork {
     const maxAniso = 4;
     this.mats = {
       asphalt: new THREE.MeshLambertMaterial({ map: loadTexture('./src/assets/textures/asphalt_02_diff_1k.jpg', maxAniso), vertexColors: true }),
+      cbdStreet: new THREE.MeshLambertMaterial({ map: loadTexture('./src/assets/textures/cbd_street.jpg', maxAniso), vertexColors: true }),
       concrete: new THREE.MeshLambertMaterial({ map: loadTexture('./src/assets/textures/concrete_pavement_diff_1k.jpg', maxAniso), vertexColors: true, side: THREE.DoubleSide }),
       paint: new THREE.MeshLambertMaterial({
         vertexColors: true,
@@ -1124,7 +1170,7 @@ export class RoadNetwork {
       const k = cx * 100000 + cz;
       let c = this.cells.get(k);
       if (!c) {
-        c = { x: (cx + 0.5) * MESH_CELL, z: (cz + 0.5) * MESH_CELL, major: new Buf(), minor: new Buf(), struct: new Buf(), meshes: [] };
+        c = { x: (cx + 0.5) * MESH_CELL, z: (cz + 0.5) * MESH_CELL, major: new Buf(), minor: new Buf(), struct: new Buf(), cbd: new Buf(), meshes: [] };
         this.cells.set(k, c);
       }
       return c;
@@ -1137,7 +1183,9 @@ export class RoadNetwork {
       const s = pc.s;
       const spec = specFor(pc.road.cls);
       const tint = spec.tint;
-      asph.setRGB(tint, tint, tint * 0.98);
+      if (pc.road.unpaved) asph.setRGB(1.85, 1.38, 0.95); // gravel: red-brown KZN earth over the grey texture
+      else if (pc.road.rural) asph.setRGB(tint * 1.06, tint * 1.04, tint * 0.98); // older, sun-bleached tar
+      else asph.setRGB(tint, tint, tint * 0.98);
       const hw = pc.hw;
       // strip runs per chunk
       let i = 0;
@@ -1152,16 +1200,21 @@ export class RoadNetwork {
         c.runs.push({ pc, i0: i, i1: j });
         // asphalt ribbon
         const cell = cellAt((s.xs[i] + s.xs[j]) / 2, (s.zs[i] + s.zs[j]) / 2);
-        const B = pc.road.rank >= 5 ? cell.major : cell.minor;
+        const cbdSt = this.isCbdStreet(pc);
+        const B = cbdSt ? cell.cbd : pc.road.rank >= 5 ? cell.major : cell.minor;
+        // CBD side streets: one textured strip with its own kerbs, grey
+        // pavements and manholes (CC-BY "Road_ Avenue_ street" by ahmagh2e)
+        const W = cbdSt ? hw / 0.82 : hw;
+        const vs = cbdSt ? 1 / (3.16 * W) : TEX_SCALE;
         let pl = -1;
         let pr = -1;
         for (let k = i; k <= j; k++) {
           const x = s.xs[k];
           const z = s.zs[k];
-          const y = s.ys[k];
-          const v = (pc.d0 + s.ds[k]) * TEX_SCALE;
-          const l = B.v(x + s.lx[k] * hw, y, z + s.lz[k] * hw, 0, v, asph.r, asph.g, asph.b);
-          const r = B.v(x - s.lx[k] * hw, y, z - s.lz[k] * hw, hw * 2 * TEX_SCALE, v, asph.r, asph.g, asph.b);
+          const y = s.ys[k] + (cbdSt ? 0.01 : 0);
+          const v = (pc.d0 + s.ds[k]) * vs;
+          const l = B.v(x + s.lx[k] * W, y, z + s.lz[k] * W, 0, v, cbdSt ? 1 : asph.r, cbdSt ? 1 : asph.g, cbdSt ? 1 : asph.b);
+          const r = B.v(x - s.lx[k] * W, y, z - s.lz[k] * W, cbdSt ? 1 : hw * 2 * TEX_SCALE, v, cbdSt ? 1 : asph.r, cbdSt ? 1 : asph.g, cbdSt ? 1 : asph.b);
           if (pl >= 0) B.quad(pl, pr, l, r);
           pl = l;
           pr = r;
@@ -1369,7 +1422,7 @@ export class RoadNetwork {
     }
 
     for (const c of this.cells.values()) {
-      for (const [key, mat, far] of [['major', this.mats.asphalt, ROAD_FAR], ['minor', this.mats.asphalt, MINOR_FAR], ['struct', this.mats.structure, ROAD_FAR]]) {
+      for (const [key, mat, far] of [['major', this.mats.asphalt, ROAD_FAR], ['minor', this.mats.asphalt, MINOR_FAR], ['struct', this.mats.structure, ROAD_FAR], ['cbd', this.mats.cbdStreet, MINOR_FAR]]) {
         const g = c[key].toGeometry(key === 'struct');
         c[key] = null;
         if (!g) continue;
@@ -1549,7 +1602,7 @@ export class RoadNetwork {
       const dash = freeway ? 4 : 3;
       const gap = freeway ? 8 : 6;
       const laneW = road.laneW;
-      const marked = spec.major || spec.edges || road.lanes >= 3 || road.cls.endsWith('_link');
+      const marked = !road.unpaved && (spec.major || spec.edges || road.lanes >= 3 || road.cls.endsWith('_link'));
 
       if (marked) {
         const dLo = pc.d0 + (pc.nA.junction ? pc.trimA : 0);
@@ -1625,7 +1678,7 @@ export class RoadNetwork {
       }
 
       // Kerbs + sidewalks on town roads (not on bridges or embankments).
-      if (spec.walk && !pc.elevated && !pc.bridge) {
+      if (spec.walk && !pc.elevated && !pc.bridge && !pc.road.rural && !pc.road.unpaved && !this.isCbdStreet(pc)) {
         for (const side of [1, -1]) {
           // split the strip wherever it would overlap another carriageway
           let k0 = -1;

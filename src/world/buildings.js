@@ -29,6 +29,9 @@ const HOUSE_WALLS = ['#f4f1ea', '#efe6d2', '#f3e3b8', '#e9e9e4', '#f0d9c4', '#df
 const RDP_WALLS = ['#d9c7a6', '#c9b28d', '#e4d6bb', '#cfbfa7', '#bfae95', '#d6d0c2'].map(hex);
 const SHACK = ['#9b5a3a', '#7d8a93', '#6f7f8a', '#a8a39a', '#4f6f8f', '#8d6e4f', '#5f7f5f'].map(hex);
 const TILE_ROOF = ['#9b4a32', '#7c3b2a', '#4a4a4c', '#5d3a2c', '#3c4148', '#8a5a3c', '#6b6b66'].map(hex);
+// rural KZN homesteads: bright painted block houses, white/cream rondavels with thatch
+const RURAL_WALLS = ['#9fd3b5', '#f2b8c6', '#a9cbe8', '#f4e3a1', '#f7f5ee', '#e8b48a', '#c5e3a5', '#f0f0f0'].map(hex);
+const THATCH = ['#b8995e', '#a88a52', '#c2a56c', '#9c8150'].map(hex);
 const IRON_ROOF = ['#9aa0a3', '#8a4a3a', '#4f6a55', '#b5b8b9', '#7a7f82'].map(hex);
 const CBD_WALLS = ['#f2efe8', '#e6e1d6', '#d9d6cf', '#efe6d6', '#cfd5da', '#e9e4dc', '#d8cbb6'].map(hex);
 const FLAT_WALLS = ['#f1ece2', '#e9e2d3', '#f5f1e8', '#e3dccd', '#f0e7d8'].map(hex);
@@ -305,7 +308,29 @@ export class Buildings {
     else if (A < 1200) type = rng() < 0.6 ? 'flats' : 'shop';
     else type = 'industrial';
 
+    // open country: no suburbs. Small homes become rural homesteads.
+    if (this.roads && this.roads.ruralAt && !industrial && (type === 'house' || type === 'rdp' || type === 'small' || type === 'shack' || (type === 'flats' && A < 400)) && this.roads.ruralAt(x, z)) {
+      type = 'rural';
+    }
+
     switch (type) {
+      case 'rural': {
+        const roundish = A < 45 && rng() < 0.55;
+        h = 2.6 + rng() * 0.4;
+        s.wall = LAYER.house;
+        s.wallTint = roundish ? pick(['#f7f5ee', '#efe6d2', '#e9dcc0'].map(hex)) : pick(RURAL_WALLS);
+        s.roof = 'hip';
+        if (roundish) {
+          s.roofLayer = LAYER.roofTile;
+          s.roofTint = pick(THATCH);
+        } else {
+          s.roofLayer = LAYER.roofIron;
+          s.roofTint = pick(IRON_ROOF);
+        }
+        s.lit = 1;
+        s.bay = 2.6;
+        break;
+      }
       case 'shack':
         h = 2.3 + rng() * 0.4;
         s.wall = LAYER.industrial;
