@@ -109,7 +109,7 @@ export class Grounds {
       try {
         const ring = s.p ? s.p.map((p) => [p[0], p[1]]) : this.#compound(s.c);
         if (!ring) continue;
-        this.#site(s.k, s.n, ring);
+        this.#site(s.k, s.n, ring, s.t);
       } catch (err) {
         console.warn('[IZK] grounds site skipped', s.n, err);
       }
@@ -118,6 +118,11 @@ export class Grounds {
     this.#buildGates();
     this.#buildParked();
     this.#buildFlags();
+    try {
+      this.#buildSchoolBoards();
+    } catch (err) {
+      console.warn('[IZK] school boards skipped', err);
+    }
     try {
       this.#buildSigns();
     } catch (err) {
@@ -166,7 +171,7 @@ export class Grounds {
     return ring;
   }
 
-  #site(kind, name, ring) {
+  #site(kind, name, ring, sub) {
     const n = ring.length;
     let cx = 0;
     let cz = 0;
@@ -194,7 +199,7 @@ export class Grounds {
       }
     }
     const gate = best ? { seg: best.i, t: best.t, x: best.x, z: best.z, half: Math.min(4, best.L / 2 - 0.5) } : null;
-    const site = { kind, name, ring, cx, cz, gate };
+    const site = { kind, name, ring, cx, cz, gate, sub };
     this.sites.push(site);
     if (gate) {
       const a = ring[gate.seg];
@@ -215,7 +220,7 @@ export class Grounds {
       gate.nz = nz;
       this.gates.push(gate);
       // parking row along the fence beside the gate, one bay = 3 m
-      const want = kind === 'police' ? 5 : kind === 'fire' ? 2 : kind === 'clinic' ? 4 : 7;
+      const want = kind === 'police' ? 5 : kind === 'fire' ? 2 : kind === 'clinic' || kind === 'school' ? 4 : 7;
       let made = 0;
       for (let k = 0; k < 24 && made < want; k++) {
         const side = k % 2 ? -1 : 1;
@@ -236,7 +241,7 @@ export class Grounds {
         } else if (kind === 'fire') {
           type = 'hilux';
           paint = 0xb71c1c;
-        } else if (made < (kind === 'hospital' ? 2 : 1)) {
+        } else if (kind !== 'school' && made < (kind === 'hospital' ? 2 : 1)) {
           type = 'quantum'; // ambulance
           paint = 0xf4f4f0;
         } else {
@@ -658,6 +663,168 @@ export class Grounds {
     mesh.name = 'hospital-signs';
     this.group.add(mesh);
     this.signStats = { boards: names.length, canopies };
+  }
+
+  // School name boards. ~460 schools is too many names for one small
+  // texture, so the 30 nearest named schools get their real name painted
+  // into a 32-slot atlas (redrawn as you drive); the rest show "SCHOOL".
+  #buildSchoolBoards() {
+    const list = this.sites.filter((st) => st.kind === 'school' && st.gate);
+    if (!list.length) return;
+    const AW = 1024, SW = 256, SH = 64, COLS = 4, SLOTS = 30, GENERIC = 30, GREY = 31;
+    const c = document.createElement('canvas');
+    c.width = AW;
+    c.height = 512;
+    const g = c.getContext('2d');
+    this.schoolCanvas = c;
+    this.schoolCtx = g;
+    const uvOf = (k) => {
+      const x = (k % COLS) * SW, y = Math.floor(k / COLS) * SH;
+      return [(x + 1) / AW, 1 - (y + SH - 1) / 512, (x + SW - 1) / AW, 1 - (y + 1) / 512];
+    };
+    this.schoolUV = uvOf;
+    const COLORS = ['#7a1f2b', '#13315c', '#1f5c3a', '#4a2a6b', '#0f4c5c', '#8a4b0f'];
+    this.schoolPaint = (k, st) => {
+      const x = (k % COLS) * SW, y = Math.floor(k / COLS) * SH;
+      let hsh = 0;
+      for (const ch of st ? st.name : 'S') hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+      const col = st ? COLORS[hsh % COLORS.length] : '#13315c';
+      g.fillStyle = col;
+      g.fillRect(x, y, SW, SH);
+      g.strokeStyle = '#f2d16b';
+      g.lineWidth = 3;
+      g.strokeRect(x + 3, y + 3, SW - 6, SH - 6);
+      // crest: a small gold shield
+      g.fillStyle = '#f2d16b';
+      g.beginPath();
+      g.moveTo(x + 12, y + 12);
+      g.lineTo(x + 46, y + 12);
+      g.lineTo(x + 46, y + 34);
+      g.quadraticCurveTo(x + 46, y + 48, x + 29, y + 54);
+      g.quadraticCurveTo(x + 12, y + 48, x + 12, y + 34);
+      g.closePath();
+      g.fill();
+      g.fillStyle = col;
+      g.fillRect(x + 27, y + 17, 4, 30);
+      g.fillRect(x + 18, y + 25, 22, 4);
+      g.fillStyle = '#ffffff';
+      g.textBaseline = 'middle';
+      const name = st ? st.name : 'SCHOOL';
+      const maxW = SW - 64;
+      let fs = 21;
+      g.font = `bold ${fs}px sans-serif`;
+      if (g.measureText(name).width <= maxW) {
+        g.fillText(name, x + 56, y + SH / 2);
+        return;
+      }
+      let l1 = '', l2 = '';
+      for (const w of name.split(' ')) {
+        if (!l2 && g.measureText((l1 + ' ' + w).trim()).width <= maxW) l1 = (l1 + ' ' + w).trim();
+        else l2 = (l2 + ' ' + w).trim();
+      }
+      fs = 16;
+      g.font = `bold ${fs}px sans-serif`;
+      while (fs > 9 && Math.max(g.measureText(l1).width, g.measureText(l2).width) > maxW) {
+        fs--;
+        g.font = `bold ${fs}px sans-serif`;
+      }
+      g.fillText(l1, x + 56, y + SH / 2 - fs * 0.6);
+      g.fillText(l2, x + 56, y + SH / 2 + fs * 0.6);
+    };
+    this.schoolPaint(GENERIC, null);
+    {
+      const x = (GREY % COLS) * SW, y = Math.floor(GREY / COLS) * SH;
+      g.fillStyle = '#5f6468';
+      g.fillRect(x, y, SW, SH);
+    }
+    const P = [], N = [], U = [];
+    const quad = (cx, cy, cz, w, h, fx, fz, uv) => {
+      const rx = fz, rz = -fx, hw = w / 2, hh = h / 2;
+      const a = [cx - rx * hw, cy - hh, cz - rz * hw], b = [cx + rx * hw, cy - hh, cz + rz * hw];
+      const c2 = [cx + rx * hw, cy + hh, cz + rz * hw], d = [cx - rx * hw, cy + hh, cz - rz * hw];
+      const at = U.length;
+      for (const v of [a, b, c2, a, c2, d]) P.push(v[0], v[1], v[2]);
+      for (let i = 0; i < 6; i++) N.push(fx, 0, fz);
+      const [u0, v0, u1, v1] = uv;
+      U.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
+      return at;
+    };
+    const grey = uvOf(GREY), gen = uvOf(GENERIC);
+    this.schoolBoards = [];
+    for (const st of list) {
+      const gt = st.gate;
+      const ox = -gt.nx, oz = -gt.nz;
+      const bx = gt.x + gt.ux * (gt.half + 6) + gt.nx * 1.4;
+      const bz = gt.z + gt.uz * (gt.half + 6) + gt.nz * 1.4;
+      const y = this.hf.heightAt(bx, bz);
+      const rx = oz, rz = -ox;
+      const at = quad(bx + ox * 0.06, y + 1.9, bz + oz * 0.06, 3.6, 0.9, ox, oz, gen);
+      quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, 3.6, 0.9, -ox, -oz, grey);
+      for (const sd of [-1.55, 1.55]) {
+        const px = bx + rx * sd, pz = bz + rz * sd;
+        // two faces per post is enough at this size
+        quad(px + ox * 0.05, y + 1.2, pz + oz * 0.05, 0.1, 2.4, ox, oz, grey);
+        quad(px - ox * 0.05, y + 1.2, pz - oz * 0.05, 0.1, 2.4, -ox, -oz, grey);
+      }
+      if (st.name) this.schoolBoards.push({ st, at, x: bx, z: bz, slot: -1 });
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    geo.computeBoundingSphere();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    this.schoolTex = tex;
+    this.schoolGeo = geo;
+    this.schoolSlots = new Array(SLOTS).fill(null);
+    this.schoolT = -1e9;
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
+    mesh.name = 'school-boards';
+    this.group.add(mesh);
+  }
+
+  // keep the nearest named schools' boards showing their real names
+  update(x, z) {
+    if (!this.schoolBoards || !this.schoolBoards.length) return;
+    const now = performance.now();
+    if (now - this.schoolT < 1500) return;
+    this.schoolT = now;
+    const bs = this.schoolBoards;
+    for (const b of bs) b.d = (b.x - x) * (b.x - x) + (b.z - z) * (b.z - z);
+    const near = bs.slice().sort((a, b) => a.d - b.d).slice(0, this.schoolSlots.length);
+    const keep = new Set(near);
+    const uv = this.schoolGeo.attributes.uv;
+    const setUV = (b, k) => {
+      const [u0, v0, u1, v1] = this.schoolUV(k);
+      const q = [u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1];
+      for (let i = 0; i < 12; i++) uv.array[b.at + i] = q[i];
+    };
+    let dirty = false;
+    // free slots of boards that left the nearest set
+    this.schoolSlots.forEach((b, k) => {
+      if (b && !keep.has(b)) {
+        b.slot = -1;
+        setUV(b, 30);
+        this.schoolSlots[k] = null;
+        dirty = true;
+      }
+    });
+    for (const b of near) {
+      if (b.slot >= 0) continue;
+      const k = this.schoolSlots.indexOf(null);
+      if (k < 0) break;
+      this.schoolSlots[k] = b;
+      b.slot = k;
+      this.schoolPaint(k, b.st);
+      setUV(b, k);
+      dirty = true;
+    }
+    if (dirty) {
+      uv.needsUpdate = true;
+      this.schoolTex.needsUpdate = true;
+    }
   }
 
   // parked vehicles as solid obstacles for the player (x, z, radius)

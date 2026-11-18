@@ -1004,6 +1004,8 @@ async function main() {
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     if (kasi) kasi.update(camera.position.x, camera.position.z);
     if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
+  if (grounds) grounds.update(camera.position.x, camera.position.z);
+    if (grounds) grounds.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);

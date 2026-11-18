@@ -275,7 +275,7 @@ export class Buildings {
   setSites(sites) {
     this.sites = [];
     for (const st of sites || []) {
-      if (st.k !== 'hospital' && st.k !== 'clinic') continue;
+      if (st.k !== 'hospital' && st.k !== 'clinic' && st.k !== 'school') continue;
       const ring = st.p;
       if (!ring || ring.length < 3) continue;
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -285,7 +285,7 @@ export class Buildings {
         if (z < z0) z0 = z;
         if (z > z1) z1 = z;
       }
-      this.sites.push({ k: st.k, ring, x0, z0, x1, z1 });
+      this.sites.push({ k: st.k === 'school' && (st.t === 'university' || st.t === 'college') ? 'campus' : st.k, ring, x0, z0, x1, z1 });
     }
   }
 
@@ -368,7 +368,8 @@ export class Buildings {
 
     if (this.sites && this.sites.length && type !== 'tank' && type !== 'shack' && A > 25) {
       const sk = this.#siteAt(x, z);
-      if (sk) type = sk === 'hospital' && A > 120 ? 'hospital' : 'clinic';
+      if (sk === 'school' || sk === 'campus') type = sk === 'campus' ? 'campus' : 'school';
+      else if (sk) type = sk === 'hospital' && A > 120 ? 'hospital' : 'clinic';
     }
     switch (type) {
       case 'hospital': {
@@ -380,6 +381,31 @@ export class Buildings {
         s.wall = rng() < 0.75 ? LAYER.office : LAYER.plaster;
         s.wallTint = pick(HOSP_WALLS);
         s.lit = 6; // wards and corridors stay lit all night
+        s.plant = fl > 3;
+        break;
+      }
+      case 'school': {
+        // classroom blocks: long, low, face brick or cream plaster, iron roofs
+        h = (A > 450 && rng() < 0.35 ? 2 : 1) * 3.5;
+        s.floorH = 3.5;
+        s.bay = 3.6;
+        s.wall = rng() < 0.55 ? LAYER.facebrick : LAYER.plaster;
+        s.wallTint = s.wall === LAYER.facebrick ? WHITE : pick(HOSP_WALLS);
+        if (A < 1400) {
+          s.roof = 'hip';
+          s.roofLayer = LAYER.roofIron;
+          s.roofTint = pick(CLINIC_ROOF);
+        }
+        s.lit = 1;
+        break;
+      }
+      case 'campus': {
+        const fl = A < 400 ? 2 : 2 + Math.floor(rng() * 4);
+        h = fl * 3.8;
+        s.floorH = 3.8;
+        s.wall = rng() < 0.5 ? LAYER.facebrick : rng() < 0.5 ? LAYER.office : LAYER.plaster;
+        s.wallTint = s.wall === LAYER.facebrick ? WHITE : pick(HOSP_WALLS);
+        s.lit = 2;
         s.plant = fl > 3;
         break;
       }
