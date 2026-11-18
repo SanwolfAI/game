@@ -51,6 +51,7 @@ export class Heightfield {
     this.#rasteriseCoast(coastXZ);
     this.#distanceTransform();
     this.#floodOcean();
+    if (this.dem) this.#floodBay();
     this.#coastDistance(coastXZ);
     this.#buildHeight();
     if (this.dem && opts.roads) this.#landUnderRoads(opts.roads);
@@ -229,6 +230,91 @@ export class Heightfield {
       if (iz > 0) tryPush(ix, iz - 1);
       if (iz < rows - 1) tryPush(ix, iz + 1);
     }
+  }
+
+  // Durban Bay: the coastline traces the harbour, but its mouth is narrower
+  // than a grid cell, so the ocean flood never gets in. Flood it from the
+  // real DEM instead: start on sea-level cells inside the basin, spread
+  // through cells that are not coast walls and stay low, then open the
+  // mouth (wall cells at sea level touching water).
+  #floodBay() {
+    const { cols, rows, wall, water } = this;
+    this.bay = new Uint8Array(cols * rows);
+    const bay = this.bay;
+    const box = { x0: -2600, x1: 3700, z0: 300, z1: 3200 };
+    const stack = [];
+    const cellXZ = (i) => [this.minX + (i % cols) * this.cell, this.minZ + ((i / cols) | 0) * this.cell];
+    const low = (i, lim) => {
+      const [x, z] = cellXZ(i);
+      const h = this.demAt(x, z);
+      return h !== null && h < lim;
+    };
+    const inBox = (i) => {
+      const [x, z] = cellXZ(i);
+      return x > box.x0 && x < box.x1 && z > box.z0 && z < box.z1;
+    };
+    for (let iz = 0; iz < rows; iz++) {
+      for (let ix = 0; ix < cols; ix++) {
+        const i = this.idx(ix, iz);
+        if (wall[i] || water[i] || !inBox(i) || !low(i, 0.5)) continue;
+        bay[i] = 1;
+        stack.push(i);
+      }
+    }
+    while (stack.length) {
+      const i = stack.pop();
+      const ix = i % cols;
+      const iz = (i / cols) | 0;
+      for (const [nx, nz] of [[ix - 1, iz], [ix + 1, iz], [ix, iz - 1], [ix, iz + 1]]) {
+        if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+        const ni = this.idx(nx, nz);
+        if (wall[ni] || water[ni] || bay[ni] || !inBox(ni) || !low(ni, 2.0)) continue;
+        bay[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    // the mouth and quay-edge walls that sit at sea level between water cells
+    for (let pass = 0; pass < 2; pass++) {
+      for (let iz = 1; iz < rows - 1; iz++) {
+        for (let ix = 1; ix < cols - 1; ix++) {
+          const i = this.idx(ix, iz);
+          if (!wall[i] || bay[i] || !inBox(i) || !low(i, 0.6)) continue;
+          let n = 0;
+          for (const ni of [i - 1, i + 1, i - cols, i + cols]) if (bay[ni] || water[ni]) n++;
+          if (n >= 2) bay[i] = 2;
+        }
+      }
+    }
+    // the dredged entrance channel between North Pier and South Pier
+    // (centre line from the OSM pier outlines), out to open sea
+    const chan = [[4000, 560], [3760, 800], [3377, 1300], [3050, 1700], [2600, 1900]];
+    const HW = 140;
+    for (let k = 0; k + 1 < chan.length; k++) {
+      const [ax, az] = chan[k];
+      const [bx, bz] = chan[k + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      for (let s = 0; s <= L; s += this.cell / 2) {
+        const cx = ax + ((bx - ax) * s) / L;
+        const cz = az + ((bz - az) * s) / L;
+        for (let ox = -HW; ox <= HW; ox += this.cell / 2) {
+          for (let oz = -HW; oz <= HW; oz += this.cell / 2) {
+            if (ox * ox + oz * oz > HW * HW) continue;
+            const ix = Math.round((cx + ox - this.minX) / this.cell);
+            const iz = Math.round((cz + oz - this.minZ) / this.cell);
+            if (ix < 0 || iz < 0 || ix >= cols || iz >= rows) continue;
+            const i = this.idx(ix, iz);
+            if (!water[i]) bay[i] = 3;
+          }
+        }
+      }
+    }
+    let count = 0;
+    for (let i = 0; i < bay.length; i++) {
+      if (!bay[i]) continue;
+      water[i] = 1;
+      count++;
+    }
+    this.bayCells = count;
   }
 
   #profile(d) {
@@ -428,7 +514,7 @@ export class Heightfield {
           // The coastline floods the whole harbour; wharves, the Point and the
           // Bluff are real dry land in the DEM, so give them back.
           const hd = this.demAt(x, z);
-          if (hd !== null && hd > 0.3 && cdist[i] < 4000) {
+          if (hd !== null && hd > 0.3 && cdist[i] < 4000 && !(this.bay && this.bay[i])) {
             water[i] = 0;
             height[i] = Math.max(hd, 0.8);
             continue;

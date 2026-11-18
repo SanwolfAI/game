@@ -31,6 +31,7 @@ import { Weather } from './world/weather.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
+import { Harbour } from './world/harbour.js';
 import { VEHICLE_TYPES } from './game/models.js';
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
@@ -281,6 +282,14 @@ async function main() {
     scene.add(grounds.group);
   } catch (err) {
     console.warn('[IZK] grounds not built', err);
+  }
+  // harbour: ships at real quays, gantry cranes, tugs, outer anchorage, piers
+  let harbour = null;
+  try {
+    harbour = new Harbour(await loadJson('./src/data/durban-harbour.json'), { hf });
+    scene.add(harbour.group);
+  } catch (err) {
+    console.warn('[IZK] harbour not built', err);
   }
 
   const input = new Input();
@@ -878,6 +887,7 @@ async function main() {
       shake *= Math.max(0, 1 - dt * 6);
     } else shake = 0;
     roadFeel(dt);
+    if (harbour) harbour.update(dt, performance.now() / 1000);
     if (crashToastCd > 0) crashToastCd -= dt;
     cameraReady = true;
     camSnap = false;
@@ -940,7 +950,7 @@ async function main() {
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     renderer.compile(scene, camera); // warm shaders on the loading screen
