@@ -32,6 +32,7 @@ import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
 import { Kasi } from './world/kasi.js';
+import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
@@ -216,7 +217,19 @@ async function main() {
 
   setLoad(84, 'Planting trees and street lights…');
   await nextFrame();
+  // golf courses, race tracks, pitches, pools, car parks, cemeteries from OSM
+  let osmDetail = null;
+  try {
+    const detData = await loadJson('./src/data/durban-detail.json');
+    if (detData) {
+      osmDetail = new OsmDetail(detData, { hf, roads });
+      console.log('[IZK] osm detail', JSON.stringify(osmDetail.stats), Math.round(osmDetail.ms), 'ms');
+    }
+  } catch (err) {
+    console.warn('[IZK] osm detail not built', err);
+  }
   const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
+  props.detail = osmDetail;
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
   await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadPeople()]), new Promise((r) => setTimeout(r, 20000))]);
@@ -288,6 +301,7 @@ async function main() {
   // township dressing: container spazas + wooden electricity poles (Umlazi, KwaMashu)
   let kasi = null;
   try {
+    if (osmDetail) scene.add(osmDetail.group);
     kasi = new Kasi({ roads, hf, buildings });
     scene.add(kasi.group);
     if (buildings) {
@@ -978,6 +992,7 @@ async function main() {
     roads.update(camera.position.x, camera.position.z);
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     if (kasi) kasi.update(camera.position.x, camera.position.z);
+    if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);
@@ -1024,11 +1039,12 @@ async function main() {
   roads.update(camera.position.x, camera.position.z, 1e9); // build nearby road detail up front
   if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
   if (kasi) kasi.update(camera.position.x, camera.position.z);
+  if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
   props.update(camera.position.x, camera.position.z, 0, 12);
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { kasi, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     renderer.compile(scene, camera); // warm shaders on the loading screen

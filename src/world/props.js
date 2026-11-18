@@ -321,6 +321,7 @@ export class Props {
         const x = bx0 + rng() * (bx1 - bx0);
         const z = bz0 + rng() * (bz1 - bz0);
         if (!pointInRing(x, z, a.p)) continue;
+        if (this.detail && this.detail.blocks(x, z)) continue;
         if (!this.#free(x, z, 2.5, 3)) continue;
         if (a.k === 'scrub' || (a.k === 'wetland' && rng() < 0.7)) add('bush', x, hf.heightAt(x, z) - 0.1, z, rng() * 6.283, 2.2 + rng() * 2.2, 0.8 + rng() * 0.3);
         else tree(x, z, a.k === 'wood' || a.k === 'reserve' ? 1.15 : 1);
