@@ -315,6 +315,45 @@ async function main() {
   traffic.playerActive = true;
   traffic.buildings = buildings;
   let shake = 0;
+  // Road feel: freeways glassy, city tar fine-grained, suburbs and old roads
+  // rough with the odd pothole thump, off the tar bumpy. Felt as camera
+  // vibration that grows with speed; potholes are fixed spots per road.
+  const ROUGH = { motorway: 0.12, motorway_link: 0.2, trunk: 0.18, trunk_link: 0.25, primary: 0.3, primary_link: 0.32, secondary: 0.4, secondary_link: 0.4, tertiary: 0.55, tertiary_link: 0.55, residential: 0.75, living_street: 0.8, unclassified: 0.9, service: 0.85, track: 1.6 };
+  let feelT = 0;
+  let thump = 0;
+  let lastHole = -1;
+  function roadFeel(dt) {
+    if (!inVehicle) return;
+    const v = Math.abs(vehicle.speed || 0);
+    if (v < 0.5) return;
+    const r = vehicle.surfRoad;
+    const near = r ? null : roads.nearestRoad(ent.x, ent.z, 8);
+    const rd = r || (near && near.dist < near.road.width / 2 + 0.5 ? near.road : null);
+    let k = rd ? ROUGH[rd.cls] ?? 0.6 : 2.2; // off the road: veld / gravel
+    if (rd && rd.bridge) k *= 0.6;
+    const vf = Math.min(1, v / 30);
+    feelT += dt * (18 + v * 1.5);
+    const amp = 0.006 * k * (0.3 + vf);
+    camera.position.y += Math.sin(feelT) * amp + Math.sin(feelT * 2.7 + 1.3) * amp * 0.6;
+    camera.position.x += Math.sin(feelT * 1.9 + 0.4) * amp * 0.4;
+    // potholes / joints: deterministic per 7 m cell on rough roads
+    if (k >= 0.4) {
+      const cell = Math.floor(ent.x / 7) * 92821 + Math.floor(ent.z / 7) * 68917 + (rd ? rd.id % 1000 : 7);
+      if (cell !== lastHole) {
+        lastHole = cell;
+        const h = Math.abs(Math.sin(cell * 12.9898) * 43758.5453) % 1;
+        if (h < 0.035 * k) {
+          thump = Math.max(thump, 0.05 * k * (0.4 + vf));
+          if (window.navigator.vibrate && k > 0.7 && v > 8) window.navigator.vibrate(18);
+        }
+      }
+    }
+    if (thump > 0.002) {
+      camera.position.y -= thump * Math.sin(Math.min(1, thump * 30) * 3.14);
+      camera.rotation.z += (Math.random() - 0.5) * thump * 0.15;
+      thump *= Math.max(0, 1 - dt * 9);
+    }
+  }
   let crashToastCd = 0;
   traffic.onCrash = (impact) => {
     shake = Math.min(0.6, Math.max(shake, impact * 0.03));
@@ -787,7 +826,7 @@ async function main() {
     if (input.takePressed('horn')) {
       unlockAudio();
       honk();
-      hud.toast('Beep beep!', 0.9);
+      if (inVehicle) traffic.playerHoot(ent.x, ent.z, Math.sin(ent.yaw), Math.cos(ent.yaw));
     }
     if (input.takePressed('map')) {
       bigmap.toggle(ent.x, ent.z, ent.yaw);
@@ -838,6 +877,7 @@ async function main() {
       camera.position.z += (Math.random() - 0.5) * shake;
       shake *= Math.max(0, 1 - dt * 6);
     } else shake = 0;
+    roadFeel(dt);
     if (crashToastCd > 0) crashToastCd -= dt;
     cameraReady = true;
     camSnap = false;

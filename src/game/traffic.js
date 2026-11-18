@@ -457,7 +457,7 @@ export class Traffic {
       // a robot that never turns green (broken / bad data): treat as a 4-way stop after a long wait
       if (red && car.v < 0.5) car.redT = (car.redT || 0) + dt;
       else if (!red) car.redT = 0;
-      if (red && car.redT < 40) {
+      if (red && car.redT < 150) {
         const stop = sig.dist - 2.6;
         if (stop > -2) desired = Math.min(desired, stop < 0.4 ? 0 : Math.sqrt(2 * 3.4 * stop));
         car.why = 'sig';
@@ -551,6 +551,31 @@ export class Traffic {
           car.laneTarget = off;
           car.laneChangeCd = car.taxi ? 1.2 : 3;
         } else car.laneChangeCd = 0.6;
+      }
+    }
+    if (car.hooted > 0) {
+      car.hooted -= dt;
+      const atRed = this.props && this.props.signalAhead(car.px, car.pz, car.hx, car.hz, 30)?.state === 0;
+      if (!atRed) {
+        if (nl > 1 && Math.abs(car.lane - car.laneTarget) < 0.2) {
+          const want = car.laneIdx > 0 ? car.laneIdx - 1 : car.laneIdx + 1;
+          const off = want >= 0 && want < nl ? this.#laneOff(road, want) : null;
+          if (off !== null && this.#laneClear(car, off)) {
+            car.blink = want > car.laneIdx ? 1 : -1;
+            car.laneIdx = want;
+            car.laneTarget = off;
+            car.laneChangeCd = 3;
+            car.hooted = 0;
+          } else if (!lead || lead.gap > 20) desired = Math.max(desired, Math.min(road.speed * 1.15, car.v + 6));
+        } else if (nl === 1) {
+          if (!lead || lead.gap > 25) desired = Math.max(desired, Math.min(road.speed * 1.1, car.v + 5));
+          else {
+            // pull over to the kerb and slow so the player can pass
+            car.laneTarget = this.#laneOff(road, 0) - 1.4;
+            car.blink = -1;
+            desired = Math.min(desired, 2);
+          }
+        }
       }
     }
     // single-lane road: go around something that has stopped dead (a crash)
@@ -798,6 +823,29 @@ export class Traffic {
         if (l) yield* l;
       }
     }
+  }
+
+  // Player hooted: the car ahead in our direction (within ~35 m) makes way.
+  // Multi-lane: it moves over a lane if clear; otherwise it hurries along,
+  // or on a narrow road pulls to the kerb and lets us pass. Nobody runs a
+  // red robot for a hoot, and cops ignore it.
+  playerHoot(px, pz, hx, hz) {
+    let best = null;
+    let bd = 36;
+    for (const bucket of this.buckets) for (const car of bucket) {
+      if (!car.edge || car.crash || car.cop) continue;
+      const dx = car.px - px;
+      const dz = car.pz - pz;
+      const ahead = dx * hx + dz * hz;
+      if (ahead < 3 || ahead > bd) continue;
+      if (Math.abs(dx * hz - dz * hx) > 4) continue;
+      if (car.hx * hx + car.hz * hz < 0.6) continue;
+      best = car;
+      bd = ahead;
+    }
+    if (!best) return false;
+    best.hooted = 4 + this.rng() * 2;
+    return true;
   }
 
   update(dt, px, pz) {
