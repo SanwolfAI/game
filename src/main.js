@@ -483,6 +483,7 @@ async function main() {
   const moonDir = new THREE.Vector3();
   const daySky = new THREE.Color();
   const fogColor = new THREE.Color();
+  let fogRange = 1; // shrinks with the draw distance on slow phones
   const sunColor = new THREE.Color();
   const hemiSky = new THREE.Color();
   const hemiGround = new THREE.Color();
@@ -591,8 +592,8 @@ async function main() {
 
     fogColor.copy(sky).lerp(daySky, 0.18);
     scene.fog.color.copy(fogColor);
-    scene.fog.near = (750 - solar.night * 320) * weather.cur.fog;
-    scene.fog.far = (5200 - solar.night * 2300) * weather.cur.fog;
+    scene.fog.near = (750 - solar.night * 320) * weather.cur.fog * fogRange;
+    scene.fog.far = (5200 - solar.night * 2300) * weather.cur.fog * fogRange;
 
     hemi.intensity = (0.3 + solar.day * 1.35) * (1 - weather.cur.cloud * 0.25) + weather.flash * 2.5;
     hemiSky.copy(sky).lerp(daySky, 0.4);
@@ -761,6 +762,11 @@ async function main() {
   let slowFrames = 0;
   let streetLifeAge = 0;
   let resT = 0, resSum = 0, resN = 0;
+  const setRange = (r) => {
+    roads.range = r;
+    if (buildings) buildings.range = r;
+    fogRange = r;
+  };
   let lastT = performance.now();
   function frame() {
     requestAnimationFrame(frame);
@@ -787,20 +793,26 @@ async function main() {
         bootFrames = -1;
       }
     }
-    // dynamic resolution on phones: start at 1x (safe), step up to 1.5x
-    // while frames stay smooth, step back down when they don't.
+    // Adaptive quality on phones: aim for ~45 fps. When frames are slow,
+    // first shorten the draw distance (fog hides it), then lower pixels.
+    // When there is headroom, sharpen first (up to the screen's own pixel
+    // density, max 2x), then draw further.
     if (MOBILE && !SAFE) {
       resT += Math.min(raw, 0.1);
       resSum += raw;
       resN++;
-      if (resT > 6) {
+      if (resT > 3) {
         const avg = resSum / resN;
         const cur = renderer.getPixelRatio();
-        const max = Math.min(devicePixelRatio || 1, 1.5);
-        let next = cur;
-        if (avg < 0.036 && cur < max) next = Math.min(max, cur + 0.25);
-        else if (avg > 0.07 && cur > 1) next = Math.max(1, cur - 0.25);
-        if (next !== cur) renderer.setPixelRatio(next);
+        const maxPx = Math.min(devicePixelRatio || 1, 2);
+        const rg = roads.range;
+        if (avg > 0.03) {
+          if (rg > 0.6) setRange(Math.max(0.6, rg - 0.15));
+          else if (cur > 0.85) renderer.setPixelRatio(Math.max(0.85, cur - 0.25));
+        } else if (avg < 0.021) {
+          if (cur < maxPx) renderer.setPixelRatio(Math.min(maxPx, cur + 0.25));
+          else if (rg < 1) setRange(Math.min(1, rg + 0.1));
+        }
         resT = resSum = resN = 0;
       }
     }

@@ -232,6 +232,7 @@ export class Buildings {
     this.xs = new Float64Array(256);
     this.zs = new Float64Array(256);
     this.spec = { skip: false, h: 0, floorH: 3.2, wall: 0, ground: -1, groundH: 0, roof: 'flat', roofLayer: LAYER.roofFlat, wallTint: WHITE, roofTint: WHITE, lit: 3, plant: false, bay: 3 };
+    this.range = 1; // draw-distance scale, lowered on slow phones
     this.builtNear = new Set();
     this.builtFar = new Set();
     this.stats = { nearCells: 0, farCells: 0, tris: 0 };
@@ -843,11 +844,13 @@ export class Buildings {
 
   // Stream cells around the camera. `budget` = cells built this call.
   update(camX, camZ, budget = 1) {
+    const rg = this.range;
+    const NEAR_IN_ = NEAR_IN * rg, NEAR_OUT_ = NEAR_OUT * rg, FAR_IN_ = FAR_IN * rg, FAR_OUT_ = FAR_OUT * rg;
     let built = 0;
     // near layer
     const gx0 = Math.floor(camX / CELL);
     const gz0 = Math.floor(camZ / CELL);
-    const R = Math.ceil(NEAR_OUT / CELL) + 1;
+    const R = Math.ceil(NEAR_OUT_ / CELL) + 1;
     let bestCell = null;
     let bestD = Infinity;
     for (let gz = gz0 - R; gz <= gz0 + R; gz++) {
@@ -855,7 +858,7 @@ export class Buildings {
         const cell = this.cells.get(gx * 100000 + gz);
         if (!cell || cell.mesh) continue;
         const d = Math.hypot((gx + 0.5) * CELL - camX, (gz + 0.5) * CELL - camZ);
-        if (d < NEAR_IN && d < bestD) {
+        if (d < NEAR_IN_ && d < bestD) {
           bestD = d;
           bestCell = cell;
         }
@@ -864,7 +867,7 @@ export class Buildings {
     for (const key of this.builtNear) {
       const cell = this.cells.get(key);
       const d = Math.hypot((cell.gx + 0.5) * CELL - camX, (cell.gz + 0.5) * CELL - camZ);
-      if (d > NEAR_OUT) {
+      if (d > NEAR_OUT_) {
         this.#dispose(cell);
         this.builtNear.delete(key);
       }
@@ -882,7 +885,7 @@ export class Buildings {
           const cell = this.cells.get(gx * 100000 + gz);
           if (!cell || cell.mesh) continue;
           const d = Math.hypot((gx + 0.5) * CELL - camX, (gz + 0.5) * CELL - camZ);
-          if (d < NEAR_IN && d < bestD) {
+          if (d < NEAR_IN_ && d < bestD) {
             bestD = d;
             bestCell = cell;
           }
@@ -892,7 +895,7 @@ export class Buildings {
     // far layer (skyline)
     const fx0 = Math.floor(camX / FAR_CELL);
     const fz0 = Math.floor(camZ / FAR_CELL);
-    const FR = Math.ceil(FAR_OUT / FAR_CELL) + 1;
+    const FR = Math.ceil(FAR_OUT_ / FAR_CELL) + 1;
     for (let gz = fz0 - FR; gz <= fz0 + FR && built < budget + 1; gz++) {
       for (let gx = fx0 - FR; gx <= fx0 + FR && built < budget + 1; gx++) {
         const key = gx * 100000 + gz;
@@ -903,7 +906,7 @@ export class Buildings {
         }
         if (fc.mesh) continue;
         const d = Math.hypot((gx + 0.5) * FAR_CELL - camX, (gz + 0.5) * FAR_CELL - camZ);
-        if (d < FAR_IN) {
+        if (d < FAR_IN_) {
           this.#buildFar(fc);
           this.builtFar.add(key);
           built++;
@@ -913,7 +916,7 @@ export class Buildings {
     for (const key of this.builtFar) {
       const fc = this.farCells.get(key);
       const d = Math.hypot((fc.gx + 0.5) * FAR_CELL - camX, (fc.gz + 0.5) * FAR_CELL - camZ);
-      if (d > FAR_OUT) {
+      if (d > FAR_OUT_) {
         this.#dispose(fc);
         this.builtFar.delete(key);
       }

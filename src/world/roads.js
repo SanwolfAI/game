@@ -161,6 +161,7 @@ function linked(pc, road) {
 export class RoadNetwork {
   constructor(data, hf) {
     this.hf = hf;
+    this.range = 1; // draw-distance scale, lowered on slow phones
     this.roads = [];
     this.rail = [];
     this.group = new THREE.Group();
@@ -1516,7 +1517,7 @@ export class RoadNetwork {
     let built = 0;
     for (const c of this.cells.values()) {
       const d = Math.hypot(c.x - camX, c.z - camZ) - MESH_CELL * 0.7;
-      for (const m of c.meshes) m.visible = d < m.userData.far;
+      for (const m of c.meshes) m.visible = d < m.userData.far * this.range;
     }
     for (const c of this.chunks.values()) {
       const d = Math.hypot(c.x - camX, c.z - camZ);
