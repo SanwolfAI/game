@@ -296,7 +296,9 @@ async function main() {
   // hospital / clinic / police / fire-station grounds (real OSM outlines)
   let grounds = null;
   try {
-    grounds = new Grounds(await loadJson('./src/data/durban-grounds.json'), { roads, hf, buildings });
+    const gdata = await loadJson('./src/data/durban-grounds.json');
+    if (buildings && gdata) buildings.setSites(gdata.sites); // hospital + clinic blocks get their look
+    grounds = new Grounds(gdata, { roads, hf, buildings });
     scene.add(grounds.group);
   } catch (err) {
     console.warn('[IZK] grounds not built', err);

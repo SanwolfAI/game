@@ -48,6 +48,9 @@ const IRON_ROOF = ['#9aa0a3', '#8a4a3a', '#4f6a55', '#b5b8b9', '#7a7f82'].map(he
 const CBD_WALLS = ['#f2efe8', '#e6e1d6', '#d9d6cf', '#efe6d6', '#cfd5da', '#e9e4dc', '#d8cbb6'].map(hex);
 const FLAT_WALLS = ['#f1ece2', '#e9e2d3', '#f5f1e8', '#e3dccd', '#f0e7d8'].map(hex);
 const WHITE = hex('#ffffff');
+// hospitals: SA public + private hospitals are mostly cream/white/pale grey
+const HOSP_WALLS = ['#f4f1ea', '#ece6d6', '#f7f6f2', '#e4ded0', '#e9ecee', '#efe9dc'].map(hex);
+const CLINIC_ROOF = ['#3f6b4f', '#8a3b2e', '#4a5f78', '#9aa0a3'].map(hex);
 const IND_WALLS = ['#d9dcdd', '#c9ced1', '#e3e1da', '#b9c2c8', '#d8d2c4'].map(hex);
 
 // --- small growable float buffer --------------------------------------------------
@@ -267,6 +270,39 @@ export class Buildings {
     return n;
   }
 
+  // Hospital / clinic sites (real OSM outlines from durban-grounds.json):
+  // buildings whose centre lies inside become hospital or clinic blocks.
+  setSites(sites) {
+    this.sites = [];
+    for (const st of sites || []) {
+      if (st.k !== 'hospital' && st.k !== 'clinic') continue;
+      const ring = st.p;
+      if (!ring || ring.length < 3) continue;
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const [x, z] of ring) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (z < z0) z0 = z;
+        if (z > z1) z1 = z;
+      }
+      this.sites.push({ k: st.k, ring, x0, z0, x1, z1 });
+    }
+  }
+
+  #siteAt(x, z) {
+    for (const st of this.sites) {
+      if (x < st.x0 || x > st.x1 || z < st.z0 || z > st.z1) continue;
+      const r = st.ring;
+      let c = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const xi = r[i][0], zi = r[i][1], xj = r[j][0], zj = r[j][1];
+        if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+      }
+      if (c) return st.k;
+    }
+    return null;
+  }
+
   // Deterministic classification: height, styles and tints for building i.
   #classify(i) {
     const s = this.spec;
@@ -330,7 +366,36 @@ export class Buildings {
     // rich suburbs: large homes become mansions
     if (!industrial && !beach && (type === 'house' || ((type === 'flats' || type === 'shop') && A < 900 && (kind === KIND.house || kind === KIND.yes))) && A > 140 && richAt(x, z)) type = 'mansion';
 
+    if (this.sites && this.sites.length && type !== 'tank' && type !== 'shack' && A > 25) {
+      const sk = this.#siteAt(x, z);
+      if (sk) type = sk === 'hospital' && A > 120 ? 'hospital' : 'clinic';
+    }
     switch (type) {
+      case 'hospital': {
+        // ward blocks: real levels/height tags win below; otherwise by size
+        const fl = A < 300 ? 1 + Math.floor(rng() * 2) : A < 1500 ? 2 + Math.floor(rng() * 3) : 3 + Math.floor(rng() * 6);
+        h = fl * 3.7;
+        s.floorH = 3.7;
+        s.bay = 3.2;
+        s.wall = rng() < 0.75 ? LAYER.office : LAYER.plaster;
+        s.wallTint = pick(HOSP_WALLS);
+        s.lit = 6; // wards and corridors stay lit all night
+        s.plant = fl > 3;
+        break;
+      }
+      case 'clinic': {
+        h = (A > 400 && rng() < 0.4 ? 2 : 1) * 3.4;
+        s.floorH = 3.4;
+        s.wall = LAYER.plaster;
+        s.wallTint = pick(HOSP_WALLS);
+        if (A < 900) {
+          s.roof = 'hip';
+          s.roofLayer = LAYER.roofIron;
+          s.roofTint = pick(CLINIC_ROOF);
+        }
+        s.lit = 3;
+        break;
+      }
       case 'mansion': {
         const modern = rng() < 0.4;
         const fl = A > 450 && rng() < 0.5 ? 3 : 2;

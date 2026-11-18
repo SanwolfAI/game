@@ -118,6 +118,11 @@ export class Grounds {
     this.#buildGates();
     this.#buildParked();
     this.#buildFlags();
+    try {
+      this.#buildSigns();
+    } catch (err) {
+      console.warn('[IZK] hospital signs skipped', err);
+    }
     this.ms = performance.now() - t0;
   }
 
@@ -438,6 +443,221 @@ export class Grounds {
     pm.name = 'flagpoles';
     fm.name = 'flags';
     this.group.add(pm, fm);
+  }
+
+  // Hospital + clinic dressing in one merged mesh on one small atlas:
+  // a blue name board inside the gate, a blue "H" road sign at the kerb
+  // and, at hospitals, a white casualty canopy with a red EMERGENCY fascia
+  // on the main block's side facing the gate.
+  #buildSigns() {
+    const list = this.sites.filter((st) => (st.kind === 'hospital' || st.kind === 'clinic') && st.gate);
+    if (!list.length) return;
+    const AW = 1024, SW = 256, SH = 64, COLS = 4;
+    const c = document.createElement('canvas');
+    c.width = AW;
+    c.height = AW;
+    const g = c.getContext('2d');
+    const slotUV = (k, sq) => {
+      const x = (k % COLS) * SW, y = Math.floor(k / COLS) * SH;
+      const w = sq ? SH : SW;
+      return [(x + 1) / AW, 1 - (y + SH - 1) / AW, (x + w - 1) / AW, 1 - (y + 1) / AW];
+    };
+    const slotXY = (k) => [(k % COLS) * SW, Math.floor(k / COLS) * SH];
+    const BLUE = '#1d4f9e';
+    const hMark = (x, y, sz) => {
+      g.fillStyle = '#ffffff';
+      g.fillRect(x, y, sz, sz);
+      g.fillStyle = BLUE;
+      const b = sz * 0.16;
+      g.fillRect(x + sz * 0.22, y + sz * 0.18, b, sz * 0.64);
+      g.fillRect(x + sz * 0.78 - b, y + sz * 0.18, b, sz * 0.64);
+      g.fillRect(x + sz * 0.22, y + sz * 0.42, sz * 0.56, b);
+    };
+    const MAXN = 59;
+    const names = list.slice(0, MAXN);
+    names.forEach((st, k) => {
+      const [x, y] = slotXY(k);
+      g.fillStyle = BLUE;
+      g.fillRect(x, y, SW, SH);
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 2;
+      g.strokeRect(x + 2, y + 2, SW - 4, SH - 4);
+      hMark(x + 8, y + 10, 44);
+      let name = (st.name || (st.kind === 'clinic' ? 'Clinic' : 'Hospital')).replace(/\s*-\s*Casualty$/i, '');
+      g.fillStyle = '#ffffff';
+      g.textBaseline = 'middle';
+      let fs = 22;
+      g.font = `bold ${fs}px sans-serif`;
+      const maxW = SW - 66;
+      const words = name.split(' ');
+      // one line if it fits, else two lines
+      if (g.measureText(name).width <= maxW) {
+        g.fillText(name, x + 60, y + SH / 2);
+      } else {
+        let l1 = '', l2 = '';
+        for (const w of words) {
+          if (!l2 && g.measureText((l1 + ' ' + w).trim()).width <= maxW) l1 = (l1 + ' ' + w).trim();
+          else l2 = (l2 + ' ' + w).trim();
+        }
+        fs = 17;
+        g.font = `bold ${fs}px sans-serif`;
+        while (fs > 10 && Math.max(g.measureText(l1).width, g.measureText(l2).width) > maxW) {
+          fs--;
+          g.font = `bold ${fs}px sans-serif`;
+        }
+        g.fillText(l1, x + 60, y + SH / 2 - fs * 0.6);
+        g.fillText(l2, x + 60, y + SH / 2 + fs * 0.6);
+      }
+      st.slot = k;
+    });
+    const H = 60, EMER = 61, GREY = 62, WHITEK = 63;
+    {
+      const [x, y] = slotXY(H);
+      g.fillStyle = BLUE;
+      g.fillRect(x, y, SH, SH);
+      hMark(x + 8, y + 8, SH - 16);
+    }
+    {
+      const [x, y] = slotXY(EMER);
+      g.fillStyle = '#c62828';
+      g.fillRect(x, y, SW, SH);
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 34px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('EMERGENCY', x + SW / 2, y + SH / 2 + 1);
+      g.textAlign = 'left';
+    }
+    {
+      let [x, y] = slotXY(GREY);
+      g.fillStyle = '#6d7276';
+      g.fillRect(x, y, SW, SH);
+      [x, y] = slotXY(WHITEK);
+      g.fillStyle = '#f2f1ec';
+      g.fillRect(x, y, SW, SH);
+    }
+    const P = [], N = [], U = [];
+    const quad = (cx, cy, cz, _rx, _rz, w, h, fx, fy, fz, uv) => {
+      // upright quad at centre, facing (fx, fz); right as seen by its viewer
+      const rx = fz, rz = -fx;
+      const hw = w / 2, hh = h / 2;
+      const a = [cx - rx * hw, cy - hh, cz - rz * hw];
+      const b = [cx + rx * hw, cy - hh, cz + rz * hw];
+      const c2 = [cx + rx * hw, cy + hh, cz + rz * hw];
+      const d = [cx - rx * hw, cy + hh, cz - rz * hw];
+      for (const v of [a, b, c2, a, c2, d]) P.push(v[0], v[1], v[2]);
+      for (let i = 0; i < 6; i++) N.push(fx, fy, fz);
+      const [u0, v0, u1, v1] = uv;
+      U.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
+    };
+    const flat = (cx, cy, cz, ax, az, w, d, up, uv) => {
+      // horizontal quad: w along (ax, az), d along its normal
+      const bx = -az, bz = ax;
+      const s2 = up ? 1 : -1;
+      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [cx + ax * (w / 2) * i + bx * (d / 2) * j, cy, cz + az * (w / 2) * i + bz * (d / 2) * j]);
+      const order = up ? [0, 3, 2, 0, 2, 1] : [0, 1, 2, 0, 2, 3];
+      for (const k of order) P.push(pts[k][0], pts[k][1], pts[k][2]);
+      for (let i = 0; i < 6; i++) N.push(0, s2, 0);
+      const [u0, v0, u1, v1] = uv;
+      for (let i = 0; i < 6; i++) U.push((u0 + u1) / 2, (v0 + v1) / 2);
+    };
+    const box = (cx, y0, cz, ax, az, w, d, h, uv) => {
+      // upright box: w along (ax, az), d across
+      const bx = -az, bz = ax, cy = y0 + h / 2;
+      quad(cx + bx * (d / 2), cy, cz + bz * (d / 2), -ax, -az, w, h, bx, 0, bz, uv);
+      quad(cx - bx * (d / 2), cy, cz - bz * (d / 2), ax, az, w, h, -bx, 0, -bz, uv);
+      quad(cx + ax * (w / 2), cy, cz + az * (w / 2), bx, bz, d, h, ax, 0, az, uv);
+      quad(cx - ax * (w / 2), cy, cz - az * (w / 2), -bx, -bz, d, h, -ax, 0, -az, uv);
+      flat(cx, y0 + h, cz, ax, az, w, d, true, uv);
+      flat(cx, y0, cz, ax, az, w, d, false, uv);
+    };
+    const grey = slotUV(GREY), white = slotUV(WHITEK);
+    let canopies = 0;
+    for (const st of list) {
+      const gt = st.gate;
+      const ox = -gt.nx, oz = -gt.nz; // outward, toward the street
+      // name board just inside the fence beside the gate, facing the street
+      if (st.slot != null) {
+        const bx = gt.x + gt.ux * (gt.half + 7) + gt.nx * 1.4;
+        const bz = gt.z + gt.uz * (gt.half + 7) + gt.nz * 1.4;
+        const y = this.hf.heightAt(bx, bz);
+        // right-hand direction for a viewer facing the board from the street
+        const rx = oz, rz = -ox;
+        quad(bx + ox * 0.06, y + 1.9, bz + oz * 0.06, -rx, -rz, 4, 1, ox, 0, oz, slotUV(st.slot));
+        quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, rx, rz, 4, 1, -ox, 0, -oz, grey);
+        box(bx + rx * 1.7, y, bz + rz * 1.7, rx, rz, 0.12, 0.1, 2.4, grey);
+        box(bx - rx * 1.7, y, bz - rz * 1.7, rx, rz, 0.12, 0.1, 2.4, grey);
+      }
+      // blue H road sign on the kerb outside, readable both ways along the street
+      {
+        const hx = gt.x - gt.ux * (gt.half + 6) + ox * 3.5;
+        const hz = gt.z - gt.uz * (gt.half + 6) + oz * 3.5;
+        const y = this.hf.heightAt(hx, hz);
+        if (!this.roads.nearestRoad || !(() => { const r = this.roads.nearestRoad(hx, hz, 12); return r && r.dist < r.road.width / 2 + 0.3; })()) {
+          box(hx, y, hz, gt.ux, gt.uz, 0.08, 0.08, 2.6, grey);
+          const huv = slotUV(H, true);
+          // faces +u and -u
+          quad(hx + gt.ux * 0.05, y + 2.55, hz + gt.uz * 0.05, -gt.nx, -gt.nz, 0.8, 0.8, gt.ux, 0, gt.uz, huv);
+          quad(hx - gt.ux * 0.05, y + 2.55, hz - gt.uz * 0.05, gt.nx, gt.nz, 0.8, 0.8, -gt.ux, 0, -gt.uz, huv);
+        }
+      }
+      // casualty canopy on the biggest block, on its side facing the gate
+      if (st.kind === 'hospital' && this.buildings && this.buildings.forEachIn) {
+        let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+        for (const [x, z] of st.ring) {
+          x0 = Math.min(x0, x);
+          x1 = Math.max(x1, x);
+          z0 = Math.min(z0, z);
+          z1 = Math.max(z1, z);
+        }
+        let best = null;
+        this.buildings.forEachIn(x0, z0, x1, z1, (i, type, x, z, A) => {
+          if (A > 300 && this.#inside(st.ring, x, z) && (!best || A > best.A)) best = { x, z, A };
+        });
+        if (best) {
+          let dx = gt.x - best.x, dz = gt.z - best.z;
+          const L = Math.hypot(dx, dz) || 1;
+          dx /= L;
+          dz /= L;
+          // walk out from the block's centre to its wall facing the gate
+          let edge = -1;
+          for (let t = Math.min(L - 8, Math.sqrt(best.A) + 10); t > 0; t -= 0.5) {
+            if (this.buildings.blocked(best.x + dx * t, best.z + dz * t, 0.3)) {
+              edge = t;
+              break;
+            }
+          }
+          const reach = edge + 3.6;
+          if (edge > 0 && reach < L - 5) {
+            const cx = best.x + dx * reach, cz = best.z + dz * reach;
+            if (!this.buildings.blocked(cx + dx * 1.5, cz + dz * 1.5, 2)) {
+              const y = this.hf.heightAt(cx, cz);
+              const ax = -dz, az = dx; // canopy width runs across the approach
+              box(cx, y + 4.0, cz, ax, az, 10, 7, 0.4, white);
+              quad(cx + dx * 3.52, y + 4.2, cz + dz * 3.52, -ax, -az, 10, 0.75, dx, 0, dz, slotUV(EMER));
+              for (const sx of [-4.6, 4.6]) {
+                const px = cx + ax * sx + dx * 3.1, pz = cz + az * sx + dz * 3.1;
+                box(px, this.hf.heightAt(px, pz), pz, ax, az, 0.3, 0.3, 4.0 + y - this.hf.heightAt(px, pz), white);
+              }
+              canopies++;
+              (this.canopyAt || (this.canopyAt = [])).push([cx, cz, dx, dz, y]);
+            }
+          }
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    geo.computeBoundingSphere();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
+    mesh.name = 'hospital-signs';
+    this.group.add(mesh);
+    this.signStats = { boards: names.length, canopies };
   }
 
   // parked vehicles as solid obstacles for the player (x, z, radius)
