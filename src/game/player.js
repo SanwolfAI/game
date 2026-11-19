@@ -1,7 +1,9 @@
 import { clamp } from '../core/utils.js';
 import { buildPlayerModel } from './models.js';
+import { Human, humansReady, skinTone, hairTone } from './humans.js';
+import * as THREE from '../../vendor/three/three.module.js';
 
-const WALK = 3.4;
+const WALK = 2.0; // brisk walk (animated human walk cycle); sprint below
 const RUN = 7.2;
 const PERSON_RADIUS = 0.5;
 
@@ -25,7 +27,31 @@ export class Player {
     this.shoeL = model.shoeL;
     this.shoeR = model.shoeR;
     this.group.visible = false;
+    this.human = null;
+    this.#attachHuman();
     this.#place();
+  }
+
+  // Real animated body (Quaternius CC0) when it loaded; the old block body
+  // stays as the fallback.
+  #attachHuman() {
+    if (this.human || !humansReady()) return;
+    try {
+      const hu = new Human('male_casual_hoodie');
+      hu.paint({
+        skin: skinTone(0.3).color,
+        hair: hairTone(0, 0.1),
+        top: new THREE.Color('#1f4f9a'),
+        bottom: new THREE.Color('#22262c'),
+        shoe: new THREE.Color('#f0f0ee')
+      });
+      for (const c of this.group.children) c.visible = false;
+      this.group.add(hu.root);
+      this.human = hu;
+    } catch (err) {
+      console.warn('[IZK] player human failed, block body kept', err);
+      this.human = false;
+    }
   }
 
   placeAt(x, z, yaw, y = null) {
@@ -104,6 +130,18 @@ export class Player {
   }
 
   #animate(dt) {
+    if (this.human === null && humansReady()) this.#attachHuman();
+    if (this.human) {
+      const sp = Math.abs(this.speed);
+      const st = sp < 0.25 ? 'Idle' : sp > WALK + 0.6 ? 'Run' : 'Walk';
+      this.human.play(st);
+      this.human.setSpeed(st, sp);
+      const a = this.human.actions[st];
+      if (a && this.speed < 0) a.timeScale = -Math.abs(a.timeScale);
+      this.human.update(dt);
+      this.group.position.y = this.#groundY();
+      return;
+    }
     const moving = Math.abs(this.speed) > 0.2;
     if (moving) this.phase += Math.abs(this.speed) * dt * 2.6;
     const swing = moving ? Math.sin(this.phase) * 0.6 : 0;

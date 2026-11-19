@@ -7,6 +7,7 @@ import { trafficCarModel } from './carModels.js';
 import { crashSound, honkFar } from './audio.js';
 import { WORLD } from '../world/worldLight.js';
 import { blobMaterial, blobGeometry } from '../world/blobShadow.js';
+import { HumanPool, humansReady, skinTone, hairTone } from './humans.js';
 
 // Street life: busy pavements the way Durban's CBD really is (West St, Dr
 // Pixley KaSeme, Anton Lembede, Warwick). Walkers on the pavements, hawkers
@@ -45,10 +46,8 @@ const MAX_HAND = 120;
 const WALK_CLS = { primary: 1, secondary: 1, tertiary: 0.9, residential: 0.5, living_street: 0.7, unclassified: 0.4, pedestrian: 1.2 };
 const PARK_CLS = { primary: 1, secondary: 1, tertiary: 1, residential: 1, unclassified: 1 };
 
-const SKIN = ['#4a2c1d', '#5b3624', '#6e4129', '#3b2316', '#7d4c2f', '#8d5a39', '#c08a64', '#e0b48f'].map((h) => new THREE.Color(h));
 const SHIRT = ['#f2f2f0', '#1d1f22', '#b8282b', '#1f4f9a', '#e8c12a', '#2f7d45', '#6b6f75', '#d9672b', '#7a2f8f', '#c4c8cc', '#0d6b7a', '#f4a6b8', '#3b3b3b', '#ffffff'].map((h) => new THREE.Color(h));
 const PANTS = ['#22262c', '#2d3e5c', '#3a3a3a', '#1a1a1a', '#5c4a35', '#c9c0a8', '#3d4f2f', '#24324d'].map((h) => new THREE.Color(h));
-const HAIR = ['#120d0a', '#1a1410', '#0b0b0b', '#2a1d14'].map((h) => new THREE.Color(h));
 const DOEK = ['#c0262c', '#e0a21a', '#1f6fb5', '#2f8d4a', '#7a2f8f', '#e86a1a'].map((h) => new THREE.Color(h));
 const CANOPY = ['#f4f4f2', '#c62a2a', '#1f56a8', '#2f8a4a', '#e8b51a', '#f4f4f2', '#1c1c1c'].map((h) => new THREE.Color(h));
 const UMB = ['#d8282e', '#1f56a8', '#f0c31a', '#2f8a4a', '#ffffff'].map((h) => new THREE.Color(h));
@@ -356,9 +355,13 @@ export class StreetLife {
     this.props = [this.mFrame, this.mTop, this.mFrame2, this.mTable, this.mProduce, this.mRack, this.mGarment, this.mUmbPole, this.mUmbTop, this.mBarber, this.mChair, this.mLoad, this.mBottle, this.mGlow];
     for (const m of this.people) this.group.add(m);
     this.group.add(this.mShadow);
-    // real figures (nearest people)
+    // animated humans for the nearest people (Quaternius, src/game/humans.js)
+    this.humanCap = 30;
+    this.humans = null;
+    this.#ensureHumans();
+    // baked figures (fallback when the animated humans did not load)
     this.real = [];
-    if (REAL) {
+    if (REAL && !this.humans) {
       for (const f of REAL) {
         const byFrame = {};
         for (const name of f.frames) {
@@ -411,6 +414,45 @@ export class StreetLife {
     this._s = new THREE.Vector3(1, 1, 1);
     this._one = new THREE.Vector3(1, 1, 1);
     this._Y = new THREE.Vector3(0, 1, 0);
+  }
+
+  #ensureHumans() {
+    if (this.humans || !humansReady() || this.humanCap <= 0) return;
+    try {
+      this.humans = new HumanPool(this.humanCap, 80);
+      this.group.add(this.humans.group);
+    } catch (err) {
+      console.warn('[IZK] human pool failed, keeping instanced people', err);
+      this.humans = null;
+      this.humanCap = 0;
+    }
+  }
+
+  // nearest people (in front of the camera first) become animated humans
+  #pickHumans(dt, px, pz) {
+    const H = this.humans;
+    const cam = this.camera;
+    let cx = px;
+    let cz = pz;
+    let fx = 0;
+    let fz = 0;
+    if (cam) {
+      cx = cam.position.x;
+      cz = cam.position.z;
+      cam.getWorldDirection(this._p);
+      const l = Math.hypot(this._p.x, this._p.z) || 1;
+      fx = this._p.x / l;
+      fz = this._p.z / l;
+    }
+    H.begin(cx, cz, fx, fz);
+    const day = this.hour >= 6 && this.hour < 18.5;
+    for (const h of this.standers) {
+      if (h.act === 'seated' || h.y == null) continue;
+      if (!day && (h.act === 'sell' || h.act === 'browse' || h.act === 'cut')) continue;
+      H.offer(h);
+    }
+    for (const w of this.walkers) if (w.y != null) H.offer(w);
+    H.end(dt, this.t);
   }
 
   // ---- zones -----------------------------------------------------------------
@@ -697,6 +739,10 @@ export class StreetLife {
   #person(x, z, yaw, act, r, y = null, chair = false) {
     const female = r < 0.48;
     const skirt = female && (r * 31) % 1 < 0.45;
+    // Durban mix (~78% Black African, 12% Indian, 6% White, 4% Coloured);
+    // the same tone is used by the instanced body and the animated human
+    const tone = skinTone((r * 7.3) % 1);
+    const doek = female && (r * 5.3) % 1 < 0.4;
     return {
       x,
       z,
@@ -706,11 +752,12 @@ export class StreetLife {
       chair,
       phase: r * 50,
       scale: (female ? 0.93 : 1.0) + ((r * 17) % 1) * 0.08,
-      skin: pick(SKIN, (r * 7.3) % 1),
+      skin: tone.color,
+      skinTone: tone,
       shirt: pick(SHIRT, (r * 13.7) % 1),
       pants: pick(PANTS, (r * 19.1) % 1),
-      hair: female && (r * 5.3) % 1 < 0.4 ? pick(DOEK, (r * 3.1) % 1) : pick(HAIR, (r * 2.9) % 1),
-      doek: female && (r * 5.3) % 1 < 0.4,
+      hair: doek ? pick(DOEK, (r * 3.1) % 1) : hairTone(tone.eth, (r * 2.9) % 1),
+      doek,
       female,
       skirt,
       long: (r * 23) % 1 < 0.35,
@@ -840,6 +887,8 @@ export class StreetLife {
     }
 
     this.#collideParked(P, onCrash);
+    if (!this.humans && this.humanCap > 0 && (this.frame & 31) === 0) this.#ensureHumans();
+    if (this.humans) this.#pickHumans(dt, px, pz);
     this.#writePeople();
     // cigarette glow follows the night
     this.mGlow.visible = WORLD.night ? WORLD.night.value > 0.2 : false;
@@ -1108,6 +1157,7 @@ export class StreetLife {
     const day = this.hour >= 6 && this.hour < 18.5;
     const all = this.walkers;
     const real = this.real;
+    const HU = this.humans;
     let nReal = 0;
     if (real.length) for (const f of real) for (const k in f.byFrame) f.counts[k] = 0;
     const cx = this.px === undefined ? 0 : this.px;
@@ -1177,6 +1227,19 @@ export class StreetLife {
         this._p.set(h.x, h.y, h.z);
         this._m2.compose(this._p, this._q2.identity(), this._one);
         this.mShadow.setMatrixAt(nSh++, this._m2);
+      }
+      if (HU && HU.isHuman(h)) {
+        if (h.load && nLoad < MAX_HEAD) {
+          const sc = h.scale;
+          this._q.setFromAxisAngle(this._Y, h.yaw);
+          this._s.set(sc, sc, sc);
+          this._p.set(h.x, h.y + 1.72 * sc, h.z);
+          this._m.compose(this._p, this._q, this._s);
+          this.mLoad.setMatrixAt(nLoad, this._m);
+          this.mLoad.setColorAt(nLoad++, h.hair);
+          this._s.set(1, 1, 1);
+        }
+        return;
       }
       if (real.length && nReal < NEAR && Math.abs(h.x - cx) < NEAR_R && Math.abs(h.z - cz) < NEAR_R && writeReal(h)) {
         nReal++;

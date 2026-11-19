@@ -17,6 +17,7 @@ import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Traffic } from './game/traffic.js';
 import { StreetLife, loadPeople } from './game/streetLife.js';
+import { loadHumans } from './game/humans.js';
 import { Input } from './game/input.js';
 import { honk, unlockAudio, tick, updateEngine, toggleMute, pauseAudio } from './game/audio.js';
 import { HUD } from './ui/hud.js';
@@ -241,7 +242,7 @@ async function main() {
   props.detail = osmDetail;
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
-  await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadPeople()]), new Promise((r) => setTimeout(r, 20000))]);
+  await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadHumans().then((lib) => (lib ? lib : loadPeople()))]), new Promise((r) => setTimeout(r, 20000))]);
 
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
@@ -394,6 +395,7 @@ void main(){
 
   // Street life first: it marks CBD kerb lanes as parking before traffic spawns.
   const streetLife = new StreetLife(roads, hf, buildings, mulberry32(40421));
+  streetLife.camera = camera;
   scene.add(streetLife.group);
   // Street life joins a few seconds after the controls appear (spreads the
   // shader compile and upload); never in safe mode.
@@ -1184,6 +1186,18 @@ void main(){
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
   window.__izk = { busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  // test hooks: player on foot, street life now (no slow-frame watchdog)
+  window.__izk.player = player;
+  window.__izk.onFoot = (x, z, yaw) => {
+    player.placeAt(x, z, yaw || 0, null);
+    player.group.visible = true;
+    inVehicle = false;
+    camSnap = true;
+  };
+  window.__izk.streetNow = () => {
+    streetLifeDelay = 0;
+    streetLifeAge = -1e9;
+  };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     sharpenTextures(scene, renderer);
