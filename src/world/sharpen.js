@@ -107,9 +107,9 @@ export class Sharpen {
 }
 
 // Sharper textures at grazing angles (roads, ground, facades): raise every
-// loaded texture's anisotropy to what the GPU allows (capped at 8).
-export function sharpenTextures(scene, renderer) {
-  const max = Math.min(8, renderer.capabilities.getMaxAnisotropy() || 1);
+// loaded texture's anisotropy to what the GPU allows (capped per graphics tier).
+export function sharpenTextures(scene, renderer, cap = 8) {
+  const max = Math.min(cap, renderer.capabilities.getMaxAnisotropy() || 1);
   if (max <= 1) return;
   const seen = new Set();
   scene.traverse((o) => {

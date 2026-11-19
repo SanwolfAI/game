@@ -62,7 +62,7 @@ export class BigMap {
           People: "Ps2 style Senegalese Casamance male and female" and "Ps2 style karnatid tamil indian male and female" by Humans of the World, <a href="https://sketchfab.com/humansoftheworld" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0; "Low-Poly Construction workers (animated)" by Jungle Jim, <a href="https://sketchfab.com/3d-models/low-poly-construction-workers-animated-7b62e6e1b58c476f8b421dd007a4ff90" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0 (posed and baked for the game).<br>
           People: Quaternius Ultimate Modular Men &amp; Women, CC0.<br>
           Terrain: AWS Terrain Tiles (SRTM, NASA / Mapzen). Street-level reference: Mapillary contributors, CC BY-SA 4.0.<br>
-          Kenney City Kit Roads and Nature Kit (CC0). Textures: Poly Haven (CC0). SA road signs: SADC-RTSM drawings, Wikimedia Commons (public domain); direction boards drawn in-game in SARTSM style from OpenStreetMap names.
+          Kenney City Kit Roads and Nature Kit (CC0). Textures: Poly Haven (CC0); HD pack: asphalt_02, brushed_concrete, concrete_pavers, sparse_grass, white_plaster_rough_01, red_brick_03, corrugated_iron_02 (polyhaven.com, CC0). SA road signs: SADC-RTSM drawings, Wikimedia Commons (public domain); direction boards drawn in-game in SARTSM style from OpenStreetMap names.
         </div>
       </details>`;
     document.body.appendChild(root);

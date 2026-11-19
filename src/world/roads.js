@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { upgradeRoadMats } from './hdTextures.js';
 import { clamp } from '../core/utils.js';
 import { toXZ } from '../core/geo.js';
 
@@ -1158,6 +1159,7 @@ export class RoadNetwork {
     // bridge decks / fascias: a touch of self-light so undersides aren't pitch black
     this.mats.structure = this.mats.concrete.clone();
     this.mats.structure.emissive = new THREE.Color().setRGB(0.07, 0.07, 0.068, THREE.LinearSRGBColorSpace);
+    upgradeRoadMats(this.mats); // HD tiers only (adds mats.walk)
 
     this.chunks = new Map();
     const chunkAt = (x, z) => {
@@ -1727,7 +1729,7 @@ export class RoadNetwork {
     }
     const wg = walk.toGeometry(true);
     if (wg) {
-      const m = new THREE.Mesh(wg, this.mats.concrete);
+      const m = new THREE.Mesh(wg, this.mats.walk || this.mats.concrete);
       m.name = 'sidewalks';
       m.matrixAutoUpdate = false;
       meshes.push(m);

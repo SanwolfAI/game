@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { WORLD } from './worldLight.js';
+import { groundGrass } from './hdTextures.js';
 
 const TEX = './src/assets/textures/';
 const texLoader = new THREE.TextureLoader();
@@ -64,7 +65,7 @@ export function buildLandcover(areas, box) {
 
 export function createGroundMaterial(landcover, box) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const grass = tex('sparse_grass_512.jpg');
+  const grass = groundGrass(() => tex('sparse_grass_512.jpg'));
   const dry = tex('dry_ground_01_512.jpg');
   const sand = tex('coast_sand_01_512.jpg');
   const rock = tex('aerial_grass_rock_512.jpg');

@@ -36,7 +36,8 @@ import { Sharpen, sharpenTextures } from './world/sharpen.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
-import { SHADOW } from './world/blobShadow.js';
+import { SHADOW, blobMaterial } from './world/blobShadow.js';
+import { GFX, GFX_SETTINGS, saveSetting, tierCaps } from './core/gfx.js';
 import { Kasi } from './world/kasi.js';
 import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
@@ -247,10 +248,12 @@ async function main() {
   setLoad(90, 'Warming up the engine…');
   await nextFrame();
 
-  // Phones: 1x pixels, no MSAA, default GPU mode. A Hisense-class GPU hung
-  // the whole device at 2x + MSAA with the full city on the first frame.
+  // Phones: no MSAA (edges are smoothed by the FXAA in the sharpen pass),
+  // default GPU mode. A Hisense-class GPU hung the whole device at 2x + MSAA
+  // with the full city on the first frame. Pixels come from the graphics
+  // tier (src/core/gfx.js) and never go below 1x (safe mode = exactly 1x).
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(SAFE ? Math.min(devicePixelRatio || 1, 0.75) : Math.min(devicePixelRatio || 1, MOBILE ? 1.5 : 2));
+  renderer.setPixelRatio(SAFE ? 1 : GFX.caps.maxPx);
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
@@ -943,6 +946,67 @@ void main(){
     if (buildings) buildings.range = r;
     fogRange = r;
   };
+  // ---- graphics tier: live knobs (pixels, draw range, blobs, people) -----
+  const gfxStats = { ms: 0, steps: 0, upBlock: 0, lastUp: -1e9 };
+  let caps = GFX.caps;
+  const blobMat = blobMaterial();
+  const humanCap = () => (streetLife.humans ? streetLife.humans.cap : caps.humanCap);
+  const setHumanCap = (c) => {
+    if (streetLife.humans) streetLife.humans.cap = Math.max(1, Math.min(c, streetLife.humans.cand.length));
+  };
+  const applyCaps = (c) => {
+    caps = c;
+    if (!SAFE) renderer.setPixelRatio(c.maxPx);
+    renderer.setSize(innerWidth, innerHeight);
+    sharp.resize();
+    setRange(c.range);
+    blobMat.visible = true;
+    setHumanCap(c.humanCap);
+    if (sharp.target) sharp.enabled = true;
+  };
+  function gfxAdapt(avg) {
+    const now = performance.now();
+    const cur = renderer.getPixelRatio();
+    const rg = roads.range;
+    if (avg > 0.03) {
+      if (now - gfxStats.lastUp < 7000) gfxStats.upBlock = now + 30000;
+      gfxStats.steps++;
+      if (rg > 0.5 + 1e-3) setRange(Math.max(0.5, rg - 0.15));
+      else if (blobMat.visible) blobMat.visible = false;
+      else if (humanCap() > 6) setHumanCap(Math.max(6, Math.round(humanCap() * 0.6)));
+      else if (cur > 1) renderer.setPixelRatio(Math.max(1, cur - 0.25));
+      else if (sharp.enabled && avg > 0.045) sharp.enabled = false; // last resort; pixels stay 1x
+      else gfxStats.steps--;
+    } else if (avg < 0.021 && now > gfxStats.upBlock) {
+      gfxStats.lastUp = now;
+      if (!sharp.enabled && sharp.target) sharp.enabled = true;
+      else if (cur < caps.maxPx - 1e-3) renderer.setPixelRatio(Math.min(caps.maxPx, cur + 0.25));
+      else if (humanCap() < caps.humanCap) setHumanCap(Math.min(caps.humanCap, humanCap() + 6));
+      else if (!blobMat.visible) blobMat.visible = true;
+      else if (rg < caps.range - 1e-3) setRange(Math.min(caps.range, rg + 0.1));
+      else gfxStats.lastUp = -1e9;
+    }
+  }
+  const gfxLabel = () => (GFX.setting === 'auto' ? 'Auto (' + caps.tier[0].toUpperCase() + caps.tier.slice(1) + ')' : GFX.setting[0].toUpperCase() + GFX.setting.slice(1));
+  {
+    const btn = document.getElementById('m-gfx');
+    if (btn) btn.textContent = gfxLabel();
+    btn?.addEventListener('click', () => {
+      const next = GFX_SETTINGS[(GFX_SETTINGS.indexOf(GFX.setting) + 1) % GFX_SETTINGS.length];
+      GFX.setting = next;
+      GFX.auto = next === 'auto';
+      saveSetting(next);
+      const c = tierCaps(next === 'auto' ? GFX.detected : next);
+      const texNote = c.hd !== GFX.caps.hd || c.normals !== GFX.caps.normals;
+      applyCaps(c);
+      btn.textContent = gfxLabel();
+      if (texNote) hud.toast('Textures change next time the game starts', 2.5);
+    });
+  }
+  if (!SAFE) {
+    setRange(caps.range);
+    setHumanCap(caps.humanCap);
+  }
   let lastT = performance.now();
   let beatT = 0;
   function frame() {
@@ -978,33 +1042,23 @@ void main(){
         bootFrames = -1;
       }
     }
-    // Adaptive quality on phones: aim for ~45 fps. When frames are slow,
-    // first shorten the draw distance (fog hides it), then lower pixels.
-    // When there is headroom, sharpen first (up to the screen's own pixel
-    // density, max 2x), then draw further.
-    if (MOBILE && !SAFE) {
-      resT += Math.min(raw, 0.1);
-      resSum += raw;
-      resN++;
-      if (resT > 3) {
-        const avg = resSum / resN;
-        const cur = renderer.getPixelRatio();
-        const maxPx = Math.min(devicePixelRatio || 1, 2);
-        const rg = roads.range;
-        // Sharpness first: never drop below 1x pixels; give up draw
-        // distance (down to half), then the sharpen pass, before blur.
-        if (avg > 0.03) {
-          if (rg > 0.5) setRange(Math.max(0.5, rg - 0.15));
-          else if (cur > 1) renderer.setPixelRatio(Math.max(1, cur - 0.25));
-          else if (sharp.enabled && avg > 0.04) sharp.enabled = false;
-          else if (cur > 0.85 && avg > 0.045) renderer.setPixelRatio(0.85);
-        } else if (avg < 0.021) {
-          if (cur < 1) renderer.setPixelRatio(1);
-          else if (cur < maxPx) renderer.setPixelRatio(Math.min(maxPx, cur + 0.25));
-          else if (rg < 1) setRange(Math.min(1, rg + 0.1));
-        }
-        resT = resSum = resN = 0;
+    // Adaptive quality (Auto graphics): aim for ~33-45 fps on any phone.
+    // Slow frames cut, in order: draw distance, blob shadows, animated
+    // people, and only last pixels (never below 1x). Headroom restores in
+    // reverse. A step up that makes things slow again blocks steps up for
+    // 30 s, so it does not flip-flop.
+    resT += Math.min(raw, 0.1);
+    resSum += raw;
+    resN++;
+    if (resT > 3) {
+      const avg = resSum / resN;
+      gfxStats.ms = Math.round(avg * 10000) / 10;
+      if (streetLife.humans && !gfxStats.humansInit) {
+        gfxStats.humansInit = true;
+        setHumanCap(caps.humanCap);
       }
+      if (GFX.auto && !SAFE) gfxAdapt(avg);
+      resT = resSum = resN = 0;
     }
     // watchdog: very slow frames well after street life appeared (not the
     // one-off hitch when it first shows) -> drop street life for this run
@@ -1185,7 +1239,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.onFoot = (x, z, yaw) => {
@@ -1200,7 +1254,7 @@ void main(){
   };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
-    sharpenTextures(scene, renderer);
+    sharpenTextures(scene, renderer, GFX.caps.aniso);
     renderer.compile(scene, camera); // warm shaders on the loading screen
   } catch {}
   setBoot('running');

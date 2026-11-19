@@ -241,7 +241,7 @@ export class Fares {
   #makeWalletEl() {
     const el = document.createElement('div');
     el.id = 'wallet';
-    el.style.cssText = 'position:fixed;right:12px;top:96px;z-index:6;padding:4px 10px;border-radius:12px;background:rgba(12,14,18,.72);color:#ffd21a;font:700 14px system-ui,sans-serif;pointer-events:none;letter-spacing:.3px';
+    el.style.cssText = 'position:fixed;right:12px;top:144px;z-index:6;padding:4px 10px;border-radius:12px;background:rgba(12,14,18,.72);color:#ffd21a;font:700 14px system-ui,sans-serif;pointer-events:none;letter-spacing:.3px';
     (document.getElementById('hud') || document.body).appendChild(el);
     this.walletEl = el;
     el.style.pointerEvents = 'auto';

@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { buildFacadeArray, LAYER } from './facades.js';
+import { buildingDetail } from './hdTextures.js';
 import { WORLD } from './worldLight.js';
 import { mulberry32 } from '../core/utils.js';
 
@@ -116,9 +117,68 @@ class GeoBuf {
   }
 }
 
+// HD tiers: world-space brick / plaster / corrugated iron detail (and normal
+// maps on High). World coords are re-based on the camera in 54 m steps
+// (a multiple of every sample size) so phones keep float precision.
+const HD_PARS = `
+varying vec3 vWP;
+varying vec3 vWN;
+uniform sampler2D tBrick, tPlaster, tIron;
+#ifdef IZK_HDN
+uniform sampler2D nBrick, nPlaster, nIron;
+vec3 izkPerturb(vec3 eye, vec3 n, vec3 mapN, vec2 uv) {
+  vec3 q0 = dFdx(eye), q1 = dFdy(eye);
+  vec2 st0 = dFdx(uv), st1 = dFdy(uv);
+  vec3 q1p = cross(q1, n), q0p = cross(n, q0);
+  vec3 T = q1p * st0.x + q0p * st1.x;
+  vec3 B = q1p * st0.y + q0p * st1.y;
+  float det = max(dot(T, T), dot(B, B));
+  float sc = det == 0.0 ? 0.0 : inversesqrt(det);
+  return normalize(T * (mapN.x * sc) + B * (mapN.y * sc) + n * mapN.z);
+}
+#endif
+float izkLum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }`;
+const HD_COLOR = `
+float izkL = floor(vFacade.z + 0.5);
+vec3 izkN = normalize(vWN);
+bool izkRoof = abs(izkN.y) > 0.5;
+vec2 izkUV = izkRoof ? vWP.xz : vec2(dot(vWP.xz, normalize(vec2(-izkN.z, izkN.x) + 1e-5)), vWP.y);
+float izkWall = 1.0 - fWin;
+int izkK = 0; // 1 brick, 2 plaster, 3 iron
+if (!izkRoof && izkL > 6.5 && izkL < 7.5) izkK = 1;
+else if (!izkRoof && (izkL < 0.5 || (izkL > 1.5 && izkL < 5.5) || (izkL > 10.5 && izkL < 11.5))) izkK = 2;
+else if (izkRoof && izkL > 9.5 && izkL < 10.5) izkK = 3;
+if (izkK == 1) {
+  // only where the painted facade is brick-red (keeps white window frames)
+  float red = clamp((fTex.r - fTex.b) * 5.0 - 0.4, 0.0, 1.0);
+  vec3 b = texture2D(tBrick, izkUV).rgb;
+  diffuseColor.rgb = mix(diffuseColor.rgb, vColor.rgb * b * vec3(1.6, 1.45, 1.35), izkWall * red);
+} else if (izkK == 2) {
+  float m = izkLum(texture2D(tPlaster, izkUV * 0.5).rgb) / 0.445;
+  diffuseColor.rgb *= mix(1.0, m, 0.55 * izkWall);
+} else if (izkK == 3) {
+  float m = izkLum(texture2D(tIron, izkUV / 2.7).rgb) / 0.343;
+  diffuseColor.rgb *= mix(1.0, m, 0.85);
+}`;
+const HD_NORMAL = `
+#ifdef IZK_HDN
+if (izkK > 0 && izkWall > 0.5 && (izkK != 1 || fTex.r - fTex.b > 0.12)) {
+  vec3 mn = izkK == 1 ? texture2D(nBrick, izkUV).xyz : izkK == 2 ? texture2D(nPlaster, izkUV * 0.5).xyz : texture2D(nIron, izkUV / 2.7).xyz;
+  mn = mn * 2.0 - 1.0;
+  mn.xy *= 0.8;
+  normal = izkPerturb(-vViewPosition, normal, mn, izkUV);
+}
+#endif`;
+
 export function createBuildingMaterial(tex) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const hd = buildingDetail();
+  if (hd) {
+    mat.defines = { IZK_HD: '' };
+    if (hd.N) mat.defines.IZK_HDN = '';
+  }
   mat.onBeforeCompile = (shader) => {
+    if (hd) Object.assign(shader.uniforms, hd.uniforms);
     shader.uniforms.facadeTex = { value: tex };
     shader.uniforms.uNight = WORLD.night;
     shader.uniforms.uDay = WORLD.day;
@@ -126,6 +186,13 @@ export function createBuildingMaterial(tex) {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vFacade;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacade = facade;');
+    if (hd)
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;')
+        .replace(
+          '#include <worldpos_vertex>',
+          '#include <worldpos_vertex>\n{ vec4 wq = modelMatrix * vec4(transformed, 1.0); vWP = wq.xyz - floor(cameraPosition / 54.0) * 54.0; vWN = normalize(mat3(modelMatrix) * objectNormal); }'
+        );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -135,15 +202,16 @@ uniform float uNight;
 uniform float uDay;
 uniform vec3 uSky;
 varying vec4 vFacade;
-float fHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }`
+float fHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }` + (hd ? HD_PARS : '')
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
 vec4 fTex = texture(facadeTex, vec3(vFacade.xy, floor(vFacade.z + 0.5)));
 float fWin = fTex.a;
-diffuseColor.rgb = mix(diffuseColor.rgb * fTex.rgb, fTex.rgb, fWin);`
+diffuseColor.rgb = mix(diffuseColor.rgb * fTex.rgb, fTex.rgb, fWin);` + (hd ? HD_COLOR : '')
       )
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>' + (hd ? HD_NORMAL : ''))
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
@@ -161,7 +229,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb * fTex.rgb, fTex.rgb, fWin);`
 }`
       );
   };
-  mat.customProgramCacheKey = () => 'izk-building-v1';
+  mat.customProgramCacheKey = () => 'izk-building-v1' + (hd ? (hd.N ? '-hdn' : '-hd') : '');
   return mat;
 }
 
