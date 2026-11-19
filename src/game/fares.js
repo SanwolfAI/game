@@ -110,6 +110,9 @@ export class Fares {
     this.#build();
     this.#makeWalletEl();
     this.#makeBeam();
+    this.waiting = this.ranks.length ? this.ranks[0].people.clone() : new THREE.Group();
+    this.waiting.visible = false;
+    this.group.add(this.waiting);
   }
 
   #build() {
@@ -208,20 +211,20 @@ export class Fares {
       for (const n of row ? row[1] : []) {
         const rk = this.ranks.find((r) => r !== from && r.name.startsWith(n));
         if (rk) {
-          from.routes.push({ name: rk.name, x: rk.x, z: rk.z });
+          from.routes.push({ name: rk.name, x: rk.x, z: rk.z, rank: true });
           continue;
         }
         const p = PLACES.find((q) => q.name === n);
         if (p) {
           const [x, z] = toXZ(p.lon, p.lat);
           const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);
-          from.routes.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z });
+          from.routes.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z, town: true });
         }
       }
       // a rank with no researched routes runs to the nearest CBD rank
       if (!from.routes.length) {
         const cbd = this.ranks.filter((r) => r !== from && Math.hypot(r.x, r.z) < 1500).sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0];
-        if (cbd) from.routes.push({ name: cbd.name, x: cbd.x, z: cbd.z });
+        if (cbd) from.routes.push({ name: cbd.name, x: cbd.x, z: cbd.z, rank: true });
       }
       from.turn = Math.floor(Math.random() * Math.max(1, from.routes.length));
     }
@@ -244,27 +247,108 @@ export class Fares {
     if (!this.job) return;
     this.job = null;
     this.beam.visible = false;
+    this.waiting.visible = false;
     if (this.gps.dest && this.gps.dest.fare) this.gps.clear();
     if (reason) this.hud.toast(reason, 2.6);
     this.cool = 6;
   }
 
-  // GPS arrival hook. Returns true when the arrival was a fare drop-off.
-  onArrive(arrival) {
-    if (!this.job || !arrival || arrival.name !== this.job.to.name) return false;
+  // a road point inside a town, `r` metres from its centre
+  #townPoint(cx, cz, r) {
+    for (let k = 0; k < 8; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const nr = this.roads.nearestRoad(cx + Math.cos(a) * r, cz + Math.sin(a) * r, 250, (q) => q.rank >= 3 && q.rank <= 6);
+      if (nr) return { x: nr.x, z: nr.z };
+    }
+    return { x: cx, z: cz };
+  }
+
+  // Two kinds of route, as Bheko explained (19 Nov):
+  //  - rank to rank (e.g. Durban - Umzinto): load at the rank, drive straight
+  //    to the other rank, nobody picked up on the road.
+  //  - township routes (e.g. Inanda): from the city rank drive out and drop
+  //    stop to stop in the township, picking up people going to town on the
+  //    way, then back to the same rank, where it queues for its turn again.
+  #legs(from, to, pax) {
+    if (to.rank || !to.town) return [{ kind: 'final', name: to.name, x: to.x, z: to.z, drop: pax, pick: 0 }];
+    const legs = [];
+    let left = pax;
+    const drops = 3;
+    for (let k = 1; k <= drops; k++) {
+      const p = this.#townPoint(to.x, to.z, 200 + k * 260);
+      const d = k === drops ? left : Math.max(1, Math.round(pax / drops));
+      left -= d;
+      // on the way, people at the roadside who are going to town get on
+      const pick = k === drops ? 0 : Math.min(d, 1 + Math.floor(Math.random() * Math.max(1, d)));
+      legs.push({ kind: 'drop', name: `${to.name} stop ${k}`, x: p.x, z: p.z, drop: d, pick });
+    }
+    for (let k = 1; k <= 2; k++) {
+      const p = this.#townPoint(to.x, to.z, 150 + k * 300);
+      legs.push({ kind: 'pick', name: `${to.name} pick-up ${k}`, x: p.x, z: p.z, drop: 0, pick: 0 });
+    }
+    legs.push({ kind: 'final', name: from.name, x: from.x, z: from.z, drop: -1, pick: 0 });
+    return legs;
+  }
+
+  #goLeg() {
     const j = this.job;
-    const fast = j.t < j.est;
-    const tip = fast ? Math.round(j.pax * 4) : 0;
-    const total = j.pax * j.fare + tip;
+    const leg = j.legs[j.i];
+    this.gps.setDestination(leg.x, leg.z, leg.name);
+    this.gps.dest.fare = true;
+    this.beam.position.set(leg.x, this.hf.heightAt(leg.x, leg.z), leg.z);
+    this.waiting.visible = leg.kind === 'pick';
+    if (leg.kind === 'pick') this.waiting.position.set(leg.x, this.hf.heightAt(leg.x, leg.z), leg.z);
+  }
+
+  #pay(n, tip = 0) {
+    const total = n * this.job.fare + tip;
     this.wallet.r += total;
-    this.wallet.trips = (this.wallet.trips || 0) + 1;
     this.#save();
-    this.job = null;
-    this.beam.visible = false;
-    this.cool = 5;
-    this.hud.toast(`Dropped ${j.pax} at ${j.to.name}: +R${total}${tip ? ` (R${tip} tips, quick trip)` : ''}`, 4);
     this.#showWallet(`  +${total}`);
     this.flash = 3;
+    return total;
+  }
+
+  // GPS arrival hook. Returns true when the arrival was a fare stop.
+  onArrive(arrival) {
+    const j = this.job;
+    if (!j || !arrival) return false;
+    const leg = j.legs[j.i];
+    if (!leg || arrival.name !== leg.name) return false;
+    const cap = j.cap;
+    let msg = '';
+    if (leg.kind === 'drop') {
+      const got = this.#pay(leg.drop);
+      j.onboard -= leg.drop;
+      const pick = Math.min(leg.pick, cap - j.onboard);
+      j.onboard += pick;
+      j.townward += pick;
+      msg = `Dropped ${leg.drop}: +R${got}` + (pick ? `, ${pick} going to town got on` : '');
+    } else if (leg.kind === 'pick') {
+      const pick = Math.max(0, Math.min(cap - j.onboard, 2 + Math.floor(Math.random() * 5)));
+      j.onboard += pick;
+      j.townward += pick;
+      msg = pick ? `${pick} picked up at the roadside, going to ${j.from.name.replace(/ Taxi Rank.*$/, '')}` : 'Nobody waiting here';
+      this.waiting.visible = false;
+    } else {
+      const n = leg.drop < 0 ? j.townward : leg.drop;
+      const tip = j.t < j.est ? Math.round(n * 3) : 0;
+      const got = n ? this.#pay(n, tip) : 0;
+      this.wallet.trips = (this.wallet.trips || 0) + 1;
+      this.#save();
+      this.hud.toast(`Trip done at ${leg.name}: +R${got}${tip ? ` (R${tip} tips, quick trip)` : ''}. Queue again to load.`, 4);
+      this.job = null;
+      this.beam.visible = false;
+      this.waiting.visible = false;
+      this.cool = 5;
+      return true;
+    }
+    j.i++;
+    // skip the pick-ups when the taxi is already full
+    while (j.legs[j.i] && j.legs[j.i].kind === 'pick' && j.onboard >= cap) j.i++;
+    this.#goLeg();
+    const next = j.legs[j.i];
+    this.hud.toast(`${msg}. Next: ${next.kind === 'final' ? `back to ${next.name}` : next.name}`, 3.4);
     return true;
   }
 
@@ -279,7 +363,6 @@ export class Fares {
     if (this.job) {
       this.job.t += dt;
       this.beam.visible = true;
-      this.beam.position.set(this.job.to.x, this.hf.heightAt(this.job.to.x, this.job.to.z), this.job.to.z);
       if (!inVehicle) return this.cancel('Passengers got out: you left the taxi');
       if (!this.gps.dest) return this.cancel('Fare cancelled');
       return;
@@ -298,31 +381,39 @@ export class Fares {
     }
     if (!near) {
       this.stopT = 0;
+      this.queueT = 0;
       this.hinted = null;
       return;
     }
     if (this.hinted !== near) {
       this.hinted = near;
-      this.hud.toast(`${near.name}: routes to ${this.routesOf(near)}. Stop in the yellow bay to load`, 3.4);
+      this.hud.toast(`${near.name}: routes to ${this.routesOf(near)}. Stop in the yellow bay to queue`, 3.4);
     }
     if (Math.abs(vehicle.speedKmh || 0) > STOP_KMH) {
       this.stopT = 0;
       return;
     }
+    // queue for your turn
+    if (!this.queueT) {
+      const ahead = 1 + Math.floor(Math.random() * 3);
+      this.queueT = BOARD_S + ahead * 3;
+      this.hud.toast(`In the queue: ${ahead} taxi${ahead > 1 ? 's' : ''} ahead of you`, 2.6);
+    }
     this.stopT += dt;
-    if (this.stopT < BOARD_S) return;
+    if (this.stopT < this.queueT) return;
     this.stopT = 0;
+    this.queueT = 0;
     const to = this.#pickDestination(near);
     if (!to) return;
-    const pax = vehicle.typeId === 'quantum' ? 14 : 3;
+    const cap = vehicle.typeId === 'quantum' ? 14 : 3;
     const km = Math.hypot(to.x - near.x, to.z - near.z) / 1000;
     const fare = Math.round(Math.min(35, Math.max(15, 10 + km * 1.1)));
-    // estimate: road distance ~1.35x straight line at ~40 km/h
-    const est = ((km * 1.35) / 40) * 3600 + 30;
-    this.job = { from: near, to, pax, fare, t: 0, est };
-    this.gps.setDestination(to.x, to.z, to.name);
-    this.gps.dest.fare = true;
-    this.hud.toast(`${near.name} \u2192 ${to.name}: ${pax} on board, R${fare} each. Follow the GPS.`, 3.5);
+    const legs = this.#legs(near, to, cap);
+    const est = ((km * 1.35 * (to.town ? 2.4 : 1)) / 40) * 3600 + 60;
+    this.job = { from: near, to, cap, onboard: cap, townward: 0, fare, legs, i: 0, t: 0, est };
+    this.#goLeg();
+    const how = to.town ? 'stop to stop, then back to the rank' : 'straight to the rank, no road pick-ups';
+    this.hud.toast(`Your turn: ${cap} on board to ${to.name}, R${fare} each, ${how}`, 4);
     near.people.visible = false;
     setTimeout(() => (near.people.visible = true), 60000);
   }
