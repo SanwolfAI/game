@@ -6,6 +6,7 @@ import { buildVehicleMesh } from './models.js';
 import { trafficCarModel } from './carModels.js';
 import { crashSound, honkFar } from './audio.js';
 import { WORLD } from '../world/worldLight.js';
+import { blobMaterial, blobGeometry } from '../world/blobShadow.js';
 
 // Street life: busy pavements the way Durban's CBD really is (West St, Dr
 // Pixley KaSeme, Anton Lembede, Warwick). Walkers on the pavements, hawkers
@@ -328,6 +329,7 @@ export class StreetLife {
     this.mSlvL = inst(B.sleeve, lam({}), P, true);
     this.mSlvR = inst(B.sleeve, lam({}), P, true);
     this.mSkirt = inst(B.skirt, lam({ side: THREE.DoubleSide }), P, true);
+    this.mShadow = inst(blobGeometry(0.8, 0.8, 0.05), blobMaterial(), P + NEAR);
     this.people = [this.mTorso, this.mHips, this.mHead, this.mHair, this.mLegL, this.mLegR, this.mArmL, this.mArmR, this.mSlvL, this.mSlvR, this.mSkirt];
 
     this.mFrame = inst(gazeboFrame(), lam({ vertexColors: true }), MAX_STALL);
@@ -353,6 +355,7 @@ export class StreetLife {
     this.group.add(this.mDrum, this.mFlame);
     this.props = [this.mFrame, this.mTop, this.mFrame2, this.mTable, this.mProduce, this.mRack, this.mGarment, this.mUmbPole, this.mUmbTop, this.mBarber, this.mChair, this.mLoad, this.mBottle, this.mGlow];
     for (const m of this.people) this.group.add(m);
+    this.group.add(this.mShadow);
     // real figures (nearest people)
     this.real = [];
     if (REAL) {
@@ -1168,7 +1171,13 @@ export class StreetLife {
       }
       return true;
     };
+    let nSh = 0;
     const write = (h) => {
+      if (nSh < this.mShadow.instanceMatrix.count && h.y != null) {
+        this._p.set(h.x, h.y, h.z);
+        this._m2.compose(this._p, this._q2.identity(), this._one);
+        this.mShadow.setMatrixAt(nSh++, this._m2);
+      }
       if (real.length && nReal < NEAR && Math.abs(h.x - cx) < NEAR_R && Math.abs(h.z - cz) < NEAR_R && writeReal(h)) {
         nReal++;
         return;
@@ -1343,6 +1352,8 @@ export class StreetLife {
         if (m.count) m.instanceMatrix.needsUpdate = true;
       }
     }
+    this.mShadow.count = nSh;
+    this.mShadow.instanceMatrix.needsUpdate = true;
     for (const mesh of this.people) {
       mesh.count = n;
       mesh.instanceMatrix.needsUpdate = true;

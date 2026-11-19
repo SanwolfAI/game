@@ -103,6 +103,8 @@ export class Weather {
       // random starting sky, weighted by the season
       this.first = false;
       this.name = pick({ clear: 2, fair: 3, cloudy: 2, overcast: 1, drizzle: 0.5, rain: 0.5, storm: 0.2, mist: 0.5 }, season, hour);
+      const wx = typeof location !== 'undefined' && new URLSearchParams(location.search).get('wx'); // test hook: ?wx=clear
+      if (wx && STATES[wx]) this.name = wx;
       Object.assign(this.cur, STATES[this.name]);
     }
     this.timer -= dt;

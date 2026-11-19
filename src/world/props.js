@@ -3,6 +3,7 @@ import { loadKitModel } from './kitModels.js';
 import { CHUNK, KERB_H, WALK_W, specFor } from './roads.js';
 import { mulberry32 } from '../core/utils.js';
 import { WORLD } from './worldLight.js';
+import { blobMaterial, blobGeometry } from './blobShadow.js';
 import { glowTexture } from '../game/carLights.js';
 
 // Streams instanced props around the camera, generated per 400 m road chunk
@@ -20,6 +21,9 @@ const REFILL_MOVE = 35; // m of camera travel between instance refills
 
 const NATURE = './src/assets/naturekit/';
 const ROADKIT = './src/assets/roadkit/';
+
+// trees that get a soft ground shadow (disc size vs canopy width)
+const TREE_SHADOW = { oak: 1.0, oakDark: 1.0, fat: 1.0, detailed: 0.9, plateau: 1.0, tall: 0.8, palm: 0.55, palmBend: 0.55 };
 
 // type -> model file, max instances, draw radius
 const TYPES = {
@@ -90,6 +94,7 @@ export class Props {
     this.dirty = false;
     this.ready = false;
     this.stats = { instances: 0, chunks: 0 };
+    this.shadows = {};
     this.time = 0;
 
     // areas by 400 m chunk
@@ -219,6 +224,19 @@ export class Props {
             mesh.name = `props-${name}`;
             this.meshes[name] = mesh;
             this.group.add(mesh);
+            if (TREE_SHADOW[name]) {
+              // soft shadow disc under each tree, sharing the tree's instance matrices
+              m.geometry.computeBoundingBox();
+              const bb = m.geometry.boundingBox;
+              const r = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * TREE_SHADOW[name];
+              const sh = new THREE.InstancedMesh(blobGeometry(r, r, bb.min.y + 0.06), blobMaterial(), t.max);
+              sh.instanceMatrix = mesh.instanceMatrix;
+              sh.count = 0;
+              sh.frustumCulled = false;
+              sh.name = `props-${name}-shadow`;
+              this.shadows[name] = sh;
+              this.group.add(sh);
+            }
           })
           .catch((err) => console.warn('[IZK] prop model missing', t.file, err))
       );
@@ -798,6 +816,7 @@ export class Props {
     }
     for (const [name, mesh] of Object.entries(this.meshes)) {
       mesh.count = counts[name];
+      if (this.shadows[name]) this.shadows[name].count = counts[name];
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       total += counts[name];

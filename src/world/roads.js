@@ -1542,6 +1542,13 @@ export class RoadNetwork {
     const YELLOW = [1.0, 0.8, 0.12];
     const kerbCol = 0.9;
     const walkCol = 0.82;
+    // grey concrete for proper streets: neutralises the warm/brown texture
+    const GREY_WALK = [0.82 * 0.87, 0.82 * 0.95, 0.82 * 1.08];
+    // Small streets (Bheko 19 Nov): the plain look - no paint, brown paving -
+    // only on driveways/service lanes and short dead-end side streets.
+    const MINOR = { residential: 1, unclassified: 1, living_street: 1 };
+    const deadEnd = (n) => n && n.ends && n.ends.length === 1;
+    const smallStreet = (pc) => pc.road.cls === 'service' || pc.road.cls === 'pedestrian' || (MINOR[pc.road.cls] && pc.len < 220 && (deadEnd(pc.nA) || deadEnd(pc.nB)));
 
     const stripe = (pc, i0, i1, off, half, col, dash, gap, solidFn) => {
       const s = pc.s;
@@ -1603,7 +1610,8 @@ export class RoadNetwork {
       const dash = freeway ? 4 : 3;
       const gap = freeway ? 8 : 6;
       const laneW = road.laneW;
-      const marked = !road.unpaved && (spec.major || spec.edges || road.lanes >= 3 || road.cls.endsWith('_link'));
+      const small = smallStreet(pc);
+      const marked = !road.unpaved && (spec.major || spec.edges || road.lanes >= 3 || road.cls.endsWith('_link') || (MINOR[road.cls] && !small && !road.rural && road.lanes >= 2 && !road.oneway));
 
       if (marked) {
         const dLo = pc.d0 + (pc.nA.junction ? pc.trimA : 0);
@@ -1690,7 +1698,7 @@ export class RoadNetwork {
             if (ok && k0 < 0) k0 = k;
             if ((!ok || k === run.i1) && k0 >= 0) {
               const k1 = ok ? k : k - 1;
-              if (k1 > k0) this.#sidewalkStrip(walk, pc, k0, k1, side, kerbCol, walkCol);
+              if (k1 > k0) this.#sidewalkStrip(walk, pc, k0, k1, side, kerbCol, small ? walkCol : GREY_WALK);
               k0 = -1;
             }
           }
@@ -1699,7 +1707,7 @@ export class RoadNetwork {
     }
 
     // Sidewalk corners around junctions.
-    for (const node of c.nodes) this.#junctionCorners(walk, node, walkCol);
+    for (const node of c.nodes) this.#junctionCorners(walk, node, GREY_WALK);
 
     const meshes = [];
     const pg = paint.toGeometry(false);
@@ -1735,6 +1743,7 @@ export class RoadNetwork {
   }
 
   #sidewalkStrip(B, pc, i0, i1, side, kerbCol, walkCol) {
+    const wr = walkCol.length ? walkCol[0] : walkCol, wg = walkCol.length ? walkCol[1] : walkCol, wb = walkCol.length ? walkCol[2] : walkCol;
     const s = pc.s;
     const hw = pc.hw;
     let prev = null;
@@ -1753,8 +1762,8 @@ export class RoadNetwork {
         B.v(x + L1 * e0, y - 0.02, z + L2 * e0, 0, v, kerbCol * 0.8, kerbCol * 0.8, kerbCol * 0.8),
         B.v(x + L1 * e0, y + KERB_H, z + L2 * e0, 0.04, v, kerbCol, kerbCol, kerbCol),
         B.v(x + L1 * e1, y + KERB_H, z + L2 * e1, 0.08, v, kerbCol, kerbCol, kerbCol),
-        B.v(x + L1 * e2, y + KERB_H, z + L2 * e2, WALK_W * TEX_SCALE, v, walkCol, walkCol, walkCol * 0.97),
-        B.v(x + L1 * e3, y - 0.45, z + L2 * e3, (WALK_W + 0.3) * TEX_SCALE, v, walkCol * 0.7, walkCol * 0.7, walkCol * 0.7)
+        B.v(x + L1 * e2, y + KERB_H, z + L2 * e2, WALK_W * TEX_SCALE, v, wr, wg, wb * 0.97),
+        B.v(x + L1 * e3, y - 0.45, z + L2 * e3, (WALK_W + 0.3) * TEX_SCALE, v, wr * 0.7, wg * 0.7, wb * 0.7)
       ];
       if (prev) {
         for (let q = 0; q < 4; q++) {
@@ -1767,6 +1776,7 @@ export class RoadNetwork {
   }
 
   #junctionCorners(B, node, walkCol) {
+    const wr = walkCol.length ? walkCol[0] : walkCol, wg = walkCol.length ? walkCol[1] : walkCol, wb = walkCol.length ? walkCol[2] : walkCol;
     const cs = node.corners;
     if (!cs) return;
     const n = cs.length;
@@ -1811,8 +1821,8 @@ export class RoadNetwork {
         [b.x + ob[0] * (WALK_W + 0.25), b.y - 0.45, b.z + ob[1] * (WALK_W + 0.25)]
       ];
       void y;
-      const ia = pts.map((p, q) => B.v(p[0], p[1], p[2], p[0] * TEX_SCALE, p[2] * TEX_SCALE, q === 0 ? 0.72 : walkCol, q === 0 ? 0.72 : walkCol, q === 0 ? 0.72 : walkCol));
-      const ib = ptsB.map((p, q) => B.v(p[0], p[1], p[2], p[0] * TEX_SCALE, p[2] * TEX_SCALE, q === 0 ? 0.72 : walkCol, q === 0 ? 0.72 : walkCol, q === 0 ? 0.72 : walkCol));
+      const ia = pts.map((p, q) => B.v(p[0], p[1], p[2], p[0] * TEX_SCALE, p[2] * TEX_SCALE, q === 0 ? 0.72 : wr, q === 0 ? 0.72 : wg, q === 0 ? 0.72 : wb));
+      const ib = ptsB.map((p, q) => B.v(p[0], p[1], p[2], p[0] * TEX_SCALE, p[2] * TEX_SCALE, q === 0 ? 0.72 : wr, q === 0 ? 0.72 : wg, q === 0 ? 0.72 : wb));
       for (let q = 0; q < 3; q++) B.quad(ia[q + 1], ia[q], ib[q + 1], ib[q]);
       // fill the inner triangle between both arms' outer corners and the kerb
       B.tri(ia[2], ib[2], ia[1]);

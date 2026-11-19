@@ -31,7 +31,7 @@ void main() {
   float range = lMax - lMin;
   vec3 col = cM;
   // edge smoothing: blend along the edge where contrast is high
-  if (range > max(0.045, lMax * 0.14)) {
+  if (range > max(0.03, lMax * 0.1)) {
     vec2 dir = vec2(-((lN) - (lS)), (lE) - (lW));
     float dmin = 1.0 / (min(abs(dir.x), abs(dir.y)) + range * 0.25 + 1e-4);
     dir = clamp(dir * dmin, -2.0, 2.0);

@@ -32,6 +32,7 @@ import { Sharpen, sharpenTextures } from './world/sharpen.js';
 import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
+import { SHADOW } from './world/blobShadow.js';
 import { Kasi } from './world/kasi.js';
 import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
@@ -41,6 +42,10 @@ import { VEHICLE_TYPES } from './game/models.js';
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xe6a27a); // faint warm haze only while the sun is just above the horizon
 const SKY_TWILIGHT = new THREE.Color(0x24406e); // natural blue hour
+const SUN_WARM = new THREE.Color(0xffd7a8);
+const SUN_GOLD = new THREE.Color(0xff8a45);
+const HAZE_WHITE = new THREE.Color(0xe8eef2);
+const SKY_ZENITH_TINT = new THREE.Color(0x2f6fc0);
 const MOON_COLOR = new THREE.Color(0x9db4ff);
 
 const loadFill = document.getElementById('load-fill');
@@ -241,7 +246,7 @@ async function main() {
   // Phones: 1x pixels, no MSAA, default GPU mode. A Hisense-class GPU hung
   // the whole device at 2x + MSAA with the full city on the first frame.
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(SAFE ? Math.min(devicePixelRatio || 1, 0.75) : Math.min(devicePixelRatio || 1, MOBILE ? 1 : 2));
+  renderer.setPixelRatio(SAFE ? Math.min(devicePixelRatio || 1, 0.75) : Math.min(devicePixelRatio || 1, MOBILE ? 1.5 : 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
@@ -256,6 +261,36 @@ async function main() {
 
   // near=1 m doubles depth precision vs 0.5 (no road/marking z-fighting at range)
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 1.0, 16000);
+  // Sky dome: smooth fade from deep blue overhead to a soft hazy horizon
+  // (which the fog matches, so distant city melts into haze), with a warm
+  // glow around the sun at golden hour. Replaces the flat background colour.
+  const skyUni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uGlow: { value: new THREE.Color() } };
+  const skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(12000, 32, 16),
+    new THREE.ShaderMaterial({
+      uniforms: skyUni,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 uTop; uniform vec3 uHor; uniform vec3 uSunDir; uniform vec3 uGlow; varying vec3 vDir;
+void main(){
+  float h = clamp(vDir.y, -0.2, 1.0);
+  float t = pow(clamp(h, 0.0, 1.0), 0.45);
+  vec3 c = mix(uHor, uTop, t);
+  if (h < 0.0) c = uHor * (1.0 + h * 0.6);
+  float sd = max(dot(normalize(vDir), normalize(uSunDir)), 0.0);
+  c += uGlow * (pow(sd, 8.0) * 0.55 + pow(sd, 90.0) * 1.2);
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`
+    })
+  );
+  skyDome.renderOrder = -10;
+  skyDome.frustumCulled = false;
+  skyDome.name = 'skyDome';
+  scene.add(skyDome);
 
   const hemi = new THREE.HemisphereLight(0xd8ecff, 0x4b5a42, 1.6);
   scene.add(hemi);
@@ -609,7 +644,8 @@ async function main() {
     sun.position.copy(sunDir).multiplyScalar(1800);
     sun.intensity = solar.day * (2.3 + (season.id === 'winter' ? 0.5 : 0.2)) * (1 - weather.cur.cloud * 0.75);
     sunColor.setHex(season.sun);
-    sunColor.lerp(new THREE.Color(0xff8d4d), solar.golden * 0.7);
+    sunColor.lerp(SUN_WARM, 0.16 * solar.day); // a touch of warmth all day
+    sunColor.lerp(SUN_GOLD, solar.golden * 0.85); // soft orange at sunrise / sunset
     sun.color.copy(sunColor);
 
     moon.position.copy(moonDir).multiplyScalar(1800);
@@ -623,7 +659,14 @@ async function main() {
     weather.applySky(sky, solar.day);
     scene.background.copy(sky);
 
-    fogColor.copy(sky).lerp(daySky, 0.18);
+    // dome: deeper blue overhead, pale hazy horizon (warm at golden hour)
+    const warmth = solar.golden * Math.min(1, solar.day * 2) * (1 - solar.night);
+    skyUni.uTop.value.copy(sky).multiplyScalar(0.82).lerp(SKY_ZENITH_TINT, 0.12 * solar.day);
+    skyUni.uHor.value.copy(sky).lerp(HAZE_WHITE, 0.32 * solar.day * (1 - weather.cur.cloud * 0.5)).lerp(SKY_DUSK, warmth * 0.55);
+    skyUni.uSunDir.value.copy(sunDir);
+    skyUni.uGlow.value.copy(SUN_GOLD).multiplyScalar(solar.day * (0.25 + warmth * 0.9) * (1 - weather.cur.cloud * 0.8));
+    skyDome.position.copy(camera.position);
+    fogColor.copy(skyUni.uHor.value);
     scene.fog.color.copy(fogColor);
     scene.fog.near = (1100 - solar.night * 600) * weather.cur.fog * fogRange;
     scene.fog.far = (5200 - solar.night * 2300) * weather.cur.fog * fogRange;
@@ -635,6 +678,7 @@ async function main() {
     hemi.groundColor.copy(hemiGround);
 
     fill.intensity = 0.15 + solar.day * 0.35;
+    SHADOW.strength.value = 0.18 + 0.42 * solar.day * (1 - weather.cur.cloud * 0.6);
     renderer.toneMappingExposure = 0.82 + solar.day * 0.3;
 
     WORLD.night.value = Math.min(1, solar.night * 1.2 + solar.golden * 0.25);

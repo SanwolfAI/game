@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { GLTFLoader } from '../../vendor/three/loaders/GLTFLoader.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
+import { blobMaterial, blobGeometry } from '../world/blobShadow.js';
 
 // Sketchfab cars (CC BY 4.0, credited in #model-credits), pre-optimised by
 // scripts/optimize-vehicles.mjs into src/assets/vehicles/*.glb.
@@ -197,7 +198,11 @@ function prepareTraffic(gltf, src) {
     parts.push({ geometry, material: m, paint: /material\.001|carpaint|paint|body/i.test(mat.name || '') });
   }
   const box = new THREE.Box3().setFromObject(inner);
-  return { parts, size: box.getSize(new THREE.Vector3()) };
+  const size = box.getSize(new THREE.Vector3());
+  // soft contact shadow under the car (slightly bigger than the body)
+  const ctr = box.getCenter(new THREE.Vector3());
+  parts.push({ geometry: blobGeometry(size.x * 1.25, size.z * 1.15, box.min.y + 0.04, ctr.x, ctr.z), material: blobMaterial(), paint: false, shadow: true });
+  return { parts, size };
 }
 
 export async function loadCarModels() {
