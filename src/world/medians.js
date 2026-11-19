@@ -12,16 +12,21 @@ import * as THREE from '../../vendor/three/three.module.js';
 // run side by side (inner edges less than ~14 m apart). Nothing elsewhere.
 const RULES = [
   { refs: ['N3', 'N2'], classes: ['motorway'], kind: 'concrete' },
-  { refs: ['M7', 'M13', 'M19'], classes: ['motorway', 'trunk'], kind: 'armco' }
+  { refs: ['M7', 'M13', 'M19'], classes: ['motorway', 'trunk'], kind: 'armco' },
+  // Umgeni Road (Bheko 19 Nov): raised kerbed pavement island down the middle
+  // with the street lights standing on it. Surface sections only.
+  { names: ['Umgeni Road'], classes: ['trunk', 'primary', 'secondary'], kind: 'island' }
 ];
 const STEP = 6;
 const MAX_GAP = 14;
 
 function ruleFor(road) {
-  if (!road.oneway || !road.ref) return null;
+  if (!road.oneway) return null;
+  for (const r of RULES) if (r.names && r.classes.includes(road.cls) && road.name && r.names.some((n) => road.name.startsWith(n))) return { rule: r, name: r.names.find((n) => road.name.startsWith(n)) };
+  if (!road.ref) return null;
   const refs = road.ref.split(';');
   for (const r of RULES) {
-    if (!r.classes.includes(road.cls)) continue;
+    if (!r.refs || !r.classes.includes(road.cls)) continue;
     for (const ref of refs) if (r.refs.includes(ref)) return { rule: r, ref };
   }
   return null;
@@ -40,7 +45,7 @@ export class Medians {
     this.roads = roads;
     this.group = new THREE.Group();
     this.group.name = 'medians';
-    this.segs = { concrete: [], armco: [] };
+    this.segs = { concrete: [], armco: [], island: [] };
     this.grid = new Map();
     const t0 = performance.now();
     for (const road of roads.roads) {
@@ -54,7 +59,7 @@ export class Medians {
 
   #trace(road, m) {
     const pts = road.pts;
-    const same = (r) => r !== road && r.oneway && r.ref && r.ref.split(';').includes(m.ref);
+    const same = m.name ? (r) => r !== road && r.oneway && !!r.name && r.name.startsWith(m.name) : (r) => r !== road && r.oneway && r.ref && r.ref.split(';').includes(m.ref);
     let prev = null;
     for (let d = STEP * 0.5; d < road.len; d += STEP) {
       // point + heading at distance d
@@ -90,7 +95,7 @@ export class Medians {
           const yB = this.roads.roadHeightAt(near.road, alongOf(near.road, near.t), near.x, near.z);
           if (Math.abs(yA - yB) < 1.2) {
             const y = Math.min(yA, yB);
-            if (prev) this.#seg(m.rule.kind, prev[0], prev[1], prev[2], mx, mz, y);
+            if (prev) this.#seg(m.rule.kind, prev[0], prev[1], prev[2], mx, mz, y, Math.max(1.2, gap));
             prev = [mx, mz, y];
             ok = true;
           }
@@ -100,10 +105,10 @@ export class Medians {
     }
   }
 
-  #seg(kind, x0, z0, y0, x1, z1, y1) {
+  #seg(kind, x0, z0, y0, x1, z1, y1, w = 0.6) {
     const len = Math.hypot(x1 - x0, z1 - z0);
     if (len < 0.5 || len > STEP * 2.2) return;
-    const s = { kind, x0, z0, x1, z1, y: (y0 + y1) / 2, len };
+    const s = { kind, x0, z0, x1, z1, y: (y0 + y1) / 2, len, w };
     this.segs[kind].push(s);
     const cx = Math.floor((x0 + x1) / 2 / 20);
     const cz = Math.floor((z0 + z1) / 2 / 20);
@@ -123,7 +128,7 @@ export class Medians {
       list.forEach((s, k) => {
         p.set((s.x0 + s.x1) / 2, s.y + yOff, (s.z0 + s.z1) / 2);
         q.setFromAxisAngle(up, Math.atan2(s.x1 - s.x0, s.z1 - s.z0));
-        sc.set(1, 1, s.len + extra);
+        sc.set(s.kind === 'island' ? s.w : 1, 1, s.len + extra);
         m4.compose(p, q, sc);
         mesh.setMatrixAt(k, m4);
       });
@@ -178,7 +183,41 @@ export class Medians {
       });
       this.group.add(posts);
     }
-    this.count = C.length + A.length;
+    // Umgeni Road island: kerbed concrete strip with lights every ~36 m
+    const I = this.segs.island;
+    if (I.length) {
+      const geo = new THREE.BoxGeometry(1, 0.2, 1);
+      geo.translate(0, 0.1, 0);
+      const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xbdb9b0 }), I.length);
+      mesh.name = 'medianIsland';
+      place(mesh, I, 0, 0.3);
+      const lamps = I.filter((s, k) => k % 6 === 0);
+      const pole = new THREE.CylinderGeometry(0.09, 0.14, 10, 6);
+      pole.translate(0, 5, 0);
+      const arm = new THREE.BoxGeometry(3.6, 0.1, 0.1);
+      arm.translate(0, 9.8, 0);
+      const poles = new THREE.InstancedMesh(mergeTwo(pole, arm), new THREE.MeshLambertMaterial({ color: 0x8e9398 }), lamps.length);
+      poles.name = 'medianLampPoles';
+      const head = new THREE.BoxGeometry(0.7, 0.14, 0.3);
+      const hl = head.clone();
+      hl.translate(-1.7, 9.68, 0);
+      const hr = head.clone();
+      hr.translate(1.7, 9.68, 0);
+      const heads = new THREE.InstancedMesh(mergeTwo(hl, hr), new THREE.MeshLambertMaterial({ color: 0x555a5e, emissive: 0xffd9a0, emissiveIntensity: 0.0 }), lamps.length);
+      heads.name = 'medianLampHeads';
+      this.lampHeads = heads;
+      lamps.forEach((s, k) => {
+        p.set(s.x0, s.y + 0.2, s.z0);
+        // arms reach across both carriageways
+        q.setFromAxisAngle(up, Math.atan2(s.x1 - s.x0, s.z1 - s.z0));
+        sc.set(1, 1, 1);
+        m4.compose(p, q, sc);
+        poles.setMatrixAt(k, m4);
+        heads.setMatrixAt(k, m4);
+      });
+      this.group.add(poles, heads);
+    }
+    this.count = C.length + A.length + I.length;
   }
 
   // Solid for the player: push a circle (x, z, r) out of any barrier.
@@ -198,7 +237,7 @@ export class Medians {
           const px = s.x0 + dx * t;
           const pz = s.z0 + dz * t;
           const d = Math.hypot(x - px, z - pz);
-          const lim = r + (s.kind === 'concrete' ? 0.3 : 0.3);
+          const lim = r + (s.kind === 'island' ? s.w / 2 : 0.3);
           if (d < lim && d > 1e-4) {
             const nx = (x - px) / d;
             const nz = (z - pz) / d;

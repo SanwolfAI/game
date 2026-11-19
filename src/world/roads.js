@@ -576,12 +576,21 @@ export class RoadNetwork {
     }
   }
 
-  // Small CBD streets that get the textured street (pavements built in).
+  // Town streets that get the textured avenue street (grey kerbs, pavements
+  // and manholes built in; Bheko's road__avenue__street). Was CBD-only; since
+  // 19 Nov every urban residential street has it. The plain no-paint road with
+  // brown paving is kept only for driveways, service lanes and short dead-ends.
   isCbdStreet(pc) {
-    if (pc.elevated || pc.bridge || pc.road.rank > 3 || pc.road.unpaved) return false;
-    const s = pc.s;
-    const m = s.m >> 1;
-    return Math.abs(s.xs[m]) < 1700 && Math.abs(s.zs[m]) < 1500;
+    if (pc.elevated || pc.bridge || pc.road.rank > 3 || pc.road.rank < 2 || pc.road.unpaved || pc.road.rural) return false;
+    return !this.isSmallStreet(pc);
+  }
+
+  isSmallStreet(pc) {
+    const c = pc.road.cls;
+    if (c === 'service' || c === 'pedestrian' || c === 'track') return true;
+    if (c !== 'residential' && c !== 'unclassified' && c !== 'living_street') return false;
+    const dead = (n) => n && n.ends && n.ends.length === 1;
+    return pc.len < 220 && (dead(pc.nA) || dead(pc.nB));
   }
 
   // km of road per km² around (x, z) is below 3: open country / rural village
@@ -1547,8 +1556,7 @@ export class RoadNetwork {
     // Small streets (Bheko 19 Nov): the plain look - no paint, brown paving -
     // only on driveways/service lanes and short dead-end side streets.
     const MINOR = { residential: 1, unclassified: 1, living_street: 1 };
-    const deadEnd = (n) => n && n.ends && n.ends.length === 1;
-    const smallStreet = (pc) => pc.road.cls === 'service' || pc.road.cls === 'pedestrian' || (MINOR[pc.road.cls] && pc.len < 220 && (deadEnd(pc.nA) || deadEnd(pc.nB)));
+    const smallStreet = (pc) => this.isSmallStreet(pc);
 
     const stripe = (pc, i0, i1, off, half, col, dash, gap, solidFn) => {
       const s = pc.s;

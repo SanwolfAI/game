@@ -275,8 +275,8 @@ export class Buildings {
   setSites(sites) {
     this.sites = [];
     for (const st of sites || []) {
-      if (st.k !== 'hospital' && st.k !== 'clinic' && st.k !== 'school') continue;
-      const ring = st.p;
+      if (st.k !== 'hospital' && st.k !== 'clinic' && st.k !== 'school' && st.k !== 'police') continue;
+      const ring = st.p || st.ring;
       if (!ring || ring.length < 3) continue;
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
       for (const [x, z] of ring) {
@@ -368,7 +368,8 @@ export class Buildings {
 
     if (this.sites && this.sites.length && type !== 'tank' && type !== 'shack' && A > 25) {
       const sk = this.#siteAt(x, z);
-      if (sk === 'school' || sk === 'campus') type = sk === 'campus' ? 'campus' : 'school';
+      if (sk === 'police') type = 'police';
+      else if (sk === 'school' || sk === 'campus') type = sk === 'campus' ? 'campus' : 'school';
       else if (sk) type = sk === 'hospital' && A > 120 ? 'hospital' : 'clinic';
     }
     switch (type) {
@@ -382,6 +383,21 @@ export class Buildings {
         s.wallTint = pick(HOSP_WALLS);
         s.lit = 6; // wards and corridors stay lit all night
         s.plant = fl > 3;
+        break;
+      }
+      case 'police': {
+        // SAPS stations: low face-brick blocks, dark iron roofs, charge office lit all night
+        h = (A > 600 && rng() < 0.5 ? 2 : 1) * 3.4;
+        s.floorH = 3.4;
+        s.bay = 3.4;
+        s.wall = LAYER.facebrick;
+        s.wallTint = WHITE;
+        if (A < 1200) {
+          s.roof = 'hip';
+          s.roofLayer = LAYER.roofIron;
+          s.roofTint = pick(CLINIC_ROOF);
+        }
+        s.lit = 5;
         break;
       }
       case 'school': {

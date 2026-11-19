@@ -335,8 +335,8 @@ void main(){
   try {
     const gdata = await loadJson('./src/data/durban-grounds.json');
     groundsData = gdata;
-    if (buildings && gdata) buildings.setSites(gdata.sites); // hospital + clinic blocks get their look
     grounds = new Grounds(gdata, { roads, hf, buildings });
+    if (buildings && gdata) buildings.setSites(gdata.sites); // hospital, clinic, school, police blocks get their look
     scene.add(grounds.group);
   } catch (err) {
     console.warn('[IZK] grounds not built', err);
@@ -677,6 +677,7 @@ void main(){
     skyUni.uSunDir.value.copy(sunDir);
     skyUni.uGlow.value.copy(SUN_GOLD).multiplyScalar(solar.day * (0.25 + warmth * 0.9) * (1 - weather.cur.cloud * 0.8));
     skyDome.position.copy(camera.position);
+    if (medians.lampHeads) medians.lampHeads.material.emissiveIntensity = solar.night > 0.4 ? 1.4 : 0;
     fogColor.copy(skyUni.uHor.value);
     scene.fog.color.copy(fogColor);
     scene.fog.near = (1100 - solar.night * 600) * weather.cur.fog * fogRange;

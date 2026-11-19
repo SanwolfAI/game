@@ -13,7 +13,7 @@ import { trafficCarModel } from '../game/carModels.js';
 const FENCE_H = 2.4;
 const PALE_M = 2.0; // texture repeat length
 
-function paliTexture(col) {
+function paliTexture(col, razor = false) {
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 128;
@@ -35,6 +35,17 @@ function paliTexture(col) {
     g.lineTo(x + 7.5, 2);
     g.lineTo(x + 9, 12);
     g.fill();
+  }
+  // SAPS stations: concertina razor wire coiled along the top
+  if (razor) {
+    g.clearRect(0, 0, 128, 12);
+    g.strokeStyle = '#b9bec2';
+    g.lineWidth = 1.6;
+    for (let x = -6; x < 134; x += 7) {
+      g.beginPath();
+      g.ellipse(x, 6, 6, 5.2, 0.5, 0, Math.PI * 2);
+      g.stroke();
+    }
   }
   // a little shading so it reads as steel
   g.globalCompositeOperation = 'source-atop';
@@ -110,6 +121,7 @@ export class Grounds {
       try {
         const ring = s.p ? s.p.map((p) => [p[0], p[1]]) : this.#compound(s.c);
         if (!ring) continue;
+        if (!s.p) s.ring = ring; // compound for point-only stations, so buildings can style it
         this.#site(s.k, s.n, ring, s.t);
       } catch (err) {
         console.warn('[IZK] grounds site skipped', s.n, err);
@@ -320,7 +332,7 @@ export class Grounds {
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv[key], 2));
       geo.computeVertexNormals();
       const mat = new THREE.MeshLambertMaterial({
-        map: paliTexture(key === 'police' ? '#8f9496' : '#2f5d3a'),
+        map: paliTexture(key === 'police' ? '#8f9496' : '#2f5d3a', key === 'police'),
         alphaTest: 0.5,
         side: THREE.DoubleSide
       });
@@ -456,7 +468,7 @@ export class Grounds {
   // and, at hospitals, a white casualty canopy with a red EMERGENCY fascia
   // on the main block's side facing the gate.
   #buildSigns() {
-    const list = this.sites.filter((st) => (st.kind === 'hospital' || st.kind === 'clinic') && st.gate);
+    const list = this.sites.filter((st) => (st.kind === 'hospital' || st.kind === 'clinic' || st.kind === 'police') && st.gate);
     if (!list.length) return;
     const AW = 1024, SW = 256, SH = 64, COLS = 4;
     const c = document.createElement('canvas');
@@ -488,8 +500,26 @@ export class Grounds {
       g.strokeStyle = '#ffffff';
       g.lineWidth = 2;
       g.strokeRect(x + 2, y + 2, SW - 4, SH - 4);
-      hMark(x + 8, y + 10, 44);
-      let name = (st.name || (st.kind === 'clinic' ? 'Clinic' : 'Hospital')).replace(/\s*-\s*Casualty$/i, '');
+      const cop = st.kind === 'police';
+      if (cop) {
+        // SAPS board: navy with a gold-edged SAPS tag (lettering only, no crest)
+        const metro = /metro/i.test(st.name || '');
+        g.fillStyle = metro ? '#16407a' : '#0f2a5c';
+        g.fillRect(x + 4, y + 4, SW - 8, SH - 8);
+        g.fillStyle = '#f2c230';
+        g.fillRect(x + 7, y + 10, 48, 44);
+        g.fillStyle = '#0f2a5c';
+        g.fillRect(x + 9, y + 12, 44, 40);
+        g.fillStyle = '#f2c230';
+        g.font = 'bold 15px sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(metro ? 'METRO' : 'SAPS', x + 31, y + 26);
+        g.font = 'bold 10px sans-serif';
+        g.fillText('POLICE', x + 31, y + 41);
+        g.textAlign = 'left';
+      } else hMark(x + 8, y + 10, 44);
+      let name = (st.name || (st.kind === 'clinic' ? 'Clinic' : cop ? 'Police Station' : 'Hospital')).replace(/\s*-\s*Casualty$/i, '');
       g.fillStyle = '#ffffff';
       g.textBaseline = 'middle';
       let fs = 22;
@@ -595,7 +625,7 @@ export class Grounds {
         box(bx - rx * 1.7, y, bz - rz * 1.7, rx, rz, 0.12, 0.1, 2.4, grey);
       }
       // blue H road sign on the kerb outside, readable both ways along the street
-      {
+      if (st.kind !== 'police') {
         const hx = gt.x - gt.ux * (gt.half + 6) + ox * 3.5;
         const hz = gt.z - gt.uz * (gt.half + 6) + oz * 3.5;
         const y = this.hf.heightAt(hx, hz);
