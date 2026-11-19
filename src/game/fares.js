@@ -44,6 +44,9 @@ const ROUTES = [
 // (saved on the phone). The Quantum carries 14, anything else carries 3.
 // Wallet feeds car unlocks later.
 
+import { TaxiCareer } from './owner.js';
+import { Licence } from './licence.js';
+
 const WALLET_KEY = 'izk.wallet.v1';
 const BAY_R = 16; // m from the bay centre to count as "in the bay"
 const STOP_KMH = 8;
@@ -240,6 +243,13 @@ export class Fares {
     el.style.cssText = 'position:fixed;right:12px;top:96px;z-index:6;padding:4px 10px;border-radius:12px;background:rgba(12,14,18,.72);color:#ffd21a;font:700 14px system-ui,sans-serif;pointer-events:none;letter-spacing:.3px';
     (document.getElementById('hud') || document.body).appendChild(el);
     this.walletEl = el;
+    el.style.pointerEvents = 'auto';
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => this.career.toggle());
+    this.licence = new Licence(this.wallet, { hud: this.hud, gps: this.gps, hf: this.hf, roads: this.roads, save: () => this.#save(), show: () => this.#showWallet() });
+    this.group.add(this.licence.group);
+    this.career = new TaxiCareer(this.wallet, { save: () => this.#save(), toast: (m, t) => this.hud.toast(m, t), show: () => this.#showWallet() });
+    this.career.licence = this.licence;
     this.#showWallet();
   }
 
@@ -364,9 +374,10 @@ export class Fares {
 
   #pay(n, tip = 0) {
     const total = n * this.job.fare + tip;
-    this.wallet.r += total;
-    this.#save();
-    this.#showWallet(`  +${total}`);
+    // driver for a boss: the boss's target comes first (owner.js)
+    const { mine, boss, fired } = this.career.earn(total, this.now);
+    if (fired) this.hud.toast('Parked for today: the boss keeps every fare.', 2.5);
+    this.#showWallet(boss ? `  +${mine} (boss R${boss})` : `  +${mine}`);
     this.flash = 3;
     return total;
   }
@@ -420,7 +431,10 @@ export class Fares {
     return true;
   }
 
-  update(dt, ent, inVehicle, vehicle) {
+  update(dt, ent, inVehicle, vehicle, now) {
+    this.now = now;
+    if (this.career) this.career.update(now);
+    if (this.licence) this.licence.update(dt, ent, inVehicle, vehicle, now);
     const px = ent.x;
     const pz = ent.z;
     // only draw ranks nearby
@@ -459,6 +473,16 @@ export class Fares {
     }
     if (Math.abs(vehicle.speedKmh || 0) > STOP_KMH) {
       this.stopT = 0;
+      return;
+    }
+    // taxi work needs a Code 10 and a PrDP (licence.js)
+    if (this.licence.atSchool) return;
+    if (!this.licence.canTaxi) {
+      if (this.hinted !== 'nolicence' + near.name) {
+        this.hinted = 'nolicence' + near.name;
+        this.hud.toast(this.licence.why(), 3.5);
+        this.licence.guide(px, pz);
+      }
       return;
     }
     // queue for your turn

@@ -454,6 +454,7 @@ void main(){
       hud.toast(impact > 14 ? 'Hard crash!' : 'Bumped another car', 1.2);
       crashToastCd = 2;
     }
+    if (fares && fares.licence) fares.licence.onCrash(impact);
   };
   scene.add(traffic.group);
 
@@ -648,6 +649,13 @@ void main(){
   }
 
   function enterVehicle() {
+    // no driving without a licence (driving school first; licence.js)
+    const lic = fares && fares.licence;
+    if (lic && !lic.canDrive()) {
+      hud.toast(lic.why(), 3.2);
+      lic.guide(player.x, player.z);
+      return;
+    }
     const d = Math.hypot(player.x - vehicle.x, player.z - vehicle.z);
     if (d > 6.5) {
       hud.toast('Walk closer to the vehicle', 1.4);
@@ -872,7 +880,32 @@ void main(){
       location.reload();
     });
   }
-  if (saved && saved.onFoot && Number.isFinite(saved.px)) {
+  // driving school moves the car (yard, road test) and seats/unseats the player
+  if (fares && fares.licence) {
+    fares.licence.hooks = {
+      put: (x, z, yaw) => {
+        vehicle.restore(x, z, yaw);
+        if (!inVehicle) {
+          inVehicle = true;
+          player.group.visible = false;
+        }
+        camSnap = true;
+      },
+      exit: () => {
+        if (inVehicle) exitVehicle();
+      },
+    };
+  }
+  // a brand-new player has no licence: start on foot at the driving school
+  if (!saved && fares && fares.licence && !fares.licence.licensed && !params0.has('x')) {
+    const st = fares.licence.startSpot();
+    vehicle.restore(st.cx, st.cz, st.yaw);
+    inVehicle = false;
+    player.placeAt(st.px, st.pz, st.yaw, null);
+    player.group.visible = true;
+    camSnap = true;
+    setTimeout(() => hud.toast("Welcome to Durban. You've got R2,500 saved. First stop: your licence. Walk into the yellow ring at the driving school.", 7), 2500);
+  } else if (saved && saved.onFoot && Number.isFinite(saved.px)) {
     inVehicle = false;
     player.placeAt(saved.px, saved.pz, saved.pyaw || 0, null);
     player.group.visible = true;
@@ -1069,7 +1102,7 @@ void main(){
 
     const arrival = gps.update(ent.x, ent.z, ent.yaw);
     if (arrival && !(fares && fares.onArrive(arrival))) hud.toast(`Arrived at ${arrival.name}`, 3);
-    if (fares) fares.update(dt, ent, inVehicle, vehicle);
+    if (fares) fares.update(dt, ent, inVehicle, vehicle, now);
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
     if (busStations) busStations.update(camera.position.x, camera.position.z);
 
@@ -1121,6 +1154,7 @@ void main(){
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
 
     sharp.render(scene, camera);
+    if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, vehicle, inVehicle);
   }
 
   setLoad(100, 'Ready');
