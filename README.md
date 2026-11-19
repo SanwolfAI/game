@@ -34,7 +34,7 @@ Planned: garages and malls, the south extension to Umzinto, notable buildings, c
 | G / X | Set / clear GPS destination |
 | R / N | Reverse / neutral |
 | L | Lights |
-| Q | Left indicator |
+| Q or comma, full stop | Left, right indicator |
 | K | Hazards |
 | M | Big map |
 | U | Mute |
@@ -67,30 +67,38 @@ Township routes (destination is a township or suburb, for example Durban to Amao
 
 ### Ranks and their routes
 
+Each CBD rank holds its own 5 to 7 routes; no rank does everything.
+
 | Rank | Routes (in turn) |
 |---|---|
-| Durban Station Taxi Rank 1 and 2 | KwaMashu, Amaoti, Inanda, Phoenix, Verulam, Bridge City rank |
-| Soldiersway | Umlazi, Isipingo, Amanzimtoti, Winklespruit rank |
-| Centenary, No. 1 | Pinetown rank, Chatsworth, Umlazi, Westmead |
-| Taxi to Pinetown, Minibuses to PMB | Pinetown rank |
-| Durban Central | Berea, Chatsworth, Wentworth, Cato Manor, Sydenham |
-| South Beach | Durban Station rank 1, Berea, Morningside, Umbilo |
-| Pinetown | Westmead, KwaMashu, Centenary rank, Isipingo, Kloof, Hillcrest rank |
-| Hillcrest | Pinetown rank, Kloof, Centenary rank |
-| Bridge City, Redfern | KwaMashu, Amaoti, Inanda, Phoenix, Durban Station rank 1, Umhlanga Rocks |
-| Brookdale | Phoenix, Bridge City rank, Durban Station rank 2, Verulam |
-| La Lucia, Somerset Park | Umhlanga Rocks, Durban Station rank 1, Phoenix, Bridge City rank |
-| La Mercy | Verulam, Umhlanga Rocks, Durban Station rank 2 |
-| Winklespruit | Amanzimtoti, Isipingo, Umlazi, Soldiersway rank |
+| Soldiers Way | Inanda, Amaoti, Ntuzuma, Phoenix, KwaMashu, Newlands, Verulam |
+| Centenary (ML Sultan Rd, the Inanda rank) | Inanda, Amaoti, KwaMashu, Ntuzuma, Bridge City rank |
+| Durban Station Taxi Rank 1 | Umhlanga Rocks, Durban North, Phoenix, Verulam, La Mercy rank, Brookdale rank |
+| Durban Station Taxi Rank 2 | Sydenham, Overport, Sea Cow Lake, Greenwood Park, Avoca, Newlands |
+| Durban Central (Market, Warwick) | Umlazi, Chatsworth, KwaMashu, Pinetown rank, Cato Manor, Chesterville |
+| No. 1 (Berea side) | Berea, Glenwood, Mayville, Umbilo, Wentworth, Bluff |
+| Taxi to Pinetown, Minibuses to PMB | Pinetown rank, Westville, Clermont, KwaDabeka, Kloof, Hillcrest rank |
+| South Beach | Umlazi, Isipingo, Lamontville, Amanzimtoti, Winklespruit rank |
+| Pinetown | Westmead, KwaMashu, Durban Central rank, Clermont, New Germany, Kloof, Hillcrest rank |
+| Hillcrest | Pinetown rank, Kloof, Westmead, Durban Central rank |
+| Bridge City, Redfern | KwaMashu, Inanda, Ntuzuma, Phoenix, Centenary rank, Umhlanga Rocks |
+| Brookdale | Phoenix, Bridge City rank, Durban Station rank 1, Verulam, Inanda |
+| La Lucia, Somerset Park | Umhlanga Rocks, Durban Station rank 1, Phoenix, Bridge City rank, Durban North |
+| La Mercy | Verulam, Umhlanga Rocks, Durban Station rank 1, Phoenix |
+| Winklespruit | Amanzimtoti, Isipingo, Umlazi, South Beach rank |
 | Any other rank | Runs to the nearest CBD rank |
 
 Destinations ending in "rank" are rank-to-rank routes. The rest are township routes.
 
-Sources: Taxis To Anywhere rank pages (Pinetown, KwaMashu, Durban Central Market), the ShiftMate Durban CBD taxi guide, and local knowledge from Bheko (route types and the stops before the rank). Where a source names a corridor but not a rank, the nearest OSM rank on that corridor carries it. Rank positions come from OpenStreetMap (amenity=taxi).
+Sources: East Coast Radio (Soldiers Way serves Inanda, Ntuzuma, Phoenix), IOL (the Inanda rank on ML Sultan Rd), Taxis To Anywhere rank pages (Pinetown, KwaMashu, Durban Central Market), the ShiftMate Durban CBD taxi guide, SABC's day with a Cato Manor driver, and local knowledge from Bheko (route types and the stops before the rank). Where a source names a corridor but not a rank, the nearest OSM rank on that corridor carries it. Rank positions come from OpenStreetMap (amenity=taxi).
 
 The routes live in the `ROUTES` table at the top of `src/game/fares.js`; the stops before the rank are in `NORTH_CITY_STOPS`. To add a route, add the destination name (a rank name or a suburb name from the map) to that rank's list.
 
 Coming next: AI taxis on the road follow these same routes, and Umzinto, Malangeni and the south coast ranks once the map extends south.
+
+## Buses
+
+Every OSM bus station and depot is in the game (25 sites): city bus stations and depots like Alice Street Bus Depot, Warwick Avenue, Pinetown, Malandela and the rest get a canopy, a platform, a name board and city buses at the bays. Durban Station Coach Terminal (Masabalala Yengwa Ave), where long-distance coaches leave for Johannesburg, Pretoria, Cape Town, Bloemfontein, Gqeberha, East London and Mthatha, gets a long canopy, coaches nose-in at the bays and DEPARTURES boards. The south-coast coach stops get a shelter and sign. Liveries are plain colours with no operator names or logos.
 
 ## Running it yourself
 

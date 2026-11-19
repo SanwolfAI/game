@@ -12,19 +12,29 @@ import { PLACES, toXZ } from '../core/geo.js';
 // corridor but not a rank, the nearest OSM rank on that corridor carries it.
 // A destination is a rank name (prefix) or a suburb from PLACES.
 const ROUTES = [
-  [/^Durban Station/, ['KwaMashu', 'Amaoti', 'Inanda', 'Phoenix', 'Verulam', 'Bridge City Taxi Rank']],
-  [/^Soldiersway/, ['Umlazi', 'Isipingo', 'Amanzimtoti', 'Winklespruit Taxi Rank']],
-  [/^Centenary|^No\. 1/, ['Pinetown Taxi Rank', 'Chatsworth', 'Umlazi', 'Westmead']],
-  [/^Taxi to Pinetown|^Minibuses to PMB/, ['Pinetown Taxi Rank']],
-  [/^Durban Central/, ['Berea', 'Chatsworth', 'Wentworth', 'Cato Manor', 'Sydenham']],
-  [/^South Beach/, ['Durban Station Taxi Rank 1', 'Berea', 'Morningside', 'Umbilo']],
-  [/^Pinetown/, ['Westmead', 'KwaMashu', 'Centenary Taxi Rank', 'Isipingo', 'Kloof', 'Hillcrest Taxi Rank']],
-  [/^Hillcrest/, ['Pinetown Taxi Rank', 'Kloof', 'Centenary Taxi Rank']],
-  [/^Bridge City|^Redfern/, ['KwaMashu', 'Amaoti', 'Inanda', 'Phoenix', 'Durban Station Taxi Rank 1', 'Umhlanga Rocks']],
-  [/^Brookdale/, ['Phoenix', 'Bridge City Taxi Rank', 'Durban Station Taxi Rank 2', 'Verulam']],
-  [/^La Lucia|^Somerset Park/, ['Umhlanga Rocks', 'Durban Station Taxi Rank 1', 'Phoenix', 'Bridge City Taxi Rank']],
-  [/^La Mercy/, ['Verulam', 'Umhlanga Rocks', 'Durban Station Taxi Rank 2']],
-  [/^Winklespruit/, ['Amanzimtoti', 'Isipingo', 'Umlazi', 'Soldiersway Taxi Rank']]
+  // Soldiers Way: "serves Durban north routes including Inanda, Ntuzuma and
+  // Phoenix" (East Coast Radio). Bheko rides Amaoti-Inanda into town.
+  [/^Soldiersway/, ['Inanda', 'Amaoti', 'Ntuzuma', 'Phoenix', 'KwaMashu', 'Newlands', 'Verulam']],
+  // Centenary (ML Sultan Rd): the Inanda rank by Market (IOL)
+  [/^Centenary/, ['Inanda', 'Amaoti', 'KwaMashu', 'Ntuzuma', 'Bridge City Taxi Rank']],
+  // Durban Station ranks (Umgeni Rd side): north and Durban North suburbs
+  [/^Durban Station Taxi Rank 1/, ['Umhlanga Rocks', 'Durban North', 'Phoenix', 'Verulam', 'La Mercy Taxi Rank', 'Brookdale Taxi Rank']],
+  [/^Durban Station Taxi Rank 2/, ['Sydenham', 'Overport', 'Sea-Cow Lake', 'Greenwood Park', 'Avoca', 'Newlands']],
+  // Durban Central Market (Warwick): Umlazi, KwaMashu, Chatsworth, Pinetown (Taxis To Anywhere)
+  [/^Durban Central/, ['Umlazi', 'Chatsworth', 'KwaMashu', 'Pinetown Taxi Rank', 'Cato Manor', 'Chesterville']],
+  // Berea side (ShiftMate: Berea, Glenwood, Chatsworth, Wentworth)
+  [/^No\. 1/, ['Berea', 'Glenwood', 'Mayville', 'Umbilo', 'Wentworth', 'Bluff']],
+  // Brook St / Pinetown line (ShiftMate: Pinetown, Kloof); Clermont via Westville (Sunday Tribune)
+  [/^Taxi to Pinetown|^Minibuses to PMB/, ['Pinetown Taxi Rank', 'Westville', 'Clermont', 'KwaDabeka', 'Kloof', 'Hillcrest Taxi Rank']],
+  // South Beach: the south line (Port Shepstone rank: Umlazi, Isipingo, south coast)
+  [/^South Beach/, ['Umlazi', 'Isipingo', 'Lamontville', 'Amanzimtoti', 'Winklespruit Taxi Rank']],
+  [/^Pinetown/, ['Westmead', 'KwaMashu', 'Durban Central Taxi Rank', 'Clermont', 'New Germany', 'Kloof', 'Hillcrest Taxi Rank']],
+  [/^Hillcrest/, ['Pinetown Taxi Rank', 'Kloof', 'Westmead', 'Durban Central Taxi Rank']],
+  [/^Bridge City|^Redfern/, ['KwaMashu', 'Inanda', 'Ntuzuma', 'Phoenix', 'Centenary Taxi Rank', 'Umhlanga Rocks']],
+  [/^Brookdale/, ['Phoenix', 'Bridge City Taxi Rank', 'Durban Station Taxi Rank 1', 'Verulam', 'Inanda']],
+  [/^La Lucia|^Somerset Park/, ['Umhlanga Rocks', 'Durban Station Taxi Rank 1', 'Phoenix', 'Bridge City Taxi Rank', 'Durban North']],
+  [/^La Mercy/, ['Verulam', 'Umhlanga Rocks', 'Durban Station Taxi Rank 1', 'Phoenix']],
+  [/^Winklespruit/, ['Amanzimtoti', 'Isipingo', 'Umlazi', 'South Beach Taxi Rank']]
 ];
 
 // Taxi rank fares. Real OSM ranks (amenity=taxi, in durban-grounds.json as
@@ -68,8 +78,41 @@ function boardTexture() {
   return t;
 }
 
-// Places a route serves that are not in PLACES (game x/z, from OSM landmarks).
-const EXTRA_TOWNS = { Amaoti: { x: -3100, z: -19600 } };
+// Route suburbs in game x/z: OSM place nodes (places-raw.json); Amaoti from its
+// schools; Ntuzuma, Newlands, Glenwood, Bluff, Westville, Lamontville and
+// Mayville from approximate suburb centres (not in the place data).
+const EXTRA_TOWNS = {
+  'Amaoti': { x: -3100, z: -19600 },
+  'Ntuzuma': { x: -7414, z: -13899 },
+  'Newlands': { x: -4518, z: -9255 },
+  'Glenwood': { x: -2105, z: 1581 },
+  'Bluff': { x: 309, z: 7331 },
+  'Westville': { x: -8863, z: -2621 },
+  'Lamontville': { x: -7414, z: 9874 },
+  'Mayville': { x: -3553, z: -1515 },
+  'Sydenham': { x: -2799, z: -2994 },
+  'Overport': { x: -2965, z: -2271 },
+  'Sea-Cow Lake': { x: -1381, z: -6429 },
+  'Greenwood Park': { x: -496, z: -8149 },
+  'Avoca': { x: -496, z: -9716 },
+  'Clermont': { x: -11303, z: -7289 },
+  'Cato Manor': { x: -6744, z: 359 },
+  'Westmead': { x: -17900, z: -4433 },
+  'Umbilo': { x: -4250, z: 3522 },
+  'Morningside': { x: -895, z: -4051 },
+  'Wentworth': { x: -2105, z: 6840 },
+  'Inanda': { x: -6932, z: -15889 },
+  'Phoenix': { x: -1408, z: -17376 },
+  'Verulam': { x: 2052, z: -23753 },
+  'Isipingo': { x: -9748, z: 13935 },
+  'Amanzimtoti': { x: -12858, z: 21122 },
+  'Kloof': { x: -18973, z: -8057 },
+  'Umhlanga Rocks': { x: 5887, z: -14231 },
+  'Durban North': { x: 1355, z: -8641 },
+  'KwaDabeka': { x: -10928, z: -9163 },
+  'New Germany': { x: -13717, z: -5938 },
+  'Chesterville': { x: -7173, z: -1208 },
+};
 // Stops before the city rank on the north-corridor township routes
 // (Bheko, 19 Nov, Amaoti-Inanda route: people get off at Red Hill shelter,
 // Mabhida, Home Affairs on Umgeni Road, before the rank).
@@ -225,7 +268,7 @@ export class Fares {
           from.routes.push({ name: rk.name, x: rk.x, z: rk.z, rank: true });
           continue;
         }
-        const p = PLACES.find((q) => q.name === n) || (EXTRA_TOWNS[n] && { name: n, ...EXTRA_TOWNS[n] });
+        const p = (EXTRA_TOWNS[n] && { name: n, ...EXTRA_TOWNS[n] }) || PLACES.find((q) => q.name === n);
         if (p) {
           const [x, z] = p.lon != null ? toXZ(p.lon, p.lat) : [p.x, p.z];
           const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);

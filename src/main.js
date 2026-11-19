@@ -24,6 +24,7 @@ import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
 import { Fares } from './game/fares.js';
 import { Learners } from './world/learners.js';
+import { BusStations } from './world/busStations.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
@@ -486,6 +487,15 @@ void main(){
     }
   } catch (err) {
     console.warn('[IZK] learners not built', err);
+  }
+  // bus stations, depots and the long-distance coach terminal (OSM amenity=bus_station)
+  let busStations = null;
+  try {
+    const bdata = await loadJson('./src/data/durban-buses.json');
+    busStations = new BusStations(bdata, { roads, hf, buildings });
+    scene.add(busStations.group);
+  } catch (err) {
+    console.warn('[IZK] bus stations not built', err);
   }
   // taxi rank fares (real OSM ranks) and the rand wallet
   let fares = null;
@@ -1061,6 +1071,7 @@ void main(){
     if (arrival && !(fares && fares.onArrive(arrival))) hud.toast(`Arrived at ${arrival.name}`, 3);
     if (fares) fares.update(dt, ent, inVehicle, vehicle);
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
+    if (busStations) busStations.update(camera.position.x, camera.position.z);
 
     traffic.playerActive = inVehicle;
     traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
@@ -1125,7 +1136,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     sharpenTextures(scene, renderer);
