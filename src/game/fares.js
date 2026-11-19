@@ -12,7 +12,7 @@ import { PLACES, toXZ } from '../core/geo.js';
 // corridor but not a rank, the nearest OSM rank on that corridor carries it.
 // A destination is a rank name (prefix) or a suburb from PLACES.
 const ROUTES = [
-  [/^Durban Station/, ['KwaMashu', 'Inanda', 'Phoenix', 'Verulam', 'Bridge City Taxi Rank']],
+  [/^Durban Station/, ['KwaMashu', 'Amaoti', 'Inanda', 'Phoenix', 'Verulam', 'Bridge City Taxi Rank']],
   [/^Soldiersway/, ['Umlazi', 'Isipingo', 'Amanzimtoti', 'Winklespruit Taxi Rank']],
   [/^Centenary|^No\. 1/, ['Pinetown Taxi Rank', 'Chatsworth', 'Umlazi', 'Westmead']],
   [/^Taxi to Pinetown|^Minibuses to PMB/, ['Pinetown Taxi Rank']],
@@ -20,7 +20,7 @@ const ROUTES = [
   [/^South Beach/, ['Durban Station Taxi Rank 1', 'Berea', 'Morningside', 'Umbilo']],
   [/^Pinetown/, ['Westmead', 'KwaMashu', 'Centenary Taxi Rank', 'Isipingo', 'Kloof', 'Hillcrest Taxi Rank']],
   [/^Hillcrest/, ['Pinetown Taxi Rank', 'Kloof', 'Centenary Taxi Rank']],
-  [/^Bridge City|^Redfern/, ['KwaMashu', 'Inanda', 'Phoenix', 'Durban Station Taxi Rank 1', 'Umhlanga Rocks']],
+  [/^Bridge City|^Redfern/, ['KwaMashu', 'Amaoti', 'Inanda', 'Phoenix', 'Durban Station Taxi Rank 1', 'Umhlanga Rocks']],
   [/^Brookdale/, ['Phoenix', 'Bridge City Taxi Rank', 'Durban Station Taxi Rank 2', 'Verulam']],
   [/^La Lucia|^Somerset Park/, ['Umhlanga Rocks', 'Durban Station Taxi Rank 1', 'Phoenix', 'Bridge City Taxi Rank']],
   [/^La Mercy/, ['Verulam', 'Umhlanga Rocks', 'Durban Station Taxi Rank 2']],
@@ -67,6 +67,17 @@ function boardTexture() {
   t.anisotropy = 4;
   return t;
 }
+
+// Places a route serves that are not in PLACES (game x/z, from OSM landmarks).
+const EXTRA_TOWNS = { Amaoti: { x: -3100, z: -19600 } };
+// Stops before the city rank on the north-corridor township routes
+// (Bheko, 19 Nov, Amaoti-Inanda route: people get off at Red Hill shelter,
+// Mabhida, Home Affairs on Umgeni Road, before the rank).
+const NORTH_CITY_STOPS = [
+  { name: 'Red Hill shelter', x: 99.3, z: -8819.0 },
+  { name: 'Mabhida', x: 632.9, z: -3551.8 },
+  { name: 'Home Affairs, Umgeni Road', lon: 31.02283, lat: -29.841406 },
+];
 
 export class Fares {
   constructor(data, { hf, roads, gps, hud }) {
@@ -214,9 +225,9 @@ export class Fares {
           from.routes.push({ name: rk.name, x: rk.x, z: rk.z, rank: true });
           continue;
         }
-        const p = PLACES.find((q) => q.name === n);
+        const p = PLACES.find((q) => q.name === n) || (EXTRA_TOWNS[n] && { name: n, ...EXTRA_TOWNS[n] });
         if (p) {
-          const [x, z] = toXZ(p.lon, p.lat);
+          const [x, z] = p.lon != null ? toXZ(p.lon, p.lat) : [p.x, p.z];
           const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);
           from.routes.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z, town: true });
         }
@@ -286,6 +297,14 @@ export class Fares {
       const p = this.#townPoint(to.x, to.z, 150 + k * 300);
       legs.push({ kind: 'pick', name: `${to.name} pick-up ${k}`, x: p.x, z: p.z, drop: 0, pick: 0 });
     }
+    // north-corridor routes into the CBD: some get off before the rank
+    if (to.z < -6000 && Math.hypot(from.x, from.z) < 3500) {
+      for (const c of NORTH_CITY_STOPS) {
+        const [cx, cz] = c.lon != null ? toXZ(c.lon, c.lat) : [c.x, c.z];
+        const nr = this.roads.nearestRoad(cx, cz, 200, (q) => q.rank >= 2);
+        legs.push({ kind: 'city', name: c.name, x: nr ? nr.x : cx, z: nr ? nr.z : cz, drop: 0, pick: 0 });
+      }
+    }
     legs.push({ kind: 'final', name: from.name, x: from.x, z: from.z, drop: -1, pick: 0 });
     return legs;
   }
@@ -330,6 +349,12 @@ export class Fares {
       j.townward += pick;
       msg = pick ? `${pick} picked up at the roadside, going to ${j.from.name.replace(/ Taxi Rank.*$/, '')}` : 'Nobody waiting here';
       this.waiting.visible = false;
+    } else if (leg.kind === 'city') {
+      const n = Math.min(j.townward, 1 + Math.floor(Math.random() * Math.max(1, j.townward / 3)));
+      const got = n ? this.#pay(n) : 0;
+      j.townward -= n;
+      j.onboard -= n;
+      msg = n ? `${n} got off at ${leg.name}: +R${got}` : `Nobody for ${leg.name}`;
     } else {
       const n = leg.drop < 0 ? j.townward : leg.drop;
       const tip = j.t < j.est ? Math.round(n * 3) : 0;
