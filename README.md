@@ -16,7 +16,37 @@ What's in the world:
 - Day and night, with weather that's random but follows the season.
 - Traffic, pedestrians, police, and taxi ranks you can work from.
 
-Planned: garages and malls, the south extension to Umzinto, notable buildings, car sounds, buying cars with money from the wallet. Version 2 adds walking (wallet, health, hunger).
+## How a game starts (latest, 19 Nov 2026)
+
+1. **R25,000 and a house.** A new player starts with R25,000 and first picks a cheap township home: Inanda Newtown (R12,000), Ntuzuma G (R13,500), KwaMashu K Section (R17,500), Umlazi V Section (R18,000), Lamontville (R19,500), Phoenix Westham (R20,000) or Chatsworth Unit 3 (R21,000). You spawn at your front door and the rest of the money is for driving school.
+2. **Driving school before any driving.** You start on foot. Every township mall has a driving school (Siyaqhuba at Midway Crossing, Phakama at KwaMnyandu, Sharp Sharp at Phoenix Plaza, Hamba Kahle at Woodview and more), plus Bho's Driving Academy on Queen Nandi Drive, KwaMashu. Learner's K53 quiz R110 (pass 4 of 5), lessons R300 in the K53 yard, driving test R450 at the nearest testing ground (Umbilo Motor Licensing or Amanzimtoti). Fail and you come back after 2 game days. PrDP R250 for taxi work.
+3. **Driver's seat only for lessons and tests.** The camera locks to the inside view: a proper car interior (dash, console, gear lever, doors, seats, roof) with rear-view and wing mirrors. Drag a mirror to aim it, double-tap to reset.
+4. **You can buy a car without a licence, but you can't drive it** until you pass.
+5. **Work for a boss, then be the boss.** Drive a boss's Quantum with a daily target of R700 to R1,000; anything above it is yours. Save for your own Quantum (R150,000 plus R30,000 association fee), become an owner, then grow a fleet (R220,000 per taxi, up to 20) with drivers paid every evening.
+
+Other recent changes: traffic cars' wheels roll, all cars have mirrors, the K53 yard sits on a flat pad.
+
+## Still to come
+
+In progress now:
+
+- **Real people.** Replacing the round-face pedestrians and player with real human models (Quaternius, CC0) that walk, idle, run and wave, with skin tones from Durban's mix and random clothes.
+- **Real traffic driving.** Cars steer through turns instead of sliding sideways; they overtake you if you stop with hazards or an indicator on, and rear-end you if you don't. Crashes call the cops.
+- **Damage and the mechanic.** Dents build up, a damaged car loses speed and power, and a mechanic fixes it for a fee.
+- **Hit-and-run and your record.** Drive off from an accident and the cops keep searching until they find you; when they catch you, every past fault counts toward the fine and licence points, and too many points suspends your licence.
+
+Next, in order:
+
+1. **Start page:** username, boy or girl, pick a character, a Houses tab (buy and see your homes), a Garage tab (your cars, paint, rims, lowering, engine), then Start.
+2. **Jobs without a licence** to pay for driving school: car guard at the malls, car wash at the ranks, taxi rank marshal, street vendor at the robots.
+3. Garages (canopy, pumps, shop, attendants, brand colours without logos) and malls (Gateway, Pavilion, Musgrave).
+4. Road taxis that follow the same routes as their rank.
+5. The south extension to Umzinto and Malangeni.
+6. Hospital hero builds (Addington, then KZN Children's), notable buildings with balconies (City Hall, Greyville, ICC, Suncoast, beachfront hotels).
+7. Car sounds, and car unlocks paid from the wallet.
+8. Sibhudu Cave with the Tongaat map extension.
+
+Version 2 adds on-foot careers (nurse, doctor, security, cop), health and hunger.
 
 ## Controls (keyboard)
 
