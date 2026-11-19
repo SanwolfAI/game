@@ -564,9 +564,49 @@ export class Licence {
     if (!this.mirrorFrames) {
       this.mirrorFrames = views.map(() => {
         const d = document.createElement('div');
-        d.style.cssText = 'position:fixed;z-index:5;pointer-events:none;border:3px solid #111;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.5);box-sizing:border-box';
+        d.style.cssText = 'position:fixed;z-index:5;pointer-events:auto;touch-action:none;cursor:grab;border:3px solid #111;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.5);box-sizing:border-box';
         document.body.appendChild(d);
         return d;
+      });
+      // adjustable mirrors (Bheko, 19 Nov): drag a mirror to aim it, double-tap to reset
+      try { this.mirrorAim = JSON.parse(localStorage.getItem('izk.mirrors.v1')) || null; } catch (e) { this.mirrorAim = null; }
+      if (!this.mirrorAim || this.mirrorAim.length !== 3) this.mirrorAim = [[0, 0], [0, 0], [0, 0]];
+      const save = () => { try { localStorage.setItem('izk.mirrors.v1', JSON.stringify(this.mirrorAim)); } catch (e) { /* ignore */ } };
+      this.mirrorFrames.forEach((d, k) => {
+        let drag = null;
+        let lastTap = 0;
+        d.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const now = performance.now();
+          if (now - lastTap < 300) {
+            this.mirrorAim[k][0] = 0;
+            this.mirrorAim[k][1] = 0;
+            save();
+            if (this.hud) this.hud.toast('Mirror reset', 1.2);
+          }
+          lastTap = now;
+          drag = { x: e.clientX, y: e.clientY, a: this.mirrorAim[k][0], b: this.mirrorAim[k][1] };
+          d.style.borderColor = '#ffd21a';
+          try { d.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        });
+        d.addEventListener('pointermove', (e) => {
+          if (!drag) return;
+          e.stopPropagation();
+          const yawMax = 0.5;
+          const pitchMax = 0.3;
+          this.mirrorAim[k][0] = Math.max(-yawMax, Math.min(yawMax, drag.a - (e.clientX - drag.x) * 0.006));
+          this.mirrorAim[k][1] = Math.max(-pitchMax, Math.min(pitchMax, drag.b - (e.clientY - drag.y) * 0.006));
+        });
+        const end = (e) => {
+          if (!drag) return;
+          e.stopPropagation();
+          drag = null;
+          d.style.borderColor = '#111';
+          save();
+        };
+        d.addEventListener('pointerup', end);
+        d.addEventListener('pointercancel', end);
       });
     }
     views.forEach((v, k) => {
@@ -581,13 +621,15 @@ export class Licence {
     renderer.setScissorTest(true);
     const old = renderer.autoClear;
     renderer.autoClear = true;
-    for (const v of views) {
+    for (let k = 0; k < views.length; k++) {
+      const v = views[k];
+      const aim = this.mirrorAim[k];
       const c = v.cam;
       c.aspect = v.vw / v.vh;
       c.updateProjectionMatrix();
       c.position.set(vehicle.x + rx * v.ox - fx * v.back, y - (v.side ? 0.35 : 0), vehicle.z + rz * v.ox - fz * v.back);
-      const lookYaw = vehicle.yaw + Math.PI + v.turn;
-      c.lookAt(c.position.x + Math.sin(lookYaw) * 10, c.position.y - 0.4, c.position.z + Math.cos(lookYaw) * 10);
+      const lookYaw = vehicle.yaw + Math.PI + v.turn + aim[0];
+      c.lookAt(c.position.x + Math.sin(lookYaw) * 10, c.position.y - 0.4 + aim[1] * 10, c.position.z + Math.cos(lookYaw) * 10);
       // GL viewport origin is bottom-left
       renderer.setViewport(v.vx, H - v.vy - v.vh, v.vw, v.vh);
       renderer.setScissor(v.vx, H - v.vy - v.vh, v.vw, v.vh);
