@@ -106,6 +106,7 @@ export class Grounds {
     this.bays = [];
     const t0 = performance.now();
     for (const s of (data && data.sites) || []) {
+      if (s.k === 'taxi') continue;
       try {
         const ring = s.p ? s.p.map((p) => [p[0], p[1]]) : this.#compound(s.c);
         if (!ring) continue;

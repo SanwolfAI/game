@@ -22,6 +22,7 @@ import { honk, unlockAudio, tick, updateEngine, toggleMute, pauseAudio } from '.
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
+import { Fares } from './game/fares.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
@@ -330,8 +331,10 @@ void main(){
   scene.add(landmarks);
   // hospital / clinic / police / fire-station grounds (real OSM outlines)
   let grounds = null;
+  let groundsData = null;
   try {
     const gdata = await loadJson('./src/data/durban-grounds.json');
+    groundsData = gdata;
     if (buildings && gdata) buildings.setSites(gdata.sites); // hospital + clinic blocks get their look
     grounds = new Grounds(gdata, { roads, hf, buildings });
     scene.add(grounds.group);
@@ -473,6 +476,14 @@ void main(){
   bigmap.features = featData?.features || null;
   bigmap.landmarks = realLandmarks.named;
   bigmap.landmarkCats = LM_CATS;
+  // taxi rank fares (real OSM ranks) and the rand wallet
+  let fares = null;
+  try {
+    fares = new Fares(groundsData, { hf, roads, gps, hud });
+    scene.add(fares.group);
+  } catch (err) {
+    console.warn('[IZK] fares not built', err);
+  }
   if (saved && saved.dest && Number.isFinite(saved.dest.x)) gps.setDestination(saved.dest.x, saved.dest.z, saved.dest.name || 'Map pin');
   document.getElementById('map-box')?.addEventListener('click', () => {
     const e = entity();
@@ -1035,7 +1046,8 @@ void main(){
     camSnap = false;
 
     const arrival = gps.update(ent.x, ent.z, ent.yaw);
-    if (arrival) hud.toast(`Arrived at ${arrival.name}`, 3);
+    if (arrival && !(fares && fares.onArrive(arrival))) hud.toast(`Arrived at ${arrival.name}`, 3);
+    if (fares) fares.update(dt, ent, inVehicle, vehicle);
 
     traffic.playerActive = inVehicle;
     traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
@@ -1048,7 +1060,6 @@ void main(){
     if (buildings) buildings.update(camera.position.x, camera.position.z, 1);
     if (kasi) kasi.update(camera.position.x, camera.position.z);
     if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
-  if (grounds) grounds.update(camera.position.x, camera.position.z);
     if (grounds) grounds.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     dirSigns.update(camera.position.x, camera.position.z);
@@ -1101,7 +1112,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
     sharpenTextures(scene, renderer);
