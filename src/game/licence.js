@@ -14,7 +14,7 @@ import { toXZ } from '../core/geo.js';
 //      you fail), then the road test round the testing ground. Pass = Code 10.
 //      Fail = come back in 2 days (game days), no same-day retry.
 //   4. PrDP at a testing ground, R250: needed to carry paying passengers.
-// Mirrors (rear-view + both side mirrors) show in every car you drive.
+// Mirrors (rear-view + both side mirrors) in every car, seen in the inside view.
 // State: wallet.licence (localStorage izk.wallet.v1).
 
 const R = (n) => `R${Math.round(n).toLocaleString('en-ZA')}`;
@@ -42,7 +42,7 @@ const LEARNERS_FEE = 110;
 const LESSON_FEE = 300;
 const TEST_FEE = 450;
 const PRDP_FEE = 250;
-const START_CASH = 2500;
+const START_CASH = 25000; // R25,000: buy a cheap house (home.js), the rest pays for school
 const NEAR = 14;
 const CP_R = 11;
 const LIMIT = 60;
@@ -534,8 +534,16 @@ export class Licence {
   }
 
   // ---------- mirrors (driving school and test) ----------
-  renderMirrors(renderer, scene, vehicle, inVehicle) {
-    if (!inVehicle || this.mirrorsOff) return; // every car has mirrors (Bheko, 19 Nov)
+  // drawn only in the inside (driver) view, where the real mirrors sit:
+  // rear-view top-centre (a little left of the driver, RHD), wings low at each side
+  renderMirrors(renderer, scene, vehicle, inVehicle, insideView) {
+    if (!inVehicle || !insideView || this.mirrorsOff) {
+      if (this.framesShown) {
+        for (const d of this.mirrorFrames) d.style.display = 'none';
+        this.framesShown = false;
+      }
+      return;
+    } // every car has mirrors (Bheko, 19 Nov)
     if (!this.mirrorCams) {
       this.mirrorCams = [0, 1, 2].map(() => new THREE.PerspectiveCamera(45, 3, 0.5, 250));
     }
@@ -548,11 +556,28 @@ export class Licence {
     const y = (vehicle.y ?? this.hf.heightAt(vehicle.x, vehicle.z)) + 1.5;
     const views = [
       // rear-view: top centre
-      { cam: this.mirrorCams[0], ox: 0, back: 2.2, side: 0, turn: 0, vx: W * 0.36, vy: 6, vw: W * 0.28, vh: H * 0.15 },
+      { cam: this.mirrorCams[0], ox: 0, back: 2.2, side: 0, turn: 0, vx: W * 0.47, vy: H * 0.03, vw: W * 0.26, vh: H * 0.13 },
       // left and right wing mirrors
-      { cam: this.mirrorCams[1], ox: -1.1, back: 0, side: -1, turn: 0.18, vx: 6, vy: H * 0.56, vw: W * 0.15, vh: H * 0.13 },
-      { cam: this.mirrorCams[2], ox: 1.1, back: 0, side: 1, turn: -0.18, vx: W - W * 0.15 - 6, vy: H * 0.56, vw: W * 0.15, vh: H * 0.13 },
+      { cam: this.mirrorCams[1], ox: -1.1, back: 0, side: -1, turn: 0.18, vx: W * 0.01, vy: H * 0.56, vw: W * 0.13, vh: H * 0.14 },
+      { cam: this.mirrorCams[2], ox: 1.1, back: 0, side: 1, turn: -0.18, vx: W * 0.86, vy: H * 0.56, vw: W * 0.13, vh: H * 0.14 },
     ];
+    if (!this.mirrorFrames) {
+      this.mirrorFrames = views.map(() => {
+        const d = document.createElement('div');
+        d.style.cssText = 'position:fixed;z-index:5;pointer-events:none;border:3px solid #111;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.5);box-sizing:border-box';
+        document.body.appendChild(d);
+        return d;
+      });
+    }
+    views.forEach((v, k) => {
+      const st = this.mirrorFrames[k].style;
+      st.left = `${v.vx - 2}px`;
+      st.top = `${v.vy - 2}px`;
+      st.width = `${v.vw + 4}px`;
+      st.height = `${v.vh + 4}px`;
+      st.display = 'block';
+    });
+    this.framesShown = true;
     renderer.setScissorTest(true);
     const old = renderer.autoClear;
     renderer.autoClear = true;

@@ -159,6 +159,36 @@ function firstPaint(id) {
   }[id];
 }
 
+// wheel layout of the built-in cars [halfTrack, halfBase, radius] (traffic wheel overlay)
+export const BUILTIN_WHEELS = { quantum: [1.0, 1.75, 0.44], polo: [0.92, 1.28, 0.36], gusheshe: [0.96, 1.44, 0.4], hilux: [1.0, 1.7, 0.46], saps: [1.02, 1.66, 0.44] };
+
+// One road wheel: tyre + silver rim with five dark spoke gaps, so a turning wheel reads as turning.
+// Axle along X, centred on the origin, outer face at +x.
+export function buildWheelGeometry() {
+  const tyre = new THREE.CylinderGeometry(1, 1, 0.3, 16);
+  paint(tyre, '#141517');
+  tyre.rotateZ(Math.PI / 2);
+  const rim = new THREE.CylinderGeometry(0.66, 0.66, 0.04, 16);
+  paint(rim, '#b9bec4');
+  rim.rotateZ(Math.PI / 2);
+  rim.translate(0.15, 0, 0);
+  const parts = [tyre, rim];
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2;
+    const gap = new THREE.BoxGeometry(0.02, 0.36, 0.16);
+    paint(gap, '#2a2d31');
+    gap.translate(0.175, 0.4, 0);
+    gap.rotateX(a);
+    parts.push(gap);
+  }
+  const hub = new THREE.CylinderGeometry(0.16, 0.16, 0.03, 10);
+  paint(hub, '#7d838a');
+  hub.rotateZ(Math.PI / 2);
+  hub.translate(0.18, 0, 0);
+  parts.push(hub);
+  return mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
+}
+
 export function buildVehicleMesh(id) {
   const geo = BUILDERS[id] ? BUILDERS[id]() : BUILDERS.gusheshe();
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });

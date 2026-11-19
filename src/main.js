@@ -738,7 +738,9 @@ void main(){
 
   function updateCamera(dt, snap) {
     const ent = entity();
-    const mode = inVehicle ? CAM_MODES[camMode] : CAM_MODES[0];
+    // lessons and tests are driven from the driver's seat only (Bheko, 19 Nov)
+    const schoolCam = inVehicle && fares && fares.licence && fares.licence.atSchool;
+    const mode = schoolCam ? CAM_MODES[3] : inVehicle ? CAM_MODES[camMode] : CAM_MODES[0];
     const inCar = inVehicle && !!mode.local;
     cockpit.visible = inVehicle && !!mode.cockpit;
     if (vehicle.mesh) vehicle.mesh.visible = !cockpit.visible;
@@ -899,12 +901,19 @@ void main(){
   // a brand-new player has no licence: start on foot at the driving school
   if (!saved && fares && fares.licence && !fares.licence.licensed && !params0.has('x')) {
     const st = fares.licence.startSpot();
-    vehicle.restore(st.cx, st.cz, st.yaw);
+    vehicle.restore(st.cx, st.cz, st.yaw); // the school car waits at the school kerb
     inVehicle = false;
     player.placeAt(st.px, st.pz, st.yaw, null);
     player.group.visible = true;
     camSnap = true;
-    setTimeout(() => hud.toast("Welcome to Durban. You've got R2,500 saved. First stop: your licence. Walk into the yellow ring at the driving school.", 7), 2500);
+    // first, choose where you live (home.js): you then start at your front door
+    fares.homes.hooks.moveIn = (h) => {
+      player.placeAt(h.x, h.z, h.yaw, null);
+      camSnap = true;
+      fares.licence.guide(h.x, h.z);
+    };
+    if (fares.homes.list.length) setTimeout(() => fares.homes.choose(), 1200);
+    else setTimeout(() => hud.toast('Welcome to Durban. First stop: your licence. Walk into the yellow ring at the driving school.', 7), 2500);
   } else if (saved && saved.onFoot && Number.isFinite(saved.px)) {
     inVehicle = false;
     player.placeAt(saved.px, saved.pz, saved.pyaw || 0, null);
@@ -1032,6 +1041,10 @@ void main(){
     }
 
     if (input.takePressed('camera')) {
+      if (fares && fares.licence && fares.licence.atSchool) {
+        hud.toast('Driving school: driver view only', 1.4);
+        return;
+      }
       camMode = (camMode + 1) % CAM_MODES.length;
       hud.toast(CAM_MODES[camMode].name, 1.4);
     }
@@ -1154,7 +1167,7 @@ void main(){
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
 
     sharp.render(scene, camera);
-    if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, vehicle, inVehicle);
+    if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, vehicle, inVehicle, cockpit.visible);
   }
 
   setLoad(100, 'Ready');

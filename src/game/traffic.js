@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
-import { VEHICLE_TYPES, buildVehicleMesh } from './models.js';
+import { VEHICLE_TYPES, buildVehicleMesh, BUILTIN_WHEELS, buildWheelGeometry } from './models.js';
 import { trafficCarModel } from './carModels.js';
 import { glowTexture } from './carLights.js';
 import { WORLD } from '../world/worldLight.js';
@@ -134,6 +134,24 @@ export class Traffic {
         mesh.count = 0;
         this.group.add(mesh);
       }
+      // spinning wheels over the baked ones (traffic bodies are one merged mesh)
+      let wl;
+      if (model && model.size) {
+        const sz = model.size;
+        const r = Math.min(0.46, Math.max(0.3, sz.y * 0.2));
+        wl = [sz.x / 2 - 0.13, sz.z * 0.31, r];
+      } else wl = BUILTIN_WHEELS[type.id] || [0.96, 1.44, 0.4];
+      if (!this.wheelGeo) {
+        this.wheelGeo = buildWheelGeometry();
+        this.wheelMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      }
+      const wm = new THREE.InstancedMesh(this.wheelGeo, this.wheelMat, count * 4);
+      wm.frustumCulled = false;
+      wm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      wm.count = 0;
+      wm.userData.layout = { track: model ? wl[0] : wl[0] + 0.03, base: wl[1], r: wl[2] * 1.04 };
+      this.group.add(wm);
+      (this.wheelMeshes = this.wheelMeshes || []).push(wm);
       this.meshes.push(parts);
       const bucket = [];
       for (let i = 0; i < count; i++) {
@@ -939,6 +957,7 @@ export class Traffic {
         }
         this.matrix.compose(this.pos, this.quat, this.scale);
         for (const mesh of parts) mesh.setMatrixAt(i, this.matrix);
+        this.#wheels(b, i, car, cx, cz);
         if (night) this.lamps.setMatrixAt(li++, this.matrix);
         // indicators / hazards: amber flashes at the four corners
         if (car.blink && blinkOn && bi < this.blinkMax - 4) {
@@ -963,6 +982,9 @@ export class Traffic {
         mesh.count = bucket.length;
         mesh.instanceMatrix.needsUpdate = true;
       }
+      const wm = this.wheelMeshes[b];
+      wm.count = bucket.length * 4;
+      wm.instanceMatrix.needsUpdate = true;
     }
     this.lamps.count = li;
     this.lamps.visible = li > 0;
@@ -971,6 +993,33 @@ export class Traffic {
     this.blinkers.count = bi;
     this.blinkers.visible = bi > 0;
     if (bi) this.blinkers.instanceMatrix.needsUpdate = true;
+  }
+  // four rolling wheels per car, placed off the car's own matrix (this.matrix)
+  #wheels(b, i, car, cx, cz) {
+    const wm = this.wheelMeshes[b];
+    const L = wm.userData.layout;
+    const moved = car.wx === undefined ? 0 : Math.hypot(cx - car.wx, cz - car.wz);
+    car.wx = cx;
+    car.wz = cz;
+    if (moved < 5) car.wa = (car.wa || 0) + moved / L.r;
+    if (!this.wTmp) {
+      this.wTmp = new THREE.Matrix4();
+      this.wRot = new THREE.Matrix4();
+      this.wFlip = new THREE.Matrix4().makeRotationY(Math.PI);
+      this.wScale = new THREE.Matrix4();
+    }
+    this.wScale.makeScale(L.r, L.r, L.r);
+    let k = i * 4;
+    for (const sx of [1, -1]) {
+      for (const sz of [1, -1]) {
+        const m = this.wTmp.copy(this.matrix);
+        m.multiply(this.wRot.makeTranslation(sx * L.track, L.r, sz * L.base));
+        if (sx < 0) m.multiply(this.wFlip);
+        m.multiply(this.wRot.makeRotationX(sx < 0 ? -car.wa : car.wa));
+        m.multiply(this.wScale);
+        wm.setMatrixAt(k++, m);
+      }
+    }
   }
 }
 

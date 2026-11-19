@@ -45,6 +45,7 @@ const ROUTES = [
 // Wallet feeds car unlocks later.
 
 import { TaxiCareer } from './owner.js';
+import { Homes } from './home.js';
 import { Licence } from './licence.js';
 
 const WALLET_KEY = 'izk.wallet.v1';
@@ -248,6 +249,8 @@ export class Fares {
     el.addEventListener('click', () => this.career.toggle());
     this.licence = new Licence(this.wallet, { hud: this.hud, gps: this.gps, hf: this.hf, roads: this.roads, save: () => this.#save(), show: () => this.#showWallet() });
     this.group.add(this.licence.group);
+    this.homes = new Homes(this.wallet, { hud: this.hud, hf: this.hf, roads: this.roads, save: () => this.#save(), show: () => this.#showWallet() });
+    this.group.add(this.homes.group);
     this.career = new TaxiCareer(this.wallet, { save: () => this.#save(), toast: (m, t) => this.hud.toast(m, t), show: () => this.#showWallet() });
     this.career.licence = this.licence;
     this.#showWallet();
