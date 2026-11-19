@@ -1,4 +1,31 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { PLACES, toXZ } from '../core/geo.js';
+
+// Every rank runs its own routes, like the real thing (Bheko 19 Nov: "every
+// taxi has its own route, it doesn't go everywhere like an Uber"). Sources:
+// Taxis To Anywhere rank pages (Pinetown rank: Westmead, KwaMashu, Durban
+// Market, Isipingo, Gateway; KwaMashu rank: Durban, Pinetown, Umhlanga,
+// Bridge City, Inanda, Springfield), ShiftMate CBD guide (Warwick: KwaMashu,
+// Inanda, Ntuzuma, Phoenix, Verulam; Berea Station: Berea, Glenwood,
+// Chatsworth, Wentworth; Brook St: Pinetown, Kloof, Chatsworth), Durban Central
+// Market rank (Umlazi, KwaMashu, Chatsworth, Pinetown). Where a source names a
+// corridor but not a rank, the nearest OSM rank on that corridor carries it.
+// A destination is a rank name (prefix) or a suburb from PLACES.
+const ROUTES = [
+  [/^Durban Station/, ['KwaMashu', 'Inanda', 'Phoenix', 'Verulam', 'Bridge City Taxi Rank']],
+  [/^Soldiersway/, ['Umlazi', 'Isipingo', 'Amanzimtoti', 'Winklespruit Taxi Rank']],
+  [/^Centenary|^No\. 1/, ['Pinetown Taxi Rank', 'Chatsworth', 'Umlazi', 'Westmead']],
+  [/^Taxi to Pinetown|^Minibuses to PMB/, ['Pinetown Taxi Rank']],
+  [/^Durban Central/, ['Berea', 'Chatsworth', 'Wentworth', 'Cato Manor', 'Sydenham']],
+  [/^South Beach/, ['Durban Station Taxi Rank 1', 'Berea', 'Morningside', 'Umbilo']],
+  [/^Pinetown/, ['Westmead', 'KwaMashu', 'Centenary Taxi Rank', 'Isipingo', 'Kloof', 'Hillcrest Taxi Rank']],
+  [/^Hillcrest/, ['Pinetown Taxi Rank', 'Kloof', 'Centenary Taxi Rank']],
+  [/^Bridge City|^Redfern/, ['KwaMashu', 'Inanda', 'Phoenix', 'Durban Station Taxi Rank 1', 'Umhlanga Rocks']],
+  [/^Brookdale/, ['Phoenix', 'Bridge City Taxi Rank', 'Durban Station Taxi Rank 2', 'Verulam']],
+  [/^La Lucia|^Somerset Park/, ['Umhlanga Rocks', 'Durban Station Taxi Rank 1', 'Phoenix', 'Bridge City Taxi Rank']],
+  [/^La Mercy/, ['Verulam', 'Umhlanga Rocks', 'Durban Station Taxi Rank 2']],
+  [/^Winklespruit/, ['Amanzimtoti', 'Isipingo', 'Umlazi', 'Soldiersway Taxi Rank']]
+];
 
 // Taxi rank fares. Real OSM ranks (amenity=taxi, in durban-grounds.json as
 // k:'taxi') get a yellow loading bay at the kerb, a TAXI RANK board and a
@@ -175,18 +202,42 @@ export class Fares {
   }
 
   #pickDestination(from) {
-    const far = this.ranks.filter((r) => r !== from && r.name !== from.name).map((r) => ({ r, d: Math.hypot(r.x - from.x, r.z - from.z) }));
-    const good = far.filter((o) => o.d > 900 && o.d < 9000);
-    if (good.length) {
-      const o = good[Math.floor(Math.random() * good.length)];
-      return { name: o.r.name, x: o.r.x, z: o.r.z, rank: o.r };
+    if (!from.routes) {
+      const row = ROUTES.find(([re]) => re.test(from.name));
+      from.routes = [];
+      for (const n of row ? row[1] : []) {
+        const rk = this.ranks.find((r) => r !== from && r.name.startsWith(n));
+        if (rk) {
+          from.routes.push({ name: rk.name, x: rk.x, z: rk.z });
+          continue;
+        }
+        const p = PLACES.find((q) => q.name === n);
+        if (p) {
+          const [x, z] = toXZ(p.lon, p.lat);
+          const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);
+          from.routes.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z });
+        }
+      }
+      // a rank with no researched routes runs to the nearest CBD rank
+      if (!from.routes.length) {
+        const cbd = this.ranks.filter((r) => r !== from && Math.hypot(r.x, r.z) < 1500).sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0];
+        if (cbd) from.routes.push({ name: cbd.name, x: cbd.x, z: cbd.z });
+      }
+      from.turn = Math.floor(Math.random() * Math.max(1, from.routes.length));
     }
-    const places = (this.gps.places || []).map((p) => ({ p, d: Math.hypot(p.x - from.x, p.z - from.z) })).filter((o) => o.d > 900 && o.d < 9000);
-    if (places.length) {
-      const o = places[Math.floor(Math.random() * places.length)];
-      return { name: o.p.name, x: o.p.x, z: o.p.z };
+    if (!from.routes.length) return null;
+    // the queue loads one route at a time, in turn
+    const to = from.routes[from.turn % from.routes.length];
+    from.turn++;
+    return to;
+  }
+
+  routesOf(rank) {
+    if (!rank.routes) {
+      this.#pickDestination(rank);
+      rank.turn--;
     }
-    return null;
+    return rank.routes.map((r) => r.name.replace(/ Taxi Rank.*$/, '')).join(', ');
   }
 
   cancel(reason) {
@@ -252,7 +303,7 @@ export class Fares {
     }
     if (this.hinted !== near) {
       this.hinted = near;
-      this.hud.toast(`${near.name}: stop in the yellow bay to load passengers`, 2.6);
+      this.hud.toast(`${near.name}: routes to ${this.routesOf(near)}. Stop in the yellow bay to load`, 3.4);
     }
     if (Math.abs(vehicle.speedKmh || 0) > STOP_KMH) {
       this.stopT = 0;
@@ -265,13 +316,13 @@ export class Fares {
     if (!to) return;
     const pax = vehicle.typeId === 'quantum' ? 14 : 3;
     const km = Math.hypot(to.x - near.x, to.z - near.z) / 1000;
-    const fare = Math.round(Math.min(45, Math.max(15, 12 + km * 3.2)));
+    const fare = Math.round(Math.min(35, Math.max(15, 10 + km * 1.1)));
     // estimate: road distance ~1.35x straight line at ~40 km/h
     const est = ((km * 1.35) / 40) * 3600 + 30;
     this.job = { from: near, to, pax, fare, t: 0, est };
     this.gps.setDestination(to.x, to.z, to.name);
     this.gps.dest.fare = true;
-    this.hud.toast(`${pax} on board to ${to.name}, R${fare} each. Follow the GPS.`, 3.5);
+    this.hud.toast(`${near.name} \u2192 ${to.name}: ${pax} on board, R${fare} each. Follow the GPS.`, 3.5);
     near.people.visible = false;
     setTimeout(() => (near.people.visible = true), 60000);
   }
