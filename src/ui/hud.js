@@ -70,8 +70,13 @@ export class HUD {
     if (this.seasonEl) this.seasonEl.textContent = `${season.name} · ${season.months}`;
   }
 
+  // Short, at the top, gone on its own: the hold grows with the length but
+  // never past 4.5 s (CSS clamps it to two lines).
   toast(text, hold = 2.4) {
+    if (text === this.lastToast && this.toastTimer > 0.5) return;
+    this.lastToast = text;
     this.toastEl.textContent = text;
+    hold = Math.min(hold, 4.5, 1.4 + text.length / 22);
     this.toastEl.classList.add('show');
     this.toastTimer = hold;
   }

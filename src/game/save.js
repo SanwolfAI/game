@@ -26,5 +26,6 @@ export function clearSave() {
   try {
     localStorage.removeItem(KEY);
     localStorage.removeItem('izk.gameClock.v1');
+    localStorage.removeItem('izk.bike.v1'); // a new house brings a new bike
   } catch {}
 }

@@ -136,7 +136,7 @@ export class TaxiCareer {
     const cost = OWN_TAXI_PRICE + ASSOCIATION_FEE;
     if (this.c.role !== 'driver') return;
     if (this.licence && !this.licence.canTaxi) return this.toast(this.licence.why(), 4);
-    if (this.w.r < cost) return this.toast(`You need ${R(cost)}: ${R(OWN_TAXI_PRICE)} for a used Quantum and ${R(ASSOCIATION_FEE)} to join the association.`, 4);
+    if (this.w.r < cost) return this.toast(`You need ${R(cost)} (taxi + association fee)`, 4);
     this.w.r -= cost;
     this.c.role = 'owner';
     this.c.ownedSince = this.c.day;

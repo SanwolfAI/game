@@ -251,6 +251,7 @@ export class Fares {
     this.group.add(this.licence.group);
     this.homes = new Homes(this.wallet, { hud: this.hud, hf: this.hf, roads: this.roads, save: () => this.#save(), show: () => this.#showWallet() });
     this.group.add(this.homes.group);
+    this.licence.homeOf = () => this.homes.home; // lesson pick-up at your door
     this.career = new TaxiCareer(this.wallet, { save: () => this.#save(), toast: (m, t) => this.hud.toast(m, t), show: () => this.#showWallet() });
     this.career.licence = this.licence;
     this.#showWallet();
@@ -267,6 +268,15 @@ export class Fares {
     } catch {}
   }
 
+  // wallet changed elsewhere (taxi rides as a passenger)
+  saveWallet() {
+    this.#save();
+  }
+
+  showWallet() {
+    this.#showWallet();
+  }
+
   get money() {
     return this.wallet.r;
   }
@@ -274,20 +284,7 @@ export class Fares {
   #pickDestination(from) {
     if (!from.routes) {
       const row = ROUTES.find(([re]) => re.test(from.name));
-      from.routes = [];
-      for (const n of row ? row[1] : []) {
-        const rk = this.ranks.find((r) => r !== from && r.name.startsWith(n));
-        if (rk) {
-          from.routes.push({ name: rk.name, x: rk.x, z: rk.z, rank: true });
-          continue;
-        }
-        const p = (EXTRA_TOWNS[n] && { name: n, ...EXTRA_TOWNS[n] }) || PLACES.find((q) => q.name === n);
-        if (p) {
-          const [x, z] = p.lon != null ? toXZ(p.lon, p.lat) : [p.x, p.z];
-          const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);
-          from.routes.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z, town: true });
-        }
-      }
+      from.routes = this.#resolve(from, row ? row[1] : []);
       // a rank with no researched routes runs to the nearest CBD rank
       if (!from.routes.length) {
         const cbd = this.ranks.filter((r) => r !== from && Math.hypot(r.x, r.z) < 1500).sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0];
@@ -300,6 +297,53 @@ export class Fares {
     const to = from.routes[from.turn % from.routes.length];
     from.turn++;
     return to;
+  }
+
+  // North-corridor stops (Red Hill shelter, Mabhida, Home Affairs): you can
+  // board there too, into town or out to the townships (taxiRide.js)
+  #buildStops() {
+    this.stops = [];
+    for (const c of NORTH_CITY_STOPS) {
+      const [cx, cz] = c.lon != null ? toXZ(c.lon, c.lat) : [c.x, c.z];
+      const nr = this.roads.nearestRoad(cx, cz, 200, (q) => q.rank >= 2);
+      if (!nr) continue;
+      this.stops.push({ name: c.name, x: nr.x, z: nr.z, ox: nr.x, oz: nr.z, yaw: Math.atan2(nr.dirX, nr.dirZ), stop: true, names: ['Soldiersway', 'Durban Station Taxi Rank 1', 'Inanda', 'Amaoti', 'KwaMashu', 'Phoenix'] });
+    }
+  }
+
+  stopNear(x, z, r = 18) {
+    if (!this.stops) this.#buildStops();
+    for (const k of this.stops) if (Math.abs(k.x - x) < r && Math.abs(k.z - z) < r && Math.hypot(k.x - x, k.z - z) < r) return k;
+    return null;
+  }
+
+  // where a passenger can ride from here (the rank's own routes)
+  passengerRoutes(from) {
+    if (from.stop) {
+      if (!from.routes) from.routes = this.#resolve(from, from.names);
+      return from.routes;
+    }
+    this.routesOf(from);
+    return from.routes;
+  }
+
+  // route names (rank prefix or suburb) -> road points
+  #resolve(from, names) {
+    const out = [];
+    for (const n of names) {
+      const rk = this.ranks.find((r) => r !== from && r.name.startsWith(n));
+      if (rk) {
+        out.push({ name: rk.name, x: rk.x, z: rk.z, rank: true });
+        continue;
+      }
+      const p = (EXTRA_TOWNS[n] && { name: n, ...EXTRA_TOWNS[n] }) || PLACES.find((q) => q.name === n);
+      if (p) {
+        const [x, z] = p.lon != null ? toXZ(p.lon, p.lat) : [p.x, p.z];
+        const nr = this.roads.nearestRoad(x, z, 400, (r) => r.rank >= 3);
+        out.push({ name: n, x: nr ? nr.x : x, z: nr ? nr.z : z, town: true });
+      }
+    }
+    return out;
   }
 
   // the rank a person on foot is standing at (bay or rank site), or null
@@ -427,7 +471,7 @@ export class Fares {
       const got = n ? this.#pay(n, tip) : 0;
       this.wallet.trips = (this.wallet.trips || 0) + 1;
       this.#save();
-      this.hud.toast(`Trip done at ${leg.name}: +R${got}${tip ? ` (R${tip} tips, quick trip)` : ''}. Queue again to load.`, 4);
+      this.hud.toast(`Trip done: +R${got}${tip ? ` (R${tip} tips)` : ''}. Queue again to load.`, 4);
       this.job = null;
       this.beam.visible = false;
       this.waiting.visible = false;
@@ -481,7 +525,7 @@ export class Fares {
     }
     if (this.hinted !== near) {
       this.hinted = near;
-      this.hud.toast(`${near.name}: routes to ${this.routesOf(near)}. Stop in the yellow bay to queue`, 3.4);
+      this.hud.toast(`${near.name.replace(/ Taxi Rank.*$/, '')} rank: stop in the yellow bay to queue`, 3.4);
     }
     if (Math.abs(vehicle.speedKmh || 0) > STOP_KMH) {
       this.stopT = 0;

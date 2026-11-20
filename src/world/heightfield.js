@@ -605,7 +605,43 @@ export class Heightfield {
     return hc + (H(ix, iz + 1) - hc) * (1 - tx) + (H(ix + 1, iz) - hc) * (1 - tz);
   }
 
+  // Ground height for placing and walking. Once the terrain is drawn
+  // decimated (renderStep > 1) the drawn surface can sit metres above the raw
+  // grid in valleys (Bho's Driving Academy: 5.5 m), which buried the player,
+  // rings and signs under the ground and showed the ocean plane from below as
+  // "blue water". So it is the higher of the raw grid and the drawn mesh.
   heightAt(x, z) {
+    const h1 = this.rawHeightAt(x, z);
+    const step = this.renderStep || 1;
+    if (step <= 1) return h1;
+    const cell = this.cell * step;
+    const cols = Math.floor((this.cols - 1) / step) + 1;
+    const rows = Math.floor((this.rows - 1) / step) + 1;
+    const fx = clamp((x - this.minX) / cell, 0, cols - 1.001);
+    const fz = clamp((z - this.minZ) / cell, 0, rows - 1.001);
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const tx = fx - ix;
+    const tz = fz - iz;
+    const cmax = this.cols - 1;
+    const rmax = this.rows - 1;
+    const a0 = Math.min(ix * step, cmax);
+    const a1 = Math.min((ix + 1) * step, cmax);
+    const b0 = Math.min(iz * step, rmax);
+    const b1 = Math.min((iz + 1) * step, rmax);
+    const H = this.height;
+    let h2;
+    if (tx + tz <= 1) {
+      const ha = H[this.idx(a0, b0)];
+      h2 = ha + (H[this.idx(a1, b0)] - ha) * tx + (H[this.idx(a0, b1)] - ha) * tz;
+    } else {
+      const hc = H[this.idx(a1, b1)];
+      h2 = hc + (H[this.idx(a0, b1)] - hc) * (1 - tx) + (H[this.idx(a1, b0)] - hc) * (1 - tz);
+    }
+    return h1 > h2 ? h1 : h2;
+  }
+
+  rawHeightAt(x, z) {
     const fx = clamp((x - this.minX) / this.cell, 0, this.cols - 1.001);
     const fz = clamp((z - this.minZ) / this.cell, 0, this.rows - 1.001);
     const ix = Math.floor(fx);

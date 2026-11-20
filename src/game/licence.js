@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { toXZ } from '../core/geo.js';
 import { registerDialog, dialogOpen } from '../ui/dialogs.js';
 import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
+import { PathMover, carMeshClone } from './taxiRide.js';
 
 // Licence before any driving job (Bheko, 19 Nov 2026).
 // A new player starts on foot with R2,500 saved, outside a driving school.
@@ -17,6 +18,10 @@ import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
 //      you fail), then the road test round the testing ground. Pass = Code 10.
 //      Fail = come back in 2 days (game days), no same-day retry.
 //   4. PrDP at a testing ground, R250: needed to carry paying passengers.
+// Lessons can also be booked "Pick me up at home" (Bheko, 20 Nov 2026: too
+// much walking): the instructor's car drives to your front door within about
+// a game hour (izk.wallet.v1 licence.pickup = { at: game ms }); walk up to it
+// and ACTION "Start lesson". You are dropped back home afterwards.
 // Mirrors (rear-view + both side mirrors) in every car, seen in the inside view.
 // State: wallet.licence (localStorage izk.wallet.v1).
 
@@ -228,6 +233,9 @@ export class Licence {
     this.now = now;
     this.lastX = ent.x;
     this.lastZ = ent.z;
+    if (!this.mode && this.passenger) return;
+    if (!this.mode && this.L.pickup) this.#pickupTick(dt, ent);
+    else this.pickupNear = false;
     if (!this.mode) {
       let hit = null;
       for (const s of this.schools.concat(this.dltcs)) {
@@ -348,7 +356,7 @@ export class Licence {
     this.yard = g;
   }
 
-  #enterYard(kind, dltc) {
+  #enterYard(kind, dltc, title = '') {
     if (!this.yard) this.#buildYard();
     this.mode = kind;
     this.testAt = dltc || null;
@@ -358,7 +366,7 @@ export class Licence {
     this.holdT = 0;
     this.#close();
     const O = this.yardO;
-    this.#fade(kind === 'lesson' ? 'DRIVING LESSON · K53 YARD' : `DRIVING TEST · ${dltc.name.toUpperCase()}`, () => {
+    this.#fade(title || (kind === 'lesson' ? 'DRIVING LESSON · K53 YARD' : `DRIVING TEST · ${dltc.name.toUpperCase()}`), () => {
       this.hooks.put?.(O.x + YARD.start.x, O.z + YARD.start.z, YARD.start.yaw);
       this.gps.clear?.();
       this.hud.setStreet?.('K53 Test Yard');
@@ -454,7 +462,7 @@ export class Licence {
       const yaw = s.dirX !== undefined ? Math.atan2(s.dirX, s.dirZ) : 0;
       this.hooks.put?.(s.rx ?? s.x, s.rz ?? s.z, yaw);
       this.#nextCp();
-      this.hud.toast(`Road test: ${cps.length} checkpoints. Under ${LIMIT} km/h, no knocks. Use your mirrors.`, 5);
+      this.hud.toast(`Road test: ${cps.length} checkpoints, under ${LIMIT} km/h, no knocks`, 5);
     });
   }
 
@@ -494,7 +502,7 @@ export class Licence {
     this.gps.clear?.();
     this.L.code10 = true;
     this.save();
-    this.hud.toast('PASSED! Code 10 licence. You can drive now. For taxi work, apply for a PrDP here at the testing ground.', 7);
+    this.hud.toast('PASSED! Code 10: you can drive. PrDP for taxi work is here too.', 5);
   }
 
   #fail(why) {
@@ -634,6 +642,104 @@ export class Licence {
     renderer.autoClear = old;
   }
 
+  // ---------- lesson pick-up at home ----------
+  #clock(ms) {
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  #pickupTick(dt, ent) {
+    const P = this.L.pickup;
+    const h = this.homeOf && this.homeOf();
+    if (!h) {
+      this.L.pickup = null;
+      this.save();
+      return;
+    }
+    const now = this.now ? this.now.getTime() : Date.now();
+    if (!this.pcar) {
+      if (now < P.at) return;
+      // the school car (L plates, roof board) drives in from up the road
+      const g = new THREE.Group();
+      g.name = 'instructor-car';
+      g.add(carMeshClone('polo'));
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.32, 0.08), new THREE.MeshBasicMaterial({ map: yardCanvasTex(256, 96, (c) => {
+        c.fillStyle = '#ffd21a';
+        c.fillRect(0, 0, 256, 96);
+        c.fillStyle = '#c4161c';
+        c.font = 'bold 64px sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText('L', 40, 50);
+        c.fillStyle = '#111';
+        c.font = 'bold 26px sans-serif';
+        c.fillText('DRIVING', 160, 32);
+        c.fillText('SCHOOL', 160, 66);
+      }) }));
+      board.position.set(0, 1.62, -0.1);
+      g.add(board);
+      this.group.add(g);
+      // stop at the kerb in front of the gate
+      const ux = h.x - h.rx;
+      const uz = h.z - h.rz;
+      const ul = Math.hypot(ux, uz) || 1;
+      const kx = h.rx + (ux / ul) * Math.max(0, ul - 5.2);
+      const kz = h.rz + (uz / ul) * Math.max(0, ul - 5.2);
+      const mv = new PathMover(this.roads);
+      let route = null;
+      const router = this.gps.router;
+      for (let k = 0; k < 6 && !route && router; k++) {
+        const a = k * 1.05;
+        const nr = this.roads.nearestRoad(h.rx + Math.cos(a) * 220, h.rz + Math.sin(a) * 220, 120, (q) => q.width >= 5);
+        if (!nr) continue;
+        const r = router.route(nr.x, nr.z, nr.dirX, nr.dirZ, kx, kz);
+        if (r && r.len > 60 && r.len < 900) route = r;
+      }
+      if (route) mv.set(route, 1.6);
+      this.pcar = { g, mv, moving: !!route, told: false };
+      if (!route) {
+        const yaw = h.yaw + Math.PI / 2;
+        g.position.set(kx, this.roads.surfaceAt(kx, kz, null).y, kz);
+        g.rotation.y = yaw;
+        this.pcar.x = kx;
+        this.pcar.z = kz;
+        this.pcar.yaw = yaw;
+      }
+    }
+    const C = this.pcar;
+    if (C.moving) {
+      const m = C.mv;
+      m.step(dt, m.target(9));
+      C.g.position.set(m.x, m.y, m.z);
+      C.g.rotation.y = m.yaw;
+      C.x = m.x;
+      C.z = m.z;
+      C.yaw = m.yaw;
+      if (m.done) C.moving = false;
+    } else if (!C.told) {
+      C.told = true;
+      const far = Math.hypot(ent.x - C.x, ent.z - C.z) > 40;
+      this.hud.toast(far ? 'Your instructor is waiting at your house' : 'Your instructor is here: ACTION to start', 3.5);
+      if (far) this.gps.setDestination(h.x, h.z, 'Home');
+    }
+    this.pickupNear = !C.moving && Math.abs(ent.x - C.x) < 9 && Math.abs(ent.z - C.z) < 9 && Math.hypot(ent.x - C.x, ent.z - C.z) < 9;
+  }
+
+  #startPickupLesson() {
+    const C = this.pcar;
+    const h = this.homeOf && this.homeOf();
+    if (!C || !h) return;
+    this.pickupNear = false;
+    this.L.pickup = null;
+    this.save();
+    this.group.remove(C.g);
+    this.pcar = null;
+    // afterwards you are dropped back at your gate (the car stays at the kerb)
+    this.from = { name: 'Home', x: h.x, z: h.z, rx: C.x, rz: C.z, dirX: Math.sin(C.yaw), dirZ: Math.cos(C.yaw) };
+    if (this.gps.dest && this.gps.dest.name === 'Home') this.gps.clear?.();
+    this.#enterYard('lesson', null, 'DRIVING LESSON · PICKED UP AT HOME');
+  }
+
   // ---------- panel ----------
   #panel() {
     const p = document.createElement('div');
@@ -691,6 +797,8 @@ export class Licence {
       else if (!L.code10) {
         h += `Learner's: passed. Lessons done: ${L.lessons || 0}.`;
         h += this.#btn('lesson', `Driving lesson in the yard ${R(LESSON_FEE)}`);
+        if (L.pickup) h += `<div style="margin-top:8px;color:#9fe0b0">Instructor booked: at your door by ${this.#clock(L.pickup.at)}.</div>`;
+        else if (this.homeOf && this.homeOf()) h += this.#btn('pickup', `Lesson: pick me up at home ${R(LESSON_FEE)}`);
         const dl = this.#nearest(this.dltcs, site.x, site.z);
         if (wait) h += `<div style="margin-top:8px;color:#ff9a7a">You failed your last test. Book again in ${wait}.</div>`;
         else h += this.#btn('test', `Driving test at ${dl.name} ${R(TEST_FEE)}`);
@@ -718,6 +826,7 @@ export class Licence {
   }
 
   deskLabel() {
+    if (this.pickupNear) return 'Start lesson';
     const s = this.deskSite();
     if (!s) return '';
     if (s.kind === 'school') return this.L.code10 ? 'Talk' : 'Start lesson';
@@ -725,6 +834,10 @@ export class Licence {
   }
 
   openDesk() {
+    if (this.pickupNear) {
+      this.#startPickupLesson();
+      return true;
+    }
     const s = this.deskSite();
     if (s) this.#open(s);
     return !!s;
@@ -767,6 +880,18 @@ export class Licence {
       return this.#open(this.from);
     }
     if (a === 'again') return this.#open(this.from);
+    if (a === 'pickup') {
+      const home = this.homeOf && this.homeOf();
+      if (!home || this.L.pickup) return;
+      if (!this.#pay(LESSON_FEE)) return;
+      const now = this.now ? this.now.getTime() : Date.now();
+      this.L.pickup = { at: now + (20 + Math.random() * 35) * 60000 };
+      this.save();
+      this.#close();
+      this.gps.setDestination(home.x, home.z, 'Home');
+      this.hud.toast(`Booked: instructor at your door by ${this.#clock(this.L.pickup.at)}`, 3.5);
+      return;
+    }
     if (a === 'lesson') {
       if (!this.#pay(LESSON_FEE)) return;
       return this.#enterYard('lesson', null);

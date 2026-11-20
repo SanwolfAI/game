@@ -192,14 +192,24 @@
       #help b { color: var(--ink); font-weight: 600; }
       #help.hidden { opacity: 0; }
 
+      /* Toasts: short, at the top, never over the player; at most 2 lines,
+         fade out on their own (hud.js sets the hold from the length). */
       #toast {
         position: absolute;
         left: 50%;
         top: 78px;
         transform: translate(-50%, -10px);
-        padding: 9px 18px;
+        max-width: min(440px, 52vw);
+        padding: 6px 14px;
         font-size: 13px;
-        letter-spacing: 0.5px;
+        line-height: 1.3;
+        letter-spacing: 0.3px;
+        text-align: center;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        pointer-events: none;
         opacity: 0;
         transition: opacity 0.35s ease, transform 0.35s ease;
       }
@@ -475,6 +485,31 @@
       #touch #t-act { right: 14px; bottom: 122px; width: auto; min-width: 120px; height: 50px; padding: 0 16px; border-radius: 25px;
         font-size: 14px; letter-spacing: 0.5px; background: rgba(255, 207, 92, 0.88); color: #17202a; border-color: #ffe08a; white-space: nowrap; }
       #touch #t-act.none { display: none; }
+      /* ---- Taxi passenger: route picker + ride bar (taxiRide.js) ---- */
+      .ride-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+      .ride-opt { display: flex; justify-content: space-between; align-items: center; gap: 6px; text-align: left; font-size: 14px; padding: 8px 10px; }
+      .ride-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ride-opt b { color: #ffd21a; flex: 0 0 auto; }
+      #taxi-pick { width: min(520px, 94vw); }
+      #ride-bar { display: none; position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 40; align-items: center; gap: 8px;
+        padding: 6px 8px 6px 14px; border-radius: 16px; background: rgba(12, 14, 18, 0.82); color: #eee; font: 13px system-ui, sans-serif; pointer-events: auto; }
+      body.riding #ride-bar { display: flex; }
+      body.dialog-open #ride-bar { display: none; }
+      #ride-info { display: flex; flex-direction: column; min-width: 110px; max-width: 200px; }
+      #ride-info b { color: #ffd21a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #ride-info span { opacity: 0.8; font-size: 12px; }
+      #ride-bar button { min-width: 56px; height: 44px; border: 0; border-radius: 12px; background: #333a42; color: #eee; font: 800 14px system-ui, sans-serif; letter-spacing: 0.5px; cursor: pointer; }
+      #ride-bar button.on { background: #ffd21a; color: #111; }
+      body.riding #speedo { display: none; }
+      body.riding #dest { display: none !important; }
+      #ride-cabin { display: none; position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+      body.ride-inside #ride-cabin { display: block; }
+      #ride-cabin i { position: absolute; display: block; background: #15171a; }
+      #ride-cabin .rc-top { left: 0; right: 0; top: 0; height: 9%; border-radius: 0 0 50% 50% / 0 0 30% 30%; background: linear-gradient(#2a2d31, #17191c); }
+      #ride-cabin .rc-l { left: -4%; top: 0; bottom: 0; width: 11%; transform: skewX(-12deg); background: linear-gradient(90deg, #1b1d20, #2c2f33); }
+      #ride-cabin .rc-r { right: -4%; top: 0; bottom: 0; width: 11%; transform: skewX(12deg); background: linear-gradient(270deg, #1b1d20, #2c2f33); }
+      #ride-cabin .rc-dash { left: 0; right: 0; bottom: 0; height: 24%; border-radius: 45% 45% 0 0 / 22% 22% 0 0; background: linear-gradient(#34373b, #1a1c1f 40%); }
+      body.riding #touch > *:not(#t-menu):not(#t-mute):not(#t-map) { display: none !important; }
       @media (pointer: coarse) {
         #touch { display: block; }
         #help { display: none; }
@@ -489,7 +524,7 @@
         #dest { top: 92px; max-width: 236px; padding: 6px 10px 6px 8px; }
         #dest-name, #dest-distance { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #dest-distance { letter-spacing: 0.3px; }
-        #toast { top: 150px; }
+        #toast { top: 142px; max-width: min(400px, 50vw); font-size: 12px; padding: 4px 12px; }
         #speedo { left: 50%; right: auto; bottom: 10px; transform: translateX(-50%); min-width: 150px; padding: 7px 14px 8px; }
         #speed-val { font-size: 40px; }
         #speed-unit { font-size: 13px; }

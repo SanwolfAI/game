@@ -15,6 +15,8 @@ import { buildLandmarks, MABHIDA } from './world/landmarks.js';
 import { Vehicle } from './game/vehicle.js';
 import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
+import { Bicycle } from './game/bicycle.js';
+import { TaxiRide } from './game/taxiRide.js';
 import { Traffic } from './game/traffic.js';
 import { StreetLife, loadPeople } from './game/streetLife.js';
 import { loadHumans } from './game/humans.js';
@@ -396,6 +398,10 @@ void main(){
   const player = new Player(hf, city, input, vehicle.x - vx * 3.4, vehicle.z - vz * 3.4, vehicle.yaw);
   player.roads = roads;
   scene.add(player.group);
+  // starter bicycle at the house door (bicycle.js)
+  const bike = new Bicycle(hf, roads, city, input);
+  scene.add(bike.group);
+  let onBike = false;
 
   // Street life first: it marks CBD kerb lanes as parking before traffic spawns.
   const streetLife = new StreetLife(roads, hf, buildings, mulberry32(40421));
@@ -455,6 +461,14 @@ void main(){
   }
   let crashToastCd = 0;
   traffic.onCrash = (impact) => {
+    if (ride && ride.active) return; // a passenger: the driver's problem
+    if (onBike) {
+      if (impact > 5) {
+        dismountBike();
+        hud.toast('Knocked off your bike!', 2);
+      }
+      return;
+    }
     shake = Math.min(0.6, Math.max(shake, impact * 0.03));
     if (impact > 6 && crashToastCd <= 0) {
       hud.toast(impact > 14 ? 'Hard crash!' : 'Bumped another car', 1.2);
@@ -512,6 +526,19 @@ void main(){
   } catch (err) {
     console.warn('[IZK] fares not built', err);
   }
+  // riding a taxi as a passenger (taxiRide.js)
+  let ride = null;
+  if (fares) {
+    ride = new TaxiRide({ roads, hf, hud, router: gps.router, fares, wallet: fares.wallet, save: () => fares.saveWallet(), show: () => fares.showWallet() });
+    ride.traffic = traffic;
+    scene.add(ride.group);
+    ride.onArrive = (x, z, yaw, name, early) => {
+      player.placeAt(x, z, yaw, null);
+      player.group.visible = true;
+      camSnap = true;
+      hud.toast(early ? 'You got off early' : `Dropped at ${name.replace(/ Taxi Rank.*$/, '')}`, 2.5);
+    };
+  }
   if (saved && saved.dest && Number.isFinite(saved.dest.x)) gps.setDestination(saved.dest.x, saved.dest.z, saved.dest.name || 'Map pin');
   document.getElementById('map-box')?.addEventListener('click', () => {
     const e = entity();
@@ -536,6 +563,7 @@ void main(){
     { name: 'High camera', dist: 18, height: 8.5, ahead: 12, look: 1.2 }
   ];
   if (saved && Number.isInteger(saved.cam) && saved.cam >= 0 && saved.cam < CAM_MODES.length) camMode = saved.cam;
+  const RIDE_CAM = { name: 'Taxi ride', dist: 8, height: 3.2, ahead: 7, look: 1.6 }; // a passenger: close behind the taxi
   const cockpit = buildCockpit();
   vehicle.group.add(cockpit);
   const camTmp = new THREE.Vector3();
@@ -618,8 +646,24 @@ void main(){
     sigEls.mode.textContent = { auto: 'A', on: '', high: 'H', off: 'off' }[vehicle.lightMode];
   }
 
+  const riding = () => !!(ride && ride.active);
   function entity() {
-    return inVehicle ? vehicle : player;
+    if (ride && ride.active) return ride;
+    return inVehicle ? vehicle : onBike ? bike : player;
+  }
+
+  function mountBike() {
+    if (onBike || inVehicle) return;
+    bike.mount(player);
+    onBike = true;
+    camSnap = true;
+    hud.toast('Stick up to pedal, down to brake. RUN = sprint', 2.6);
+  }
+  function dismountBike() {
+    if (!onBike) return;
+    bike.dismount();
+    onBike = false;
+    camSnap = true;
   }
 
   function blocked(x, z) {
@@ -668,19 +712,27 @@ void main(){
     const lab = lic ? lic.deskLabel() : '';
     ctxKind = '';
     ctxLabel = '';
+    const px = onBike ? bike.x : player.x;
+    const pz = onBike ? bike.z : player.z;
     if (lab) {
       ctxKind = 'desk';
       ctxLabel = lab;
+    } else if (onBike) {
+      ctxKind = 'bike-off';
+      ctxLabel = 'Get off';
+    } else if (bike.near(px, pz)) {
+      ctxKind = 'bike';
+      ctxLabel = 'Ride bicycle';
     } else if (Math.abs(player.x - vehicle.x) < 7 && Math.abs(player.z - vehicle.z) < 7 && Math.hypot(player.x - vehicle.x, player.z - vehicle.z) < 6.5) {
       ctxKind = 'car';
       ctxLabel = 'Enter car';
-    } else if (fares && fares.rankNear(player.x, player.z)) {
+    } else if (ride && fares && (fares.rankNear(px, pz) || fares.stopNear(px, pz))) {
       ctxKind = 'rank';
       ctxLabel = 'Board taxi';
     }
   }
   function updateFootAction(dt) {
-    if (inVehicle) return;
+    if (inVehicle || riding()) return;
     actT -= dt;
     if (actT > 0) return;
     actT = 0.2;
@@ -694,17 +746,24 @@ void main(){
   }
   function footAction() {
     footContext();
-    if (ctxKind === 'desk') fares.licence.openDesk();
-    else if (ctxKind === 'rank') {
-      const r = fares.rankNear(player.x, player.z);
-      hud.toast(`${r.name}: taxis to ${fares.routesOf(r)}. Riding as a passenger comes in the next update.`, 4);
-    } else enterVehicle();
+    if (ctxKind === 'desk') {
+      if (onBike) dismountBike();
+      fares.licence.openDesk();
+    } else if (ctxKind === 'bike-off') dismountBike();
+    else if (ctxKind === 'bike') mountBike();
+    else if (ctxKind === 'rank') ride.open(fares.rankNear(player.x, player.z) || fares.stopNear(player.x, player.z));
+    else if (ctxKind === 'car') enterVehicle();
   }
-  let onFootClass = null;
+  // body classes: on-foot (joystick, RUN, ACTION), on-bike, riding (taxi passenger)
+  let footState = -1;
   function syncFootClass() {
-    if (onFootClass === !inVehicle) return;
-    onFootClass = !inVehicle;
-    document.body.classList.toggle('on-foot', onFootClass);
+    const st = riding() ? 3 : inVehicle ? 0 : onBike ? 2 : 1;
+    if (st === footState) return;
+    footState = st;
+    const cl = document.body.classList;
+    cl.toggle('on-foot', st === 1 || st === 2);
+    cl.toggle('on-bike', st === 2);
+    cl.toggle('riding', st === 3);
     actKind = actLabel = '';
     actT = 0;
   }
@@ -800,8 +859,25 @@ void main(){
   function updateCamera(dt, snap) {
     const ent = entity();
     // lessons and tests are driven from the driver's seat only (Bheko, 19 Nov)
+    const rideNow = riding();
+    if (rideNow && ride.inside) {
+      // passenger seat, looking out of the windscreen
+      cockpit.visible = false;
+      if (vehicle.mesh) vehicle.mesh.visible = true;
+      if (ride.mesh) ride.mesh.visible = false;
+      setNear(0.1);
+      ride.group.updateMatrixWorld(true);
+      camPos.set(-0.45, 1.75, 0.35);
+      ride.group.localToWorld(camPos);
+      camLook.set(-0.45, 1.55, 14);
+      ride.group.localToWorld(camLook);
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+      return;
+    }
+    if (ride && ride.mesh) ride.mesh.visible = true;
     const schoolCam = inVehicle && fares && fares.licence && fares.licence.atSchool;
-    const mode = schoolCam ? CAM_MODES[3] : inVehicle ? CAM_MODES[camMode] : CAM_MODES[0];
+    const mode = schoolCam ? CAM_MODES[3] : rideNow ? RIDE_CAM : inVehicle ? CAM_MODES[camMode] : CAM_MODES[0];
     const inCar = inVehicle && !!mode.local;
     cockpit.visible = inVehicle && !!mode.cockpit;
     if (vehicle.mesh) vehicle.mesh.visible = !cockpit.visible;
@@ -830,13 +906,17 @@ void main(){
       camera.position.copy(camPos);
       camera.lookAt(camLook);
     } else {
-      const dist = inVehicle ? mode.dist : 5.6;
-      const height = inVehicle ? mode.height : 2.5;
-      const ahead = inVehicle ? mode.ahead : 2.5;
-      const look = inVehicle ? mode.look : 1.35;
+      const car = inVehicle || rideNow;
+      const dist = car ? mode.dist : onBike ? 4.8 : 5.6;
+      const height = car ? mode.height : onBike ? 2.25 : 2.5;
+      const ahead = car ? mode.ahead : onBike ? 4 : 2.5;
+      const look = car ? mode.look : onBike ? 1.4 : 1.35;
       let fx;
       let fz;
-      if (inVehicle) [fx, fz] = ent.forward;
+      if (car || onBike) {
+        fx = Math.sin(ent.yaw);
+        fz = Math.cos(ent.yaw);
+      }
       else {
         // on foot the camera has its own heading that swings round behind the player
         fx = Math.sin(player.camYaw);
@@ -875,11 +955,13 @@ void main(){
   const params = new URLSearchParams(location.search);
   const startHour = params.has('time') ? Number(params.get('time')) || 0 : 8;
   const gameClock = params.get('resume') === '1' || (saved && !params.has('time')) ? GameClock.load({ startHour }) : new GameClock({ startHour });
+  const baseClockScale = gameClock.scale;
   let saveTimer = 0;
   let saveBlocked = false;
   function saveNow() {
     if (saveBlocked) return;
     gameClock.save();
+    bike.save();
     writeSave({
       x: Math.round(vehicle.x * 10) / 10,
       z: Math.round(vehicle.z * 10) / 10,
@@ -888,8 +970,8 @@ void main(){
       lights: vehicle.lightMode,
       cam: camMode,
       onFoot: !inVehicle,
-      px: Math.round(player.x * 10) / 10,
-      pz: Math.round(player.z * 10) / 10,
+      px: Math.round((riding() ? ride.x : onBike ? bike.x : player.x) * 10) / 10,
+      pz: Math.round((riding() ? ride.z : onBike ? bike.z : player.z) * 10) / 10,
       pyaw: player.yaw || 0,
       dest: gps.dest ? { x: gps.dest.x, z: gps.dest.z, name: gps.dest.name } : null
     });
@@ -960,6 +1042,7 @@ void main(){
   if (fares && fares.licence) {
     fares.licence.hooks = {
       put: (x, z, yaw) => {
+        if (onBike) dismountBike();
         vehicle.restore(x, z, yaw);
         if (!inVehicle) {
           inVehicle = true;
@@ -982,18 +1065,21 @@ void main(){
     camSnap = true;
     // first, choose where you live (home.js): you then start at your front door
     fares.homes.hooks.moveIn = (h) => {
+      bike.parkAtHome(h);
       player.placeAt(h.x, h.z, h.yaw, null);
       camSnap = true;
       fares.licence.guide(h.x, h.z);
     };
     if (fares.homes.list.length) setTimeout(() => fares.homes.choose(), 1200);
-    else setTimeout(() => hud.toast('Welcome to Durban. First stop: your licence. Walk into the yellow ring at the driving school.', 7), 2500);
+    else setTimeout(() => hud.toast('First stop: your licence. Walk into the yellow ring at the school.', 5), 2500);
   } else if (saved && saved.onFoot && Number.isFinite(saved.px)) {
     inVehicle = false;
     player.placeAt(saved.px, saved.pz, saved.pyaw || 0, null);
     player.group.visible = true;
     camSnap = true;
   }
+  // an owned house without a bike yet (older saves): it waits at the door
+  if (!bike.placed && fares && fares.homes.home) bike.parkAtHome(fares.homes.home);
   let helpTimer = 0;
   let clockSaveTimer = 0;
 
@@ -1167,12 +1253,12 @@ void main(){
 
     input.locked = dialogOpen(); // a popup is open: no driving / walking input
     if (input.takePressed('camera')) {
-      if (fares && fares.licence && fares.licence.atSchool) {
-        hud.toast('Driving school: driver view only', 1.4);
-        return;
+      if (riding()) ride.inside = !ride.inside;
+      else if (fares && fares.licence && fares.licence.atSchool) hud.toast('Driving school: driver view only', 1.4);
+      else {
+        camMode = (camMode + 1) % CAM_MODES.length;
+        hud.toast(CAM_MODES[camMode].name, 1.4);
       }
-      camMode = (camMode + 1) % CAM_MODES.length;
-      hud.toast(CAM_MODES[camMode].name, 1.4);
     }
     if (input.takePressed('horn')) {
       unlockAudio();
@@ -1222,10 +1308,13 @@ void main(){
     syncFootClass();
     updateFootAction(dt);
     // car/player physics in small steps so a long frame stays stable
-    {
+    if (riding()) ride.update(dt); // moves itself along the route (x1 / x4)
+    else {
       const n = Math.ceil(dt / 0.034);
       for (let k = 0; k < n; k++) ent.update(dt / n);
     }
+    // the clock runs x4 too while fast-forwarding a taxi ride
+    gameClock.scale = baseClockScale * (riding() ? ride.ff : 1);
     hud.updateGear?.(inVehicle ? input.gear : '');
     updateCamera(dt, !cameraReady || camSnap);
     if (shake > 0.01) {
@@ -1243,11 +1332,16 @@ void main(){
 
     const arrival = gps.update(ent.x, ent.z, ent.yaw);
     if (arrival && !(fares && fares.onArrive(arrival))) hud.toast(`Arrived at ${arrival.name}`, 3);
-    if (fares) fares.update(dt, ent, inVehicle, vehicle, now);
+    if (fares) {
+      if (fares.licence) fares.licence.passenger = riding(); // no school desks from a taxi window
+      fares.update(dt, ent, inVehicle, vehicle, now);
+    }
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
     if (busStations) busStations.update(camera.position.x, camera.position.z);
 
-    traffic.playerActive = inVehicle;
+    // traffic sees the car, the bike (a slow car) or the taxi you ride in
+    traffic.player = riding() ? ride : onBike ? bike : vehicle;
+    traffic.playerActive = inVehicle || onBike || riding();
     traffic.playerIsCop = inVehicle && vehicle.typeId === 'saps';
     traffic.busy = streetLife.busyAt(ent.x, ent.z, now.getHours() + now.getMinutes() / 60);
     {
@@ -1314,6 +1408,11 @@ void main(){
   window.__izk = { gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
+  window.__izk.bike = bike;
+  window.__izk.ride = ride;
+  window.__izk.mountBike = mountBike;
+  window.__izk.dismountBike = dismountBike;
+  window.__izk.state = () => ({ inVehicle, onBike, riding: riding(), act: actLabel });
   window.__izk.onFoot = (x, z, yaw) => {
     player.placeAt(x, z, yaw || 0, null);
     player.group.visible = true;
@@ -1331,7 +1430,7 @@ void main(){
   } catch {}
   setBoot('running');
   addEventListener('pagehide', () => { if (bootFrames < 0 || bootTime > 3) setBoot(null); });
-  if (SAFE) setTimeout(() => hud.toast('Safe mode: last start froze, so graphics are lowered (☰ → New game for normal)', 6), 4500);
+  if (SAFE) setTimeout(() => hud.toast('Safe mode: graphics lowered after a freeze', 4), 4500);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }

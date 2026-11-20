@@ -117,7 +117,7 @@ export class Homes {
       p.remove();
       this.#marker();
       this.hooks.moveIn?.(o);
-      this.hud.toast(`Welcome home to ${o.area}. ${R(this.w.r)} left. First stop: your licence. GPS is set to the nearest driving school.`, 7);
+      this.hud.toast(`Welcome home to ${o.area}! Your bicycle is at the door. GPS: driving school.`, 5);
     });
   }
 }
