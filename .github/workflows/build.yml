@@ -56,6 +56,44 @@ jobs:
             --title "Latest test APK (build ${{ github.run_number }})" \
             --notes "Built from ${{ github.sha }}" --target ${{ github.sha }}
 
+      # ---- Play Store App Bundle (unsigned) ----
+      # The APK above keeps the HD textures inside the app. For the bundle they
+      # move into the install-time asset pack at the same asset path
+      # (src/assets/hd/), so WebViewAssetLoader still serves /assets/src/assets/hd/.
+      - name: Move HD textures into the asset pack
+        run: |
+          du -sh android/app/src/main/assets/src/assets/hd
+          mkdir -p android/hd_assets/src/main/assets/src/assets
+          mv android/app/src/main/assets/src/assets/hd android/hd_assets/src/main/assets/src/assets/hd
+          ls -la android/hd_assets/src/main/assets/src/assets/hd
+      - name: Build App Bundle (unsigned)
+        run: |
+          gradle -p android bundleRelease --no-daemon
+          ls -la android/app/build/outputs/bundle/release/
+          cp android/app/build/outputs/bundle/release/app-release.aab eThekwini-Drive-unsigned.aab
+          ls -la eThekwini-Drive.apk eThekwini-Drive-unsigned.aab
+      - name: Check the bundle splits with bundletool
+        run: |
+          curl -sSL -o bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+          # throwaway key, only so bundletool can build the check APKs
+          keytool -genkeypair -keystore check.jks -storepass checkpass -keypass checkpass \
+            -alias check -keyalg RSA -keysize 2048 -validity 1 -dname "CN=bundle check" -noprompt
+          echo '{"supportedAbis":["arm64-v8a"],"supportedLocales":["en"],"screenDensity":480,"sdkVersion":34}' > device.json
+          java -jar bundletool.jar build-apks --bundle=eThekwini-Drive-unsigned.aab --output=check.apks \
+            --device-spec=device.json --ks=check.jks --ks-pass=pass:checkpass --ks-key-alias=check --key-pass=pass:checkpass
+          echo "== split APKs for arm64-v8a / 480 dpi / en =="
+          unzip -l check.apks
+          java -jar bundletool.jar get-size total --apks=check.apks --device-spec=device.json || true
+          rm -f check.jks check.apks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eThekwini-Drive-aab-unsigned
+          path: eThekwini-Drive-unsigned.aab
+      - name: Attach the bundle to the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload apk-latest eThekwini-Drive-unsigned.aab --clobber
+
   website:
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest

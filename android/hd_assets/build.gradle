@@ -1,0 +1,13 @@
+// Install-time asset pack for the Play Store App Bundle (.aab).
+// CI moves the HD textures into hd_assets/src/main/assets/src/assets/hd/ only
+// after the APK is built, so the test APK still carries them inside the app.
+// Install-time packs are merged into the app's AssetManager, so the WebView
+// path /assets/src/assets/hd/... (WebViewAssetLoader) stays the same.
+plugins { id 'com.android.asset-pack' }
+
+assetPack {
+    packName = "hd_assets"
+    dynamicDelivery {
+        deliveryType = "install-time"
+    }
+}

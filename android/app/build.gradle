@@ -30,6 +30,16 @@ android {
     buildTypes {
         debug { if (hasKs) signingConfig signingConfigs.release_test }
     }
+    // Play Store App Bundle: HD textures ship as an install-time asset pack,
+    // and Play serves only the ABI/density/language splits a phone needs.
+    assetPacks = [':hd_assets']
+    bundle {
+        abi { enableSplit = true }
+        density { enableSplit = true }
+        language { enableSplit = true }
+    }
+    // The release bundle is built unsigned in CI; don't let lint block it.
+    lint { checkReleaseBuilds false }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
