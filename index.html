@@ -265,15 +265,16 @@
       #touch .tbtn.active { background: rgba(255, 207, 92, 0.34); }
       #touch .tbtn.small { width: 52px; height: 52px; font-size: 11px; letter-spacing: 0.5px; }
       #touch .tbtn.small#t-menu { position: absolute; right: 204px; top: 10px; width: 40px; height: 40px; font-size: 18px; }
-      #menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); z-index: 50; }
+      #menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); z-index: 1000; }
       #menu.open { display: flex; }
       #menu .panel { padding: 18px 20px; min-width: 240px; text-align: center; }
       #menu h3 { margin: 0 0 6px; font-size: 18px; }
       #menu p { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
-      #menu button { display: block; width: 100%; margin: 8px 0; padding: 11px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 0; color: #fff; background: #2e7d4f; }
+      #menu .panel { max-height: 94vh; overflow: auto; }
+      #menu button { display: block; width: 100%; min-height: 44px; margin: 8px 0; padding: 11px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 0; color: #fff; background: #2e7d4f; }
       #menu button#m-new { background: #8a3b2e; }
       #menu .m-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; color: #fff; }
-      #menu .m-row button { display: inline-block; width: 44px; margin: 0; padding: 8px 0; font-size: 20px; }
+      #menu .m-row button { display: inline-block; width: 48px; min-height: 44px; margin: 0; padding: 8px 0; font-size: 20px; }
       #menu .m-row b { min-width: 44px; text-align: center; }
       #menu .m-row button#m-gfx { width: auto; min-width: 112px; padding: 8px 12px; font-size: 14px; }
       #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
@@ -407,6 +408,73 @@
       #model-credits summary::-webkit-details-marker { display: none; }
       #model-credits .credits-body { margin-top: 5px; padding: 9px 11px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(10,18,26,.94); line-height: 1.5; max-height: 45vh; overflow: auto; }
       #model-credits a { color: var(--accent); }
+
+      /* ---- Popups / dialogs: one top layer (src/ui/dialogs.js) ---- */
+      #dialogs { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+      #dialogs > * { pointer-events: auto; }
+      .izk-dialog, .izk-dialog * { touch-action: pan-y; -webkit-tap-highlight-color: transparent; }
+      .izk-dialog button { min-height: 44px; cursor: pointer; }
+      body.dialog-open #touch { display: none !important; }
+      .izk-pop {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: min(360px, 92vw); max-height: 92vh; overflow: auto; padding: 12px 14px;
+        border-radius: 14px; background: rgba(12, 14, 18, 0.96); color: #eee;
+        font: 14px/1.45 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .pop-btn {
+        display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 9px 12px;
+        border: 0; border-radius: 10px; font: 700 15px system-ui, sans-serif;
+        background: #ffd21a; color: #111; text-align: center;
+      }
+      .pop-btn.dim { background: #333a42; color: #eee; }
+      .pop-btn:active { filter: brightness(1.15); }
+      .pop-btn[disabled] { opacity: 0.4; }
+      /* K53 learner's test: wide two-column layout for a landscape phone */
+      .izk-pop.k53 { width: min(780px, 97vw); max-height: 96vh; padding: 8px 12px 10px; }
+      .k53-top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: #cfd6dd; }
+      .k53-top b { color: #ffd21a; }
+      .k53-n { font-weight: 800; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .k53-bar { height: 4px; margin: 5px 0 7px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
+      .k53-bar i { display: block; height: 100%; background: linear-gradient(90deg, #4fd47a, #ffd21a); }
+      .k53-body { display: flex; gap: 12px; align-items: flex-start; }
+      .k53-pic { flex: 0 0 auto; width: min(30vw, 150px); height: min(30vw, 150px); max-height: 48vh; max-width: 48vh; padding: 6px; border-radius: 10px; background: #e9edf1; }
+      .k53-pic.wide { width: min(42vw, 300px); height: auto; max-width: none; max-height: none; padding: 0; background: none; }
+      .k53-q { flex: 1 1 auto; min-width: 0; }
+      .k53-text { font-size: 16px; font-weight: 700; line-height: 1.3; color: #fff; margin-bottom: 2px; }
+      .k53-opt { display: flex; align-items: center; gap: 10px; text-align: left; margin-top: 6px; padding: 8px 12px; background: #262d35; color: #f1f4f7; font-weight: 600; font-size: 14px; line-height: 1.25; border: 1px solid #3a434d; }
+      .k53-opt b { flex: 0 0 26px; height: 26px; border-radius: 50%; background: #ffd21a; color: #111; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+      .k53-opt.picked { border-color: #ffd21a; background: #3a3420; }
+      .k53-foot { display: flex; gap: 8px; }
+      .k53-foot .pop-btn { flex: 1; font-size: 13px; }
+      .k53-res { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 14px; }
+      .k53-res td { padding: 7px 6px; border-bottom: 1px solid #2c333b; }
+      .k53-res td:nth-child(2) { font-weight: 800; white-space: nowrap; }
+      .k53-res td:nth-child(3) { color: #9aa6b2; white-space: nowrap; }
+      .k53-res tr.ok td:last-child { color: #6fe08f; font-weight: 800; }
+      .k53-res tr.no td:last-child { color: #ff8a6b; font-weight: 800; }
+
+      /* ---- On-foot controls: joystick, RUN with stamina, context ACTION ---- */
+      #t-foot { display: none; }
+      body.on-foot #t-foot { display: block; }
+      body.on-foot #t-wheel, body.on-foot #t-gas, body.on-foot #t-brake, body.on-foot #t-gear,
+      body.on-foot #t-hand, body.on-foot #t-horn, body.on-foot #t-signals, body.on-foot #t-cycle,
+      body.on-foot #t-interact, body.on-foot #speed-gear { display: none !important; }
+      #t-joy-zone { position: absolute; left: 0; bottom: 0; width: 42%; height: 62%; pointer-events: auto; touch-action: none; }
+      #t-joy { position: absolute; left: 22px; bottom: 20px; width: 132px; height: 132px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(12,22,32,0.25) 0 45%, rgba(12,22,32,0.5) 70%);
+        border: 2px solid rgba(255,255,255,0.28); pointer-events: none; }
+      #t-joy::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; border: 1px dashed rgba(255,255,255,0.22); }
+      #t-joy-knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%;
+        background: radial-gradient(circle at 40% 35%, #f6f8fa, #b7c0c8 70%, #8d969e); box-shadow: 0 4px 10px rgba(0,0,0,0.45); will-change: transform; }
+      #t-joy.active { border-color: rgba(255,207,92,0.7); }
+      #touch #t-run { right: 18px; bottom: 20px; width: 88px; height: 88px; flex-direction: column; font-size: 16px; letter-spacing: 1px; gap: 6px; }
+      #t-stam { width: 54px; height: 6px; border-radius: 4px; background: rgba(255,255,255,0.18); overflow: hidden; }
+      #t-stam i { display: block; height: 100%; width: 100%; border-radius: 4px; background: #4fd47a; transform-origin: 0 50%; transform: scaleX(var(--st, 1)); }
+      #t-run.tired #t-stam i { background: #ff6b57; }
+      #t-run.tired { color: #ffb4a8; }
+      #touch #t-act { right: 14px; bottom: 122px; width: auto; min-width: 120px; height: 50px; padding: 0 16px; border-radius: 25px;
+        font-size: 14px; letter-spacing: 0.5px; background: rgba(255, 207, 92, 0.88); color: #17202a; border-color: #ffe08a; white-space: nowrap; }
+      #touch #t-act.none { display: none; }
       @media (pointer: coarse) {
         #touch { display: block; }
         #help { display: none; }
@@ -546,6 +614,12 @@
       <div class="tbtn small" id="t-map" data-action="map" data-press="true">MAP</div>
       <div class="tbtn small" id="t-mute" data-action="mute" data-press="true">SND</div>
       <div class="tbtn small" id="t-menu" aria-label="Menu">☰</div>
+      <div id="t-foot">
+        <div id="t-joy-zone" aria-label="Walk joystick"></div>
+        <div id="t-joy"><div id="t-joy-knob"></div></div>
+        <div class="tbtn" id="t-run" aria-label="Run">RUN<div id="t-stam"><i></i></div></div>
+        <div class="tbtn none" id="t-act" data-action="interact" data-press="true">ACTION</div>
+      </div>
       <div id="t-signals">
         <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator">◀</div>
         <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards">▲</div>

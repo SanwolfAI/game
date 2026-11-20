@@ -69,8 +69,14 @@ export class Input {
     this.pedalHeld = { gas: false, brake: false };
     this.lastSource = 'keys';
     this.gearListeners = [];
+    // on foot (touch): left-thumb joystick (x right +, y up +, mag 0..1) and RUN
+    this.joy = { x: 0, y: 0, mag: 0, active: false };
+    this.runHeld = false;
+    // true while a popup is open (ui/dialogs.js): no driving or walking input
+    this.locked = false;
 
     addEventListener('keydown', (e) => {
+      if (this.locked) return;
       const press = PRESS_ACTIONS[e.code];
       if (press && !e.repeat) {
         if (press === 'gearR') this.setGear(this.gear === 'R' ? 'D' : 'R');
@@ -96,6 +102,7 @@ export class Input {
     for (const btn of document.querySelectorAll('#touch .tbtn')) {
       
       const action = btn.dataset.action;
+      if (!action) continue; // RUN and the joystick have their own handlers
       const press = (e) => {
         e.preventDefault();
         if (btn.dataset.press === 'true') {
@@ -132,6 +139,8 @@ export class Input {
     this.#setupWheel();
     this.#setupPedal('gas', document.getElementById('t-gas'));
     this.#setupPedal('brake', document.getElementById('t-brake'));
+    this.#setupJoystick();
+    this.#setupRun(document.getElementById('t-run'));
     addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -142,8 +151,21 @@ export class Input {
     for (const fn of this.gearListeners) fn(g);
   }
 
+  releaseAll() {
+    this.#releaseAll();
+  }
+
   #releaseAll() {
     this.down.clear();
+    this.joy.x = this.joy.y = this.joy.mag = 0;
+    this.joy.active = false;
+    this.runHeld = false;
+    if (this.joyKnob) this.joyKnob.style.transform = '';
+    if (this.joyBase) {
+      this.joyBase.style.left = this.joyBase.style.bottom = this.joyBase.style.top = '';
+      this.joyBase.classList.remove('active');
+    }
+    if (this.runEl) this.runEl.classList.remove('active');
     this.wheelHeld = false;
     this.pedalHeld.gas = this.pedalHeld.brake = false;
     this.pedal.gas = this.pedal.brake = 0;
@@ -203,6 +225,110 @@ export class Input {
     el.addEventListener('lostpointercapture', up);
   }
 
+  // Left-thumb joystick: touch anywhere in the lower-left zone, the base jumps
+  // under the thumb, the knob follows up to the rim. Light push = walk, full
+  // push = jog (player.js reads joy.mag).
+  #setupJoystick() {
+    const zone = document.getElementById('t-joy-zone');
+    const base = document.getElementById('t-joy');
+    const knob = document.getElementById('t-joy-knob');
+    if (!zone || !base || !knob) return;
+    this.joyBase = base;
+    this.joyKnob = knob;
+    let pid = null;
+    let cx = 0;
+    let cy = 0;
+    let R = 50;
+    const move = (e) => {
+      let dx = e.clientX - cx;
+      let dy = e.clientY - cy;
+      const d = Math.hypot(dx, dy);
+      if (d > R) {
+        dx *= R / d;
+        dy *= R / d;
+      }
+      const m = Math.min(1, d / R);
+      this.joy.x = d > 0 ? dx / R : 0;
+      this.joy.y = d > 0 ? -dy / R : 0;
+      this.joy.mag = m;
+      knob.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+    };
+    zone.addEventListener('pointerdown', (e) => {
+      if (pid !== null) return;
+      e.preventDefault();
+      pid = e.pointerId;
+      zone.setPointerCapture?.(pid);
+      const zr = zone.getBoundingClientRect();
+      const size = base.offsetWidth || 132;
+      R = size * 0.42;
+      // centre the base under the thumb, kept fully on screen
+      cx = Math.max(zr.left + size / 2 + 4, Math.min(zr.right - size / 2, e.clientX));
+      cy = Math.max(zr.top + size / 2, Math.min(innerHeight - size / 2 - 4, e.clientY));
+      base.style.left = `${(cx - size / 2 - zr.left).toFixed(0)}px`;
+      base.style.bottom = 'auto';
+      base.style.top = `${(cy - size / 2).toFixed(0)}px`;
+      base.classList.add('active');
+      this.joy.active = true;
+      this.lastSource = 'touch';
+      move(e);
+    });
+    zone.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pid) return;
+      e.preventDefault();
+      move(e);
+    });
+    const up = (e) => {
+      if (e.pointerId !== pid) return;
+      pid = null;
+      this.joy.x = this.joy.y = this.joy.mag = 0;
+      this.joy.active = false;
+      knob.style.transform = '';
+      base.style.left = base.style.top = base.style.bottom = '';
+      base.classList.remove('active');
+    };
+    zone.addEventListener('pointerup', up);
+    zone.addEventListener('pointercancel', up);
+    zone.addEventListener('lostpointercapture', up);
+  }
+
+  #setupRun(el) {
+    if (!el) return;
+    this.runEl = el;
+    this.staminaFill = el.querySelector('#t-stam i');
+    let pid = null;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pid = e.pointerId;
+      el.setPointerCapture?.(pid);
+      this.runHeld = true;
+      this.lastSource = 'touch';
+      el.classList.add('active');
+    });
+    const up = (e) => {
+      if (e.pointerId !== pid) return;
+      pid = null;
+      this.runHeld = false;
+      el.classList.remove('active');
+    };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
+  }
+
+  // stamina bar on the RUN button (0..1); only touches the DOM when it changes
+  paintStamina(v, tired) {
+    if (!this.staminaFill) return;
+    const q = Math.round(v * 40) / 40;
+    if (q !== this._stamQ) {
+      this._stamQ = q;
+      this.staminaFill.style.setProperty('--st', q.toFixed(3));
+    }
+    if (tired !== this._tired) {
+      this._tired = tired;
+      this.runEl.classList.toggle('tired', tired);
+    }
+  }
+
   #setupPedal(name, el) {
     if (!el) return;
     let pid = null;
@@ -242,6 +368,15 @@ export class Input {
   // Call once per frame before the vehicle update. `speed` is the signed
   // vehicle speed in m/s (used for speed-dependent self-centring).
   update(dt, speed = 0) {
+    if (this.locked) {
+      // a popup is open: let go of everything (the car coasts, the player stops)
+      if (!this._wasLocked) {
+        this.#releaseAll();
+        this.queue.length = 0;
+        this._wasLocked = true;
+      }
+      this.pedal.gas = this.pedal.brake = 0;
+    } else this._wasLocked = false;
     const keyL = this.down.has('left');
     const keyR = this.down.has('right');
     const v = Math.abs(speed);

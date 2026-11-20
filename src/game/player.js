@@ -3,8 +3,16 @@ import { buildPlayerModel } from './models.js';
 import { Human, humansReady, skinTone, hairTone } from './humans.js';
 import * as THREE from '../../vendor/three/three.module.js';
 
-const WALK = 2.0; // brisk walk (animated human walk cycle); sprint below
-const RUN = 7.2;
+// On-foot speeds (Bheko, 20 Nov 2026: walking was too slow, no way to run).
+// Touch: light joystick push walks, full push jogs; hold RUN to sprint.
+// Keyboard: W jogs, Shift+W sprints, A/D turn, S steps back.
+export const WALK = 1.6;
+export const JOG = 4.0;
+export const SPRINT = 7.2;
+const STAMINA_DRAIN = 1 / 9; // a full bar = 9 s of sprinting
+const STAMINA_FILL = 1 / 6; // ~6 s to refill while walking (faster standing still)
+const STAMINA_DELAY = 0.7; // s after a sprint before it starts refilling
+const TIRED_UNTIL = 0.3; // once empty, no sprint until it is back to 30 %
 const PERSON_RADIUS = 0.5;
 
 export class Player {
@@ -17,6 +25,11 @@ export class Player {
     this.yaw = yaw;
     this.speed = 0;
     this.phase = 0;
+    this.camYaw = yaw; // the on-foot chase camera's heading (main.js reads it)
+    this.stamina = 1;
+    this.tired = false;
+    this.sprinting = false;
+    this.restT = 0;
 
     const model = buildPlayerModel();
     this.group = model.group;
@@ -59,6 +72,7 @@ export class Player {
     this.x = x;
     this.z = z;
     if (yaw !== undefined) this.yaw = yaw;
+    this.camYaw = this.yaw;
     this.speed = 0;
     this.#place();
   }
@@ -78,15 +92,63 @@ export class Player {
 
   update(dt) {
     const input = this.input;
-    const forward = (input.isDown('gas') ? 1 : 0) - (input.isDown('brake') ? 1 : 0);
-    const turn = (input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0);
-    const target = forward > 0 ? (input.isDown('boost') ? RUN : WALK) : forward < 0 ? -WALK * 0.7 : 0;
+    const joy = input.joy;
+    const locked = input.locked;
+    let target = 0;
+    let wantYaw = NaN;
+    let fromKeys = false;
+    const runHeld = !locked && (input.runHeld || input.isDown('boost'));
+    if (!locked && joy && joy.active && joy.mag > 0.12) {
+      // joystick: direction relative to the camera, push depth picks the pace
+      const m = joy.mag;
+      target = m < 0.6 ? WALK : m >= 0.9 ? JOG : WALK + ((JOG - WALK) * (m - 0.6)) / 0.3;
+      wantYaw = this.camYaw - Math.atan2(joy.x, joy.y);
+    } else if (!locked) {
+      const forward = (input.down.has('gas') ? 1 : 0) - (input.down.has('brake') ? 1 : 0);
+      const turn = (input.down.has('left') ? 1 : 0) - (input.down.has('right') ? 1 : 0);
+      if (forward || turn) fromKeys = true;
+      target = forward > 0 ? JOG : forward < 0 ? -WALK : 0;
+      this.yaw += turn * 2.6 * dt;
+      // RUN held with no stick: sprint straight ahead
+      if (!forward && input.runHeld) target = JOG;
+    }
+    // sprint (RUN button or Shift) while there is stamina
+    this.sprinting = false;
+    if (runHeld && target > 0 && !this.tired && this.stamina > 0) {
+      target = SPRINT;
+      this.sprinting = true;
+    }
+    if (this.sprinting) {
+      this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN * dt);
+      this.restT = 0;
+      if (this.stamina === 0) this.tired = true;
+    } else {
+      this.restT += dt;
+      if (this.restT > STAMINA_DELAY) this.stamina = Math.min(1, this.stamina + STAMINA_FILL * dt * (Math.abs(this.speed) < 0.3 ? 1.6 : 1));
+      if (this.tired && this.stamina >= TIRED_UNTIL) this.tired = false;
+    }
+    input.paintStamina?.(this.stamina, this.tired);
 
-    this.speed += (target - this.speed) * Math.min(1, dt * 9);
+    if (wantYaw === wantYaw) {
+      // turn to face where the stick points (quick, but not a snap)
+      let d = wantYaw - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      const step = 11 * dt;
+      this.yaw += d < -step ? -step : d > step ? step : d;
+    }
+    const rate = target > Math.abs(this.speed) ? 5 : 9; // ease in, stop crisply
+    this.speed += (target - this.speed) * Math.min(1, dt * rate);
     if (Math.abs(this.speed) < 0.05 && target === 0) this.speed = 0;
 
-    if (Math.abs(this.speed) > 0.2) {
-      this.yaw += turn * 2.4 * dt * (this.speed < 0 ? -1 : 1);
+    // the camera swings round behind the player: briskly with keys, lazily
+    // with the stick (so pushing sideways walks a wide curve, and running
+    // back toward the camera doesn't spin it)
+    {
+      let d = this.yaw - this.camYaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      const moving = Math.abs(this.speed) > 0.3;
+      const k = fromKeys ? 6 : !moving ? 0.6 : Math.abs(d) > 2.4 ? 0.35 : 1.8;
+      this.camYaw += d * (1 - Math.exp(-k * dt));
     }
 
     const prevX = this.x;
@@ -133,7 +195,7 @@ export class Player {
     if (this.human === null && humansReady()) this.#attachHuman();
     if (this.human) {
       const sp = Math.abs(this.speed);
-      const st = sp < 0.25 ? 'Idle' : sp > WALK + 0.6 ? 'Run' : 'Walk';
+      const st = sp < 0.25 ? 'Idle' : sp > 2.6 ? 'Run' : 'Walk';
       this.human.play(st);
       this.human.setSpeed(st, sp);
       const a = this.human.actions[st];

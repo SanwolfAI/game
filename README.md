@@ -19,10 +19,12 @@ What's in the world:
 ## How a game starts (latest, 19 Nov 2026)
 
 1. **R25,000 and a house.** A new player starts with R25,000 and first picks a cheap township home: Inanda Newtown (R12,000), Ntuzuma G (R13,500), KwaMashu K Section (R17,500), Umlazi V Section (R18,000), Lamontville (R19,500), Phoenix Westham (R20,000) or Chatsworth Unit 3 (R21,000). You spawn at your front door and the rest of the money is for driving school.
-2. **Driving school before any driving.** You start on foot. Every township mall has a driving school (Siyaqhuba at Midway Crossing, Phakama at KwaMnyandu, Sharp Sharp at Phoenix Plaza, Hamba Kahle at Woodview and more), plus Bho's Driving Academy on Queen Nandi Drive, KwaMashu. Learner's K53 quiz R110 (pass 4 of 5), lessons R300 in the K53 yard, driving test R450 at the nearest testing ground (Umbilo Motor Licensing or Amanzimtoti). Fail and you come back after 2 game days. PrDP R250 for taxi work.
+2. **Driving school before any driving.** You start on foot. Every township mall has a driving school (Siyaqhuba at Midway Crossing, Phakama at KwaMnyandu, Sharp Sharp at Phoenix Plaza, Hamba Kahle at Woodview and more), plus Bho's Driving Academy on Queen Nandi Drive, KwaMashu. Learner's licence R110: the full K53 test, 64 questions in three sections (vehicle controls 8, pass 6; road signs, signals and markings 28, pass 23; rules of the road 28, pass 22), and you must pass every section (fail = write again after 2 game days). Lessons R300 in the K53 yard, driving test R450 at the nearest testing ground (Umbilo Motor Licensing or Amanzimtoti). Fail and you come back after 2 game days. PrDP R250 for taxi work.
 3. **Driver's seat only for lessons and tests.** The camera locks to the inside view: a proper car interior (dash, console, gear lever, doors, seats, roof) with rear-view and wing mirrors. Drag a mirror to aim it, double-tap to reset.
 4. **You can buy a car without a licence, but you can't drive it** until you pass.
 5. **Work for a boss, then be the boss.** Drive a boss's Quantum with a daily target of R700 to R1,000; anything above it is yours. Save for your own Quantum (R150,000 plus R30,000 association fee), become an owner, then grow a fleet (R220,000 per taxi, up to 20) with drivers paid every evening.
+
+On foot (20 Nov): a left-thumb joystick (light push walks, full push jogs), a RUN button to sprint with a stamina bar, and one ACTION button that changes with what is nearby (Enter car, Start lesson, Talk, Pay, Board taxi). The steering wheel and pedals only show in a car. Popups sit on top, pause your controls while open, and their buttons are big enough to tap.
 
 Other recent changes: traffic cars' wheels roll, all cars have mirrors, the K53 yard sits on a flat pad.
 
@@ -55,11 +57,11 @@ Version 2 adds on-foot careers (nurse, doctor, security, cop), health and hunger
 | W / Up | Accelerate |
 | S / Down | Brake |
 | A D / Left Right | Steer |
-| Shift | Boost |
+| Shift | Boost (on foot: sprint) |
 | Space | Handbrake |
 | C | Camera |
 | H | Hooter |
-| E or F | Get in / out |
+| E or F | Get in / out; on foot, the nearby action (start lesson, enter car...) |
 | V | Change car |
 | G / X | Set / clear GPS destination |
 | R / N | Reverse / neutral |
@@ -69,7 +71,7 @@ Version 2 adds on-foot careers (nurse, doctor, security, cop), health and hunger
 | M | Big map |
 | U | Mute |
 
-On the phone, use the on-screen controls.
+On foot, W jogs, Shift+W sprints, A/D turn. On the phone, use the on-screen controls.
 
 ## Taxi ranks: how to work a taxi
 

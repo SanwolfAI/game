@@ -1,3 +1,4 @@
+import { registerDialog } from '../ui/dialogs.js';
 import * as THREE from '../../vendor/three/three.module.js';
 import { toXZ } from '../core/geo.js';
 
@@ -99,11 +100,11 @@ export class Homes {
     let h = `<b style="color:#ffd21a;font-size:16px">Where do you want to live?</b><div style="opacity:.8;margin:2px 0 8px">You have ${R(this.w.r)}. Buy a house, and keep the rest for driving school (about R1,110).</div>`;
     for (const o of this.list) {
       const ok = this.w.r - o.price >= 1110;
-      h += `<button data-id="${o.id}" ${ok ? '' : 'disabled'} style="display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:6px;padding:8px 10px;border:0;border-radius:9px;background:${ok ? '#22272e' : '#191b1f'};color:${ok ? '#eee' : '#777'};font:14px system-ui;text-align:left"><span><b>${o.area}</b><br><span style="opacity:.75">${o.kind}</span></span><b style="color:#ffd21a">${R(o.price)}</b></button>`;
+      h += `<button data-id="${o.id}" ${ok ? '' : 'disabled'} style="display:flex;justify-content:space-between;align-items:center;width:100%;min-height:48px;margin-top:6px;padding:8px 10px;border:0;border-radius:9px;background:${ok ? '#22272e' : '#191b1f'};color:${ok ? '#eee' : '#777'};font:14px system-ui;text-align:left"><span><b>${o.area}</b><br><span style="opacity:.75">${o.kind}</span></span><b style="color:#ffd21a">${R(o.price)}</b></button>`;
     }
     box.innerHTML = h;
     p.appendChild(box);
-    document.body.appendChild(p);
+    registerDialog(p); // top layer; game input pauses while you choose
     box.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (!b || b.disabled) return;

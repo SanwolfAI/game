@@ -19,6 +19,7 @@ import { Traffic } from './game/traffic.js';
 import { StreetLife, loadPeople } from './game/streetLife.js';
 import { loadHumans } from './game/humans.js';
 import { Input } from './game/input.js';
+import { registerDialog, dialogOpen, onDialogChange } from './ui/dialogs.js';
 import { honk, unlockAudio, tick, updateEngine, toggleMute, pauseAudio } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
@@ -653,6 +654,61 @@ void main(){
     hud.toast('On foot — F to get back in', 2.2);
   }
 
+  // ---- on foot: one context ACTION button (touch) / F or E (keyboard) ----
+  // Enter car / Start lesson / Talk / Pay / Board taxi, from what is nearby.
+  const actEl = document.getElementById('t-act');
+  let actKind = '';
+  let actLabel = '';
+  let actT = 0;
+  // sets ctxKind / ctxLabel (no allocation: runs 5x a second)
+  let ctxKind = '';
+  let ctxLabel = '';
+  function footContext() {
+    const lic = fares && fares.licence;
+    const lab = lic ? lic.deskLabel() : '';
+    ctxKind = '';
+    ctxLabel = '';
+    if (lab) {
+      ctxKind = 'desk';
+      ctxLabel = lab;
+    } else if (Math.abs(player.x - vehicle.x) < 7 && Math.abs(player.z - vehicle.z) < 7 && Math.hypot(player.x - vehicle.x, player.z - vehicle.z) < 6.5) {
+      ctxKind = 'car';
+      ctxLabel = 'Enter car';
+    } else if (fares && fares.rankNear(player.x, player.z)) {
+      ctxKind = 'rank';
+      ctxLabel = 'Board taxi';
+    }
+  }
+  function updateFootAction(dt) {
+    if (inVehicle) return;
+    actT -= dt;
+    if (actT > 0) return;
+    actT = 0.2;
+    footContext();
+    if (ctxKind === actKind && ctxLabel === actLabel) return;
+    actKind = ctxKind;
+    actLabel = ctxLabel;
+    if (!actEl) return;
+    actEl.classList.toggle('none', !actKind);
+    if (actLabel) actEl.textContent = actLabel;
+  }
+  function footAction() {
+    footContext();
+    if (ctxKind === 'desk') fares.licence.openDesk();
+    else if (ctxKind === 'rank') {
+      const r = fares.rankNear(player.x, player.z);
+      hud.toast(`${r.name}: taxis to ${fares.routesOf(r)}. Riding as a passenger comes in the next update.`, 4);
+    } else enterVehicle();
+  }
+  let onFootClass = null;
+  function syncFootClass() {
+    if (onFootClass === !inVehicle) return;
+    onFootClass = !inVehicle;
+    document.body.classList.toggle('on-foot', onFootClass);
+    actKind = actLabel = '';
+    actT = 0;
+  }
+
   function enterVehicle() {
     // no driving without a licence (driving school first; licence.js)
     const lic = fares && fares.licence;
@@ -778,7 +834,14 @@ void main(){
       const height = inVehicle ? mode.height : 2.5;
       const ahead = inVehicle ? mode.ahead : 2.5;
       const look = inVehicle ? mode.look : 1.35;
-      const [fx, fz] = ent.forward;
+      let fx;
+      let fz;
+      if (inVehicle) [fx, fz] = ent.forward;
+      else {
+        // on foot the camera has its own heading that swings round behind the player
+        fx = Math.sin(player.camYaw);
+        fz = Math.cos(player.camYaw);
+      }
 
       const baseY = ent.group.position.y;
       desiredPos.set(ent.x - fx * dist, baseY + height, ent.z - fz * dist);
@@ -855,6 +918,12 @@ void main(){
       menu?.classList.add('open');
       setPaused(true);
     });
+    if (menu) registerDialog(menu, { keepParent: true });
+    // lock / unlock game input the moment a popup opens or closes (not a frame later)
+    onDialogChange((open) => {
+      input.locked = open;
+    });
+    input.locked = dialogOpen();
     document.getElementById('m-resume')?.addEventListener('click', () => {
       menu?.classList.remove('open');
       setPaused(false);
@@ -1096,6 +1165,7 @@ void main(){
       saveNow();
     }
 
+    input.locked = dialogOpen(); // a popup is open: no driving / walking input
     if (input.takePressed('camera')) {
       if (fares && fares.licence && fares.licence.atSchool) {
         hud.toast('Driving school: driver view only', 1.4);
@@ -1131,7 +1201,7 @@ void main(){
     if (input.takePressed('interact')) {
       unlockAudio();
       if (inVehicle) exitVehicle();
-      else enterVehicle();
+      else footAction();
     }
     if (input.takePressed('destination')) {
       const dest = gps.next();
@@ -1149,6 +1219,8 @@ void main(){
     if (helpTimer > 16) hud.hideHelp();
 
     input.update(dt, inVehicle ? vehicle.speed : 0);
+    syncFootClass();
+    updateFootAction(dt);
     // car/player physics in small steps so a long frame stays stable
     {
       const n = Math.ceil(dt / 0.034);

@@ -1,11 +1,14 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { toXZ } from '../core/geo.js';
+import { registerDialog, dialogOpen } from '../ui/dialogs.js';
+import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
 
 // Licence before any driving job (Bheko, 19 Nov 2026).
 // A new player starts on foot with R2,500 saved, outside a driving school.
 // Driving schools: Bho's Driving Academy (real, OSM) plus one at each township
 // and suburb mall (made-up names). At a school:
-//   1. Learner's licence (K53 questions), R110. Pass 4 of 5.
+//   1. Learner's licence, R110: the full K53 test (k53.js), 64 questions in
+//      three sections, every section must pass. Fail = write again in 2 game days.
 //   2. Lessons, R300: practice in the K53 test yard. No fail.
 //   3. Driving test, R450: taken at the nearest real testing ground (Umbilo
 //      Motor Licensing or Amanzimtoti Testing Grounds). Going in is like a
@@ -46,16 +49,6 @@ const START_CASH = 25000; // R25,000: buy a cheap house (home.js), the rest pays
 const NEAR = 14;
 const CP_R = 11;
 const LIMIT = 60;
-const QUIZ = [
-  ['General speed limit in a town or city?', ['60 km/h', '80 km/h', '40 km/h'], 0],
-  ['Speed limit on a freeway?', ['100 km/h', '120 km/h', '140 km/h'], 1],
-  ['Speed limit on a rural road outside town?', ['100 km/h', '80 km/h', '120 km/h'], 0],
-  ['A robot flashes red. What do you do?', ['Slow down and go', 'Stop, then go when it is safe', 'Hoot and go'], 1],
-  ['Minimum following distance in good weather?', ['1 second', '2 seconds', 'Half a car length'], 1],
-  ['Blood alcohol limit for a professional driver (PrDP)?', ['0.05 g per 100 ml', '0.02 g per 100 ml', '0.08 g per 100 ml'], 1],
-  ['At a four-way stop, who goes first?', ['The biggest vehicle', 'The first to stop', 'The one on the right'], 1],
-  ['A solid white line in the middle of the road means?', ['No crossing or overtaking', 'Overtake with care', 'Parking allowed'], 0],
-];
 
 // ---- K53 test yard (local metres, +z forward; vehicle yaw 0 faces +z) ----
 // Built off the map's north-west corner, where the ground is one flat height,
@@ -243,7 +236,8 @@ export class Licence {
           break;
         }
       }
-      if (hit && this.near !== hit) {
+      // (not over another popup, e.g. the house picker on a new game)
+      if (hit && this.near !== hit && !dialogOpen()) {
         this.near = hit;
         this.#open(hit);
       } else if (!hit && this.near && Math.hypot(this.near.x - ent.x, this.near.z - ent.z) > NEAR + 6) {
@@ -644,8 +638,10 @@ export class Licence {
   #panel() {
     const p = document.createElement('div');
     p.id = 'licence';
-    p.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;width:min(340px,86vw);max-height:84vh;overflow:auto;padding:12px 14px;border-radius:14px;background:rgba(12,14,18,.94);color:#eee;font:14px/1.45 system-ui,sans-serif;display:none';
-    (document.getElementById('hud') || document.body).appendChild(p);
+    p.className = 'izk-pop';
+    p.style.display = 'none';
+    // top layer, tappable, pauses game input while open (ui/dialogs.js)
+    registerDialog(p);
     p.addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -657,7 +653,7 @@ export class Licence {
 
   #fader() {
     const f = document.createElement('div');
-    f.style.cssText = 'position:fixed;inset:0;z-index:40;background:#000;color:#ffd21a;display:flex;align-items:center;justify-content:center;font:800 22px system-ui,sans-serif;letter-spacing:1px;text-align:center;opacity:0;pointer-events:none;transition:opacity .45s';
+    f.style.cssText = 'position:fixed;inset:0;z-index:1100;background:#000;color:#ffd21a;display:flex;align-items:center;justify-content:center;font:800 22px system-ui,sans-serif;letter-spacing:1px;text-align:center;opacity:0;pointer-events:none;transition:opacity .45s';
     document.body.appendChild(f);
     this.faderEl = f;
   }
@@ -673,11 +669,11 @@ export class Licence {
   }
 
   #btn(a, label, v = '') {
-    return `<button data-a="${a}" data-v="${v}" style="display:block;margin-top:8px;width:100%;padding:9px;border:0;border-radius:9px;font:700 14px system-ui;background:${a === 'close' ? '#333;color:#eee' : '#ffd21a;color:#111'}">${label}</button>`;
+    return `<button type="button" class="pop-btn${a === 'close' ? ' dim' : ''}" data-a="${a}" data-v="${v}">${label}</button>`;
   }
 
-  #waitText() {
-    const t = (this.L.retestAt || 0) - (this.now ? this.now.getTime() : Date.now());
+  #waitText(at = this.L.retestAt) {
+    const t = (at || 0) - (this.now ? this.now.getTime() : Date.now());
     if (t <= 0) return '';
     const h = Math.ceil(t / 3600000);
     return h > 24 ? `${Math.ceil(h / 24)} days` : `${h} hours`;
@@ -689,7 +685,9 @@ export class Licence {
     let h = `<b style="color:#ffd21a">${site.name}</b>${site.at ? `<div style="opacity:.7">${site.at}</div>` : '<br>'}`;
     const wait = this.#waitText();
     if (site.kind === 'school') {
-      if (!L.learner) h += `First, your learner's licence (K53 questions), ${R(LEARNERS_FEE)}.` + this.#btn('quiz', `Write learner's test ${R(LEARNERS_FEE)}`);
+      const lw = this.#waitText(L.learnerRetestAt);
+      if (!L.learner && lw) h += `<div style="margin-top:6px;color:#ff9a7a">You failed the learner's test. You can write again in ${lw}.</div>`;
+      else if (!L.learner) h += `First, your learner's licence: the K53 test, ${R(LEARNERS_FEE)}. 64 questions in 3 sections (controls, road signs, rules of the road). You must pass every section.` + this.#btn('quiz', `Write learner's test ${R(LEARNERS_FEE)}`);
       else if (!L.code10) {
         h += `Learner's: passed. Lessons done: ${L.lessons || 0}.`;
         h += this.#btn('lesson', `Driving lesson in the yard ${R(LESSON_FEE)}`);
@@ -703,12 +701,33 @@ export class Licence {
       else h += 'Code 10 and PrDP: you can drive taxis.';
     }
     h += `<div style="margin-top:6px;opacity:.7">Wallet ${R(this.w.r)}</div>` + this.#btn('close', 'Close');
+    this.panelEl.classList.remove('k53');
     this.panelEl.innerHTML = h;
     this.panelEl.style.display = 'block';
   }
 
   #close() {
     this.panelEl.style.display = 'none';
+    this.panelEl.classList.remove('k53');
+  }
+
+  // ---- the context ACTION button on foot (main.js) ----
+  // the school / testing ground the player is standing at, or null
+  deskSite() {
+    return this.mode ? null : this.near;
+  }
+
+  deskLabel() {
+    const s = this.deskSite();
+    if (!s) return '';
+    if (s.kind === 'school') return this.L.code10 ? 'Talk' : 'Start lesson';
+    return this.L.code10 && !this.L.prdp ? 'Pay' : 'Talk';
+  }
+
+  openDesk() {
+    const s = this.deskSite();
+    if (s) this.#open(s);
+    return !!s;
   }
 
   #pay(fee) {
@@ -725,23 +744,27 @@ export class Licence {
   #act(a, v) {
     if (a === 'close') return this.#close();
     if (a === 'quiz') {
+      if (this.#waitText(this.L.learnerRetestAt)) return;
       if (!this.#pay(LEARNERS_FEE)) return;
-      const qs = QUIZ.slice().sort(() => Math.random() - 0.5).slice(0, 5);
-      this.quiz = { qs, i: 0, right: 0 };
+      this.quiz = { qs: drawTest(), i: 0, ans: [] };
+      this.panelEl.classList.add('k53');
       return this.#quizShow();
     }
     if (a === 'ans') {
-      const q = this.quiz.qs[this.quiz.i];
-      if (Number(v) === q[2]) this.quiz.right += 1;
-      this.quiz.i += 1;
-      if (this.quiz.i < this.quiz.qs.length) return this.#quizShow();
-      const ok = this.quiz.right >= 4;
-      if (ok) {
-        this.L.learner = true;
-        this.save();
-      }
-      this.panelEl.innerHTML = `<b style="color:#ffd21a">${ok ? 'Passed' : 'Failed'}: ${this.quiz.right} of 5</b><br>${ok ? "Learner's licence done. Now book a lesson." : 'You need 4 of 5. Study the K53 and write again.'}` + this.#btn('again', 'OK');
-      return;
+      const Q = this.quiz;
+      Q.ans[Q.i] = Number(v);
+      Q.i += 1;
+      if (Q.i < Q.qs.length) return this.#quizShow();
+      return this.#quizResult();
+    }
+    if (a === 'qback') {
+      if (this.quiz.i > 0) this.quiz.i -= 1;
+      return this.#quizShow();
+    }
+    if (a === 'qquit') {
+      this.quiz = null;
+      this.hud.toast('You left the test. The fee is not refunded.', 3);
+      return this.#open(this.from);
     }
     if (a === 'again') return this.#open(this.from);
     if (a === 'lesson') {
@@ -764,7 +787,34 @@ export class Licence {
 
   #quizShow() {
     const { qs, i } = this.quiz;
-    const [q, opts] = qs[i];
-    this.panelEl.innerHTML = `<b style="color:#ffd21a">K53 question ${i + 1} of 5</b><br>${q}` + opts.map((o, k) => this.#btn('ans', o, k)).join('');
+    const q = qs[i];
+    const si = SECTIONS.findIndex((x) => x.id === q.section);
+    const sec = SECTIONS[si];
+    let first = 0;
+    while (qs[first].section !== q.section) first++;
+    const n = i - first + 1;
+    const pic = q.sign ? signSVG(q.sign) : q.cockpit ? cockpitSVG() : '';
+    let h = `<div class="k53-top"><span><b>K53 learner's test</b> · Section ${si + 1} of 3: ${sec.name}</span><span class="k53-n">${n} / ${sec.n}</span></div>`;
+    h += `<div class="k53-bar"><i style="width:${Math.round(((i + 1) / qs.length) * 100)}%"></i></div>`;
+    h += `<div class="k53-body">${pic ? `<div class="k53-pic${q.cockpit ? ' wide' : ''}">${pic}</div>` : ''}<div class="k53-q"><div class="k53-text">${q.q}</div>`;
+    q.opts.forEach((o, k) => {
+      h += `<button type="button" class="pop-btn k53-opt${this.quiz.ans[i] === k ? ' picked' : ''}" data-a="ans" data-v="${k}"><b>${'ABC'[k]}</b> ${o}</button>`;
+    });
+    h += `<div class="k53-foot"><button type="button" class="pop-btn dim" data-a="qback"${i ? '' : ' disabled'}>◀ Back</button><button type="button" class="pop-btn dim" data-a="qquit">Leave test</button></div></div></div>`;
+    this.panelEl.innerHTML = h;
+    this.panelEl.scrollTop = 0;
+  }
+
+  #quizResult() {
+    const r = mark(this.quiz.qs, this.quiz.ans);
+    this.quiz = null;
+    if (r.ok) this.L.learner = true;
+    else this.L.learnerRetestAt = (this.now ? this.now.getTime() : Date.now()) + 2 * DAY_MS;
+    this.save();
+    let h = `<div class="k53-top"><b style="color:${r.ok ? '#6fe08f' : '#ff8a6b'}">${r.ok ? "PASSED: learner's licence" : 'FAILED'}</b></div><table class="k53-res">`;
+    for (const s of r.sections) h += `<tr class="${s.ok ? 'ok' : 'no'}"><td>${s.name}</td><td>${s.right} / ${s.n}</td><td>pass ${s.pass}</td><td>${s.ok ? '✓' : '✗'}</td></tr>`;
+    h += '</table>';
+    h += `<div style="margin-top:6px">${r.ok ? 'Well done. Next: driving lessons in the K53 yard, then your driving test.' : 'You must pass every section. Study and write again in 2 days.'}</div>`;
+    this.panelEl.innerHTML = h + this.#btn('again', 'OK');
   }
 }

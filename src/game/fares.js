@@ -241,7 +241,7 @@ export class Fares {
   #makeWalletEl() {
     const el = document.createElement('div');
     el.id = 'wallet';
-    el.style.cssText = 'position:fixed;right:12px;top:144px;z-index:6;padding:4px 10px;border-radius:12px;background:rgba(12,14,18,.72);color:#ffd21a;font:700 14px system-ui,sans-serif;pointer-events:none;letter-spacing:.3px';
+    el.style.cssText = 'position:fixed;right:12px;top:144px;z-index:6;padding:4px 10px;border-radius:12px;background:rgba(12,14,18,.72);color:#ffd21a;font:700 14px system-ui,sans-serif;pointer-events:auto;cursor:pointer;letter-spacing:.3px';
     (document.getElementById('hud') || document.body).appendChild(el);
     this.walletEl = el;
     el.style.pointerEvents = 'auto';
@@ -300,6 +300,15 @@ export class Fares {
     const to = from.routes[from.turn % from.routes.length];
     from.turn++;
     return to;
+  }
+
+  // the rank a person on foot is standing at (bay or rank site), or null
+  rankNear(x, z, r = 24) {
+    for (const k of this.ranks) {
+      if (Math.abs(k.ox - x) > 60 && Math.abs(k.x - x) > 60) continue;
+      if (Math.hypot(k.x - x, k.z - z) < r || Math.hypot(k.ox - x, k.oz - z) < r) return k;
+    }
+    return null;
   }
 
   routesOf(rank) {

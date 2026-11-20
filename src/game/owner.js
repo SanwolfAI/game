@@ -1,3 +1,4 @@
+import { registerDialog } from '../ui/dialogs.js';
 // Taxi work career: driver for a boss first, then your own taxi, then a fleet.
 //
 // SABC's day with a Durban driver (Cato Manor to town): the owner ("the boss")
@@ -161,8 +162,9 @@ export class TaxiCareer {
   #buildPanel() {
     const p = document.createElement('div');
     p.id = 'career';
-    p.style.cssText = 'position:fixed;right:12px;top:126px;z-index:20;width:240px;padding:10px 12px;border-radius:12px;background:rgba(12,14,18,.9);color:#eee;font:13px/1.45 system-ui,sans-serif;display:none';
-    (document.getElementById('hud') || document.body).appendChild(p);
+    p.className = 'izk-pop';
+    p.style.display = 'none';
+    registerDialog(p); // top layer, tappable (it sat in pointer-events:none #hud)
     this.panel = p;
     p.addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -182,20 +184,19 @@ export class TaxiCareer {
   #refresh() {
     if (!this.panel || this.panel.style.display === 'none') return;
     const c = this.c;
-    const btn = 'margin-top:8px;width:100%;padding:8px;border:0;border-radius:8px;font:700 13px system-ui;background:#ffd21a;color:#111';
     let h = '';
     if (c.role === 'driver') {
       h += `<b style="color:#ffd21a">Driver for a boss</b><br>`;
       if (c.fired === c.day) h += 'Parked for today. Back tomorrow.<br>';
       else h += `Boss's target today: ${R(c.target)}<br>Paid to boss: ${R(c.bossPaid)}<br>`;
-      h += `<button data-a="own" style="${btn}">Buy own Quantum ${R(OWN_TAXI_PRICE + ASSOCIATION_FEE)}</button>`;
+      h += `<button data-a="own" class="pop-btn">Buy own Quantum ${R(OWN_TAXI_PRICE + ASSOCIATION_FEE)}</button>`;
     } else {
       h += `<b style="color:#ffd21a">Taxi owner</b><br>Your taxi + ${c.fleet} with drivers<br>`;
       if (c.fleet) h += `Drivers pay in each evening (about ${R(c.fleet * 850)})<br>`;
-      h += `<button data-a="fleet" style="${btn}">Buy another taxi ${R(FLEET_TAXI_PRICE)}</button>`;
+      h += `<button data-a="fleet" class="pop-btn">Buy another taxi ${R(FLEET_TAXI_PRICE)}</button>`;
     }
     h += `<div style="margin-top:6px;opacity:.7">Wallet ${R(this.w.r)} · earned ${R(c.lifetime)}</div>`;
-    h += `<button data-a="close" style="${btn};background:#333;color:#eee">Close</button>`;
+    h += `<button data-a="close" class="pop-btn dim">Close</button>`;
     this.panel.innerHTML = h;
   }
 }
