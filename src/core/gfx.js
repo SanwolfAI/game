@@ -71,7 +71,22 @@ export function tierCaps(tier) {
 
 // Resolved once at boot (textures are built from it). A changed setting
 // applies pixels/people live and textures on the next start.
-const setting = readSetting();
+// Freeze rescue: if the last launch froze (crash-guard flag still set, or
+// ?safe=1 from the Android "Restart (safe)" button) while on a heavy setting,
+// drop back to Low and save it, so the game can't get stuck freezing on
+// every start.
+function rescueSetting(v) {
+  try {
+    const q = new URLSearchParams(location.search);
+    const froze = q.get('safe') === '1' || (q.get('safe') !== '0' && localStorage.getItem('izk-boot') === 'running');
+    if (froze && v !== 'low') {
+      saveSetting('low');
+      return 'low';
+    }
+  } catch {}
+  return v;
+}
+const setting = rescueSetting(readSetting());
 const MOBILE_UA = /Android|Mobi|iPhone|iPad/i.test(navigator.userAgent || '') || ((navigator.maxTouchPoints || 0) > 0 && Math.min(screen.width, screen.height) < 900);
 const det = detectTier(MOBILE_UA);
 export const GFX = {
