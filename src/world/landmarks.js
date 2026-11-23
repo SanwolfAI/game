@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { toXZ } from '../core/geo.js';
 
 function mat(color) {
@@ -59,9 +60,7 @@ const PLACE = {
 export const MABHIDA = { lon: 31.030366, lat: -29.828995, ux: 0.3302, uz: -0.9439, a: 150, b: 140 };
 
 function canvasTex(w, h, draw, rx = 1, ry = 1) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  const c = hdCanvas(w, h);
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;

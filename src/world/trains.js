@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 
 // Metrorail trains on the real OSM railway lines (roads.rail, from
 // durban-game.json). Lines are joined end to end into long routes; each train
@@ -22,9 +23,7 @@ function plen(pts) {
 }
 
 function sideTexture(kind) {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
+  const c = hdCanvas(256, 64);
   const g = c.getContext('2d');
   if (kind === 'mega') {
     g.fillStyle = '#e9ecef';

@@ -256,7 +256,7 @@ async function main() {
   // with the full city on the first frame. Pixels come from the graphics
   // tier (src/core/gfx.js) and never go below 1x (safe mode = exactly 1x).
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(SAFE ? 1 : GFX.caps.maxPx);
+  renderer.setPixelRatio(SAFE ? 1 : GFX.caps.startPx);
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
@@ -1111,7 +1111,7 @@ void main(){
   };
   const applyCaps = (c) => {
     caps = c;
-    if (!SAFE) renderer.setPixelRatio(c.maxPx);
+    if (!SAFE) renderer.setPixelRatio(c.startPx);
     renderer.setSize(innerWidth, innerHeight);
     sharp.resize();
     setRange(c.range);
@@ -1119,30 +1119,39 @@ void main(){
     setHumanCap(c.humanCap);
     if (sharp.target) sharp.enabled = true;
   };
+  // Sharpness is the last thing Auto gives up: range, shadows and people go
+  // first; pixels only drop to the tier's floor (minPx, 1.5x on phones) and
+  // the sharpen/edge pass stays on. Only a phone stuck under ~20 fps at the
+  // floor goes lower, and never below 1x.
   function gfxAdapt(avg) {
     const now = performance.now();
     const cur = renderer.getPixelRatio();
     const rg = roads.range;
+    const floor = caps.minPx || 1;
     if (avg > 0.03) {
       if (now - gfxStats.lastUp < 7000) gfxStats.upBlock = now + 30000;
       gfxStats.steps++;
-      if (rg > 0.5 + 1e-3) setRange(Math.max(0.5, rg - 0.15));
+      if (cur > caps.startPx + 1e-3) renderer.setPixelRatio(Math.max(caps.startPx, cur - 0.25)); // undo an extra step up first
+      else if (rg > 0.5 + 1e-3) setRange(Math.max(0.5, rg - 0.15));
       else if (blobMat.visible) blobMat.visible = false;
       else if (humanCap() > 6) setHumanCap(Math.max(6, Math.round(humanCap() * 0.6)));
-      else if (cur > 1) renderer.setPixelRatio(Math.max(1, cur - 0.25));
-      else if (sharp.enabled && avg > 0.045) sharp.enabled = false; // last resort; pixels stay 1x
+      else if (rg > 0.4 + 1e-3) setRange(0.4);
+      else if (cur > floor + 1e-3) renderer.setPixelRatio(Math.max(floor, cur - 0.25));
+      else if (cur > 1 + 1e-3 && avg > 0.05) renderer.setPixelRatio(Math.max(1, cur - 0.25)); // last resort
       else gfxStats.steps--;
     } else if (avg < 0.021 && now > gfxStats.upBlock) {
       gfxStats.lastUp = now;
       if (!sharp.enabled && sharp.target) sharp.enabled = true;
-      else if (cur < caps.maxPx - 1e-3) renderer.setPixelRatio(Math.min(caps.maxPx, cur + 0.25));
+      else if (cur < floor - 1e-3) renderer.setPixelRatio(Math.min(floor, cur + 0.25));
       else if (humanCap() < caps.humanCap) setHumanCap(Math.min(caps.humanCap, humanCap() + 6));
       else if (!blobMat.visible) blobMat.visible = true;
       else if (rg < caps.range - 1e-3) setRange(Math.min(caps.range, rg + 0.1));
+      else if (cur < caps.maxPx - 1e-3) renderer.setPixelRatio(Math.min(caps.maxPx, cur + 0.25));
       else gfxStats.lastUp = -1e9;
     }
   }
-  const gfxLabel = () => (GFX.setting === 'auto' ? 'Auto (' + caps.tier[0].toUpperCase() + caps.tier.slice(1) + ')' : GFX.setting[0].toUpperCase() + GFX.setting.slice(1));
+  const tierName = (t) => (t === 'hd' ? 'HD' : t[0].toUpperCase() + t.slice(1));
+  const gfxLabel = () => (GFX.setting === 'auto' ? 'Auto (' + tierName(caps.tier) + ')' : tierName(GFX.setting));
   {
     const btn = document.getElementById('m-gfx');
     if (btn) btn.textContent = gfxLabel();
@@ -1155,7 +1164,8 @@ void main(){
       const texNote = c.hd !== GFX.caps.hd || c.normals !== GFX.caps.normals;
       applyCaps(c);
       btn.textContent = gfxLabel();
-      if (texNote) hud.toast('Textures change next time the game starts', 2.5);
+      if ((next === 'high' || next === 'hd') && GFX.detected === 'low') hud.toast('Heavy for this phone: it may freeze. Auto or Low is safest', 3);
+      else if (texNote) hud.toast('Textures change next time the game starts', 2.5);
     });
   }
   if (!SAFE) {

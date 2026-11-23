@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 
 // Bus stations and depots from OSM amenity=bus_station
 // (src/data/durban-buses.json, scripts/add-buses.py):
@@ -37,9 +38,7 @@ const DESTS = [
 ];
 
 function boardTex(lines, { bg = '#14365f', fg = '#ffffff', w = 512, h = 128, title = null, gold = false } = {}) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  const c = hdCanvas(w, h);
   const g = c.getContext('2d');
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);

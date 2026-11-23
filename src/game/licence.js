@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { toXZ } from '../core/geo.js';
 import { registerDialog, dialogOpen } from '../ui/dialogs.js';
 import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
@@ -84,9 +85,7 @@ const YARD = {
 const YARD_PARKED = [[36.2, 6.5], [36.2, 21.5]];
 
 function yardCanvasTex(w, h, draw) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  const c = hdCanvas(w, h);
   draw(c.getContext('2d'));
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
