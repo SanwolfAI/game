@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { treeModel, foliageMaterial } from './trees.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 import { clamp } from '../core/utils.js';
 
@@ -646,18 +647,10 @@ export class City {
     lampMesh.count = li;
 
     // Trees: palms along the beachfront, indigenous trees inland.
-    const treeGeo = mergeGeometries([
-      boxAt(0.35, 4.2, 0.35, 0, 2.1, 0, '#7a5c3c'),
-      boxAt(3.6, 2.6, 3.6, 0, 5.4, 0, '#4d7a3a')
-    ]);
-    const palmGeo = mergeGeometries([
-      boxAt(0.3, 6.5, 0.3, 0, 3.25, 0, '#8a6b45'),
-      boxAt(4.4, 0.35, 0.9, 0, 6.4, 0.9, '#4f8a3f'),
-      boxAt(4.4, 0.35, 0.9, 0, 6.4, -0.9, '#4f8a3f'),
-      boxAt(0.9, 0.35, 4.4, 1.9, 6.4, 0, '#4f8a3f'),
-      boxAt(0.9, 0.35, 4.4, -1.9, 6.4, 0, '#4f8a3f')
-    ]);
-    const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    // Leafy HD trees (trees.js), the same ones props.js plants.
+    const treeGeo = treeModel('oak', 7.5).geometry;
+    const palmGeo = treeModel('palm', 9).geometry;
+    const treeMat = foliageMaterial();
     const maxTrees = 900;
     const treeMesh = this.#makeInstanced(treeGeo, treeMat, maxTrees, true);
     const palmMesh = this.#makeInstanced(palmGeo, treeMat, 400, true);
@@ -691,10 +684,10 @@ export class City {
         m.compose(v, q, s);
         if (coast < 220 && pi < 400) {
           palmMesh.setMatrixAt(pi++, m);
-          palmMesh.setColorAt(pi - 1, new THREE.Color().setHSL(0.28, 0.45, 0.4 + this.rng() * 0.15));
+          palmMesh.setColorAt(pi - 1, new THREE.Color().setScalar(0.85 + this.rng() * 0.25));
         } else if (ti < maxTrees) {
           treeMesh.setMatrixAt(ti++, m);
-          treeMesh.setColorAt(ti - 1, new THREE.Color().setHSL(0.26 + this.rng() * 0.06, 0.42, 0.32 + this.rng() * 0.18));
+          treeMesh.setColorAt(ti - 1, new THREE.Color().setScalar(0.8 + this.rng() * 0.3));
         }
       }
     }

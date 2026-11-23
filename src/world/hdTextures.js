@@ -3,7 +3,7 @@ import { GFX } from '../core/gfx.js';
 
 // HD texture pack, slice 1: 1K CC0 Poly Haven maps (src/assets/hd, see
 // CREDITS.txt). Medium tier = diffuse only, High = diffuse + normal maps.
-// Low tier never loads these and keeps the original flat look.
+// Low tier loads them only on phones with 4 GB+ RAM (see gfx.js).
 const DIR = './src/assets/hd/';
 const loader = new THREE.TextureLoader();
 const cache = new Map();
@@ -84,6 +84,17 @@ diffuseColor *= sampledDiffuseColor;`
 // Ground: swap the 512 grass for the 1K one (same world scale).
 export function groundGrass(fallback) {
   return HD.on ? hdTex('sparse_grass') : fallback();
+}
+
+// Lawn/veld blades for every tier (ambientCG Grass004, CC0): 1K when HD
+// textures are on, the 512 copy otherwise.
+export function lushGrass(fallback) {
+  if (!HD.on) return fallback();
+  const t = loader.load(DIR + 'Grass004_diff_1k.jpg');
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = GFX.caps.aniso;
+  return t;
 }
 
 // Buildings: world-space detail on walls and roofs. Returns shader chunks

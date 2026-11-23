@@ -1,7 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { clamp } from '../core/utils.js';
 import { WORLD } from './worldLight.js';
-import { groundGrass } from './hdTextures.js';
+import { groundGrass, lushGrass } from './hdTextures.js';
 
 const TEX = './src/assets/textures/';
 const texLoader = new THREE.TextureLoader();
@@ -66,6 +66,9 @@ export function buildLandcover(areas, box) {
 export function createGroundMaterial(landcover, box) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const grass = groundGrass(() => tex('sparse_grass_512.jpg'));
+  // real lawn/veld grass blades (ambientCG Grass004, CC0) on every tier:
+  // 1K with HD textures on, 512 otherwise (budget phones under 4 GB)
+  const lush = lushGrass(() => tex('grass004_512.jpg'));
   const dry = tex('dry_ground_01_512.jpg');
   const sand = tex('coast_sand_01_512.jpg');
   const rock = tex('aerial_grass_rock_512.jpg');
@@ -73,6 +76,7 @@ export function createGroundMaterial(landcover, box) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
       tGrass: { value: grass },
+      tLush: { value: lush },
       tDry: { value: dry },
       tSand: { value: sand },
       tRock: { value: rock },
@@ -88,7 +92,7 @@ export function createGroundMaterial(landcover, box) {
         '#include <common>',
         `#include <common>
 varying vec3 vWorldP;
-uniform sampler2D tGrass, tDry, tSand, tRock, tPaved, tCover;
+uniform sampler2D tGrass, tLush, tDry, tSand, tRock, tPaved, tCover;
 uniform vec4 uCoverBox;`
       )
       .replace(
@@ -96,7 +100,20 @@ uniform vec4 uCoverBox;`
         `vec2 wp = vWorldP.xz;
 vec3 g1 = texture2D(tGrass, wp / 17.0).rgb;
 vec3 g2 = texture2D(tGrass, wp.yx / 61.0 + 0.37).rgb;
-vec3 grassC = mix(mix(g1, g2, 0.45), vec3(0.27, 0.40, 0.13), 0.45) * vec3(0.9, 1.05, 0.8);
+// HD grass: real blades at 2.6 m, a rotated 11 m copy to break the tiling,
+// and two slow noise layers (170 m / 480 m) for lush, darker and dry,
+// yellowed patches so no repeat shows from the road
+vec3 lN = texture2D(tLush, wp / 2.6).rgb;
+vec3 lM = texture2D(tLush, wp.yx / 11.3 + 0.21).rgb;
+vec3 lush = mix(lN, lM, 0.3) * vec3(1.25, 1.72, 1.3);
+lush *= clamp(0.5 + 0.5 * dot(lN, vec3(0.3, 0.59, 0.11)) / 0.12, 0.55, 1.6); // crisper blades
+lush *= 0.72 + 0.56 * texture2D(tDry, wp.yx / 31.0 + 0.47).g; // mown / long patches
+lush = mix(lush, vec3(dot(lush, vec3(0.3, 0.59, 0.11))), 0.22); // less lime, more KZN lawn
+float n1 = texture2D(tDry, wp / 173.0 + 0.13).g;
+float n2 = texture2D(tDry, wp.yx / 487.0 + 0.61).r;
+lush *= 0.78 + 0.5 * n1;
+lush = mix(lush, lush * vec3(1.2, 1.05, 0.7), smoothstep(0.4, 0.8, n2) * 0.6);
+vec3 grassC = mix(lush, mix(g1, g2, 0.45) * vec3(0.95, 1.0, 0.8), 0.2 + 0.25 * smoothstep(0.5, 0.8, n2));
 vec3 dryC = mix(texture2D(tDry, wp / 23.0).rgb, grassC, 0.35);
 vec3 sandC = texture2D(tSand, wp / 13.0).rgb;
 vec3 rockC = texture2D(tRock, wp / 37.0).rgb;
@@ -113,7 +130,7 @@ base = mix(base, sandC, clamp(max(vColor.r, cover.b), 0.0, 1.0));
 diffuseColor.rgb *= base;`
       );
   };
-  mat.customProgramCacheKey = () => 'izk-ground-v1';
+  mat.customProgramCacheKey = () => 'izk-ground-v2';
   return mat;
 }
 

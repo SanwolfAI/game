@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { loadKitModel } from './kitModels.js';
+import { treeModel } from './trees.js';
 import { CHUNK, KERB_H, WALK_W, specFor } from './roads.js';
 import { mulberry32 } from '../core/utils.js';
 import { WORLD } from './worldLight.js';
@@ -19,23 +20,24 @@ const GEN_RADIUS = 900; // generate chunks within this distance
 const DROP_RADIUS = 1300; // forget generated chunks beyond this
 const REFILL_MOVE = 35; // m of camera travel between instance refills
 
-const NATURE = './src/assets/naturekit/';
 const ROADKIT = './src/assets/roadkit/';
 
 // trees that get a soft ground shadow (disc size vs canopy width)
 const TREE_SHADOW = { oak: 1.0, oakDark: 1.0, fat: 1.0, detailed: 0.9, plateau: 1.0, tall: 0.8, palm: 0.55, palmBend: 0.55 };
 
 // type -> model file, max instances, draw radius
+// Trees and bushes are the leafy HD trees from trees.js (tree = species);
+// the old Kenney box-canopy GLBs stay in src/assets/naturekit, unused.
 const TYPES = {
-  oak: { file: NATURE + 'tree_oak.glb', h: 1, max: 900, radius: 700 },
-  oakDark: { file: NATURE + 'tree_oak_dark.glb', h: 1, max: 900, radius: 700 },
-  fat: { file: NATURE + 'tree_default.glb', h: 1, max: 900, radius: 700, leaf: '#58893a' },
-  detailed: { file: NATURE + 'tree_detailed_dark.glb', h: 1, max: 600, radius: 650 },
-  plateau: { file: NATURE + 'tree_plateau.glb', h: 1, max: 700, radius: 700, leaf: '#5d7f2e' },
-  tall: { file: NATURE + 'tree_tall_dark.glb', h: 1, max: 500, radius: 600 },
-  palm: { file: NATURE + 'tree_palmTall.glb', h: 1, max: 500, radius: 800, leaf: '#5f8f34' },
-  palmBend: { file: NATURE + 'tree_palmBend.glb', h: 1, max: 300, radius: 800, leaf: '#55852f' },
-  bush: { file: NATURE + 'plant_bushDetailed.glb', h: 1, max: 1200, radius: 260, leaf: '#4a7a2b' },
+  oak: { tree: 'oak', max: 900, radius: 700 },
+  oakDark: { tree: 'oakDark', max: 900, radius: 700 },
+  fat: { tree: 'fat', max: 900, radius: 700 },
+  detailed: { tree: 'detailed', max: 600, radius: 650 },
+  plateau: { tree: 'plateau', max: 700, radius: 700 },
+  tall: { tree: 'tall', max: 500, radius: 600 },
+  palm: { tree: 'palm', max: 500, radius: 800 },
+  palmBend: { tree: 'palmBend', max: 300, radius: 800 },
+  bush: { tree: 'bush', max: 1200, radius: 260 },
   lamp: { file: ROADKIT + 'light-curved.glb', scale: 12, max: 700, radius: 650, center: false },
   lamp2: { file: ROADKIT + 'light-curved-double.glb', scale: 12, max: 300, radius: 650, center: false },
   robot: { file: ROADKIT + 'traffic-light.glb', scale: 8, max: 500, radius: 500, center: false }
@@ -214,7 +216,7 @@ export class Props {
     const jobs = [];
     for (const [name, t] of Object.entries(TYPES)) {
       jobs.push(
-        loadKitModel(t.file, t.center === false ? { leaf: t.leaf } : { leaf: t.leaf, height: t.h })
+        (t.tree ? Promise.resolve().then(() => treeModel(t.tree)) : loadKitModel(t.file, t.center === false ? { leaf: t.leaf } : { leaf: t.leaf, height: t.h }))
           .then((m) => {
             if (t.scale) m.geometry.scale(t.scale, t.scale, t.scale);
             const mesh = new THREE.InstancedMesh(m.geometry, m.material, t.max);
