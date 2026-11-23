@@ -215,6 +215,15 @@ async function main() {
   } catch (err) {
     console.warn('[IZK] building footprints unavailable, using generated city only', err);
   }
+  // House looks per area from Mapillary street photos (walls, roofs, fences).
+  if (buildings) {
+    try {
+      const sres = await fetch('./src/data/durban-house-styles.json');
+      if (sres.ok) buildings.setStyles(await sres.json());
+    } catch (err) {
+      console.warn('[IZK] house styles unavailable', err);
+    }
+  }
   setLoad(74, 'Raising the city…');
   await nextFrame();
   const city = new City(hf, roads, mulberry32(20241113));

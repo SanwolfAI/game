@@ -3,6 +3,8 @@ import { buildFacadeArray, LAYER } from './facades.js';
 import { buildingDetail } from './hdTextures.js';
 import { WORLD } from './worldLight.js';
 import { mulberry32 } from '../core/utils.js';
+import { toXZ } from '../core/geo.js';
+import { FenceBuf, fenceMaterial, FENCE, PAINTED_WALL, PANEL } from './fences.js';
 
 // Real OSM building footprints (src/data/durban-buildings.bin, packed by
 // scripts/build-buildings.mjs), extruded into textured buildings and streamed
@@ -53,6 +55,19 @@ const WHITE = hex('#ffffff');
 const HOSP_WALLS = ['#f4f1ea', '#ece6d6', '#f7f6f2', '#e4ded0', '#e9ecee', '#efe9dc'].map(hex);
 const CLINIC_ROOF = ['#3f6b4f', '#8a3b2e', '#4a5f78', '#9aa0a3'].map(hex);
 const IND_WALLS = ['#d9dcdd', '#c9ced1', '#e3e1da', '#b9c2c8', '#d8d2c4'].map(hex);
+// House types that take their look from the Mapillary-derived area styles
+// (src/data/durban-house-styles.json, loaded with setStyles).
+const STYLED = { house: true, rdp: true, small: true, shack: true, mansion: true };
+const FASCIA = hex('#ece9e2');
+const FENCE_SHOW = 330; // m: fence meshes are hidden beyond this (x range)
+const pickW = (list, tot, r) => {
+  let t = r * tot;
+  for (let k = 0; k < list.length; k++) {
+    t -= list[k].w;
+    if (t <= 0) return list[k];
+  }
+  return list[list.length - 1];
+};
 
 // --- small growable float buffer --------------------------------------------------
 class Grow {
@@ -146,8 +161,8 @@ vec2 izkUV = izkRoof ? vWP.xz : vec2(dot(vWP.xz, normalize(vec2(-izkN.z, izkN.x)
 float izkWall = 1.0 - fWin;
 int izkK = 0; // 1 brick, 2 plaster, 3 iron, 4 concrete, 5 clay roof tiles
 int izkI = int(izkL);
-if (!izkRoof && izkI == 7) izkK = 1;
-else if (!izkRoof && (izkI == 2 || izkI == 5 || izkI == 11)) izkK = 2;
+if (!izkRoof && (izkI == 7 || izkI == 14)) izkK = 1;
+else if (!izkRoof && (izkI == 2 || izkI == 5 || izkI == 11 || izkI == 13)) izkK = 2;
 else if (!izkRoof && (izkI == 0 || izkI == 3 || izkI == 4 || izkI == 6)) izkK = 4;
 else if (izkRoof && izkI == 10) izkK = 3;
 else if (izkRoof && izkI == 8) izkK = 4;
@@ -239,7 +254,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb * fTex.rgb, fTex.rgb, fWin);` + (hd ? HD
 }`
       );
   };
-  mat.customProgramCacheKey = () => 'izk-building-v2' + (hd ? (hd.N ? '-hdn' : '-hd') : '');
+  mat.customProgramCacheKey = () => 'izk-building-v3' + (hd ? (hd.N ? '-hdn' : '-hd') : '');
   return mat;
 }
 
@@ -324,7 +339,12 @@ export class Buildings {
     this.material = createBuildingMaterial(this.tex);
     this.xs = new Float64Array(256);
     this.zs = new Float64Array(256);
-    this.spec = { skip: false, h: 0, floorH: 3.2, wall: 0, ground: -1, groundH: 0, roof: 'flat', roofLayer: LAYER.roofFlat, wallTint: WHITE, roofTint: WHITE, lit: 3, plant: false, bay: 3 };
+    this.spec = { skip: false, h: 0, floorH: 3.2, wall: 0, ground: -1, groundH: 0, roof: 'flat', roofLayer: LAYER.roofFlat, wallTint: WHITE, roofTint: WHITE, lit: 3, plant: false, bay: 3, styled: false, pitch: 0, fence: null, fenceTint: WHITE, gateTint: WHITE };
+    this.styles = null;
+    this.styleIdx = new Int8Array(count).fill(-2);
+    this.fenceMat = null;
+    this._rid = new WeakMap();
+    this._ridN = 0;
     this.range = 1; // draw-distance scale, lowered on slow phones
     this.builtNear = new Set();
     this.builtFar = new Set();
@@ -367,6 +387,102 @@ export class Buildings {
     }
   }
 
+  // Per-area house looks from Mapillary street photos (durban-house-styles.json).
+  setStyles(data) {
+    const areas = (data && data.areas) || [];
+    this.styles = [];
+    const norm = (arr, f) => {
+      const out = [];
+      let tot = 0;
+      for (const e of arr || []) {
+        const o = f(e);
+        out.push(o);
+        tot += o.w;
+      }
+      out.tot = tot;
+      return out;
+    };
+    for (const a of areas) {
+      const [x, z] = toXZ(a.lon, a.lat);
+      this.styles.push({
+        id: a.id,
+        x,
+        z,
+        r: a.r,
+        walls: norm(a.walls, (e) => ({ c: hex(e[0]), w: e[1], mat: e[2] })),
+        roofs: norm(a.roofs, (e) => ({ c: hex(e[0]), w: e[1], mat: e[2] })),
+        fences: norm(a.fences, (e) => ({ t: e[0], w: e[1] })),
+        fenceColors: (a.fenceColors || ['#2a2c2e']).map(hex),
+        wallColors: (a.wallColors || ['#f2efe8']).map(hex),
+        gable: a.gable || 0,
+        storey2: a.storey2 || 0
+      });
+    }
+    this.styleIdx.fill(-2);
+  }
+
+  #styleAt(i) {
+    let k = this.styleIdx[i];
+    if (k !== -2) return k;
+    k = -1;
+    let best = 1;
+    const x = this.cx[i];
+    const z = this.cz[i];
+    for (let a = 0; a < this.styles.length; a++) {
+      const st = this.styles[a];
+      const d = Math.hypot(x - st.x, z - st.z) / st.r;
+      if (d < best) {
+        best = d;
+        k = a;
+      }
+    }
+    this.styleIdx[i] = k;
+    return k;
+  }
+
+  // Walls, roof and fence for a small home from its area's real-photo style.
+  #applyStyle(s, type, rng, i, A) {
+    const k = this.#styleAt(i);
+    if (k < 0) return;
+    const st = this.styles[k];
+    s.styled = true;
+    const roof = pickW(st.roofs, st.roofs.tot, rng());
+    if (type === 'shack') {
+      // iron shacks: lean-to roofs of the same iron
+      s.roof = 'lean';
+      s.roofLayer = LAYER.roofIron;
+      if (roof.mat === 'iron') s.roofTint = roof.c;
+      s.pitch = 0.12;
+      return;
+    }
+    s.roofLayer = roof.mat === 'tile' ? LAYER.roofTile : LAYER.roofIron;
+    s.roofTint = roof.c;
+    s.pitch = roof.mat === 'tile' ? 0.5 : 0.3;
+    if (type !== 'mansion') {
+      const wall = pickW(st.walls, st.walls.tot, rng());
+      if (wall.mat === 'brick') {
+        s.wall = LAYER.brickBars;
+        s.wallTint = WHITE;
+      } else {
+        s.wall = LAYER.houseBars;
+        s.wallTint = wall.c;
+      }
+      s.roof = rng() < st.gable ? 'gable' : 'hip';
+      const two = type === 'house' && A > 110 && rng() < st.storey2;
+      s.floorH = type === 'house' ? 3.0 : 2.8;
+      s.h = two ? s.floorH * 2 : s.floorH;
+      s.bay = 2.9;
+      s.lit = 4;
+    }
+    const f = pickW(st.fences, st.fences.tot, rng());
+    if (f.t !== 'none' && A > 28) {
+      s.fence = f.t;
+      const steel = st.fenceColors[Math.floor(rng() * st.fenceColors.length) % st.fenceColors.length];
+      s.fenceTint = PAINTED_WALL[f.t] ? st.wallColors[Math.floor(rng() * st.wallColors.length) % st.wallColors.length] : f.t === 'precast' || f.t === 'brickwall' ? WHITE : steel;
+      s.gateTint = steel;
+    }
+  }
+
   #siteAt(x, z) {
     for (const st of this.sites) {
       if (x < st.x0 || x > st.x1 || z < st.z0 || z > st.z1) continue;
@@ -402,6 +518,9 @@ export class Buildings {
     s.roofTint = WHITE;
     s.lit = 3;
     s.pool = false;
+    s.styled = false;
+    s.pitch = 0;
+    s.fence = null;
     if (kind === KIND.roof || kind === KIND.construction && A < 40) {
       s.skip = true;
       return s;
@@ -687,9 +806,14 @@ export class Buildings {
         s.wall = LAYER.house;
         s.wallTint = WHITE;
     }
+    if (this.styles && STYLED[type]) {
+      s.h = h;
+      this.#applyStyle(s, type, rng, i, A);
+      h = s.h;
+    }
     if (tagH > 2) h = tagH;
     else if (lv > 0) h = lv * s.floorH + (s.ground >= 0 ? 0.8 : 0);
-    if (s.roof === 'hip' && h > 12) s.roof = 'flat';
+    if (s.roof !== 'flat' && h > 12) s.roof = 'flat';
     s.h = h;
     s.type = type;
     return s;
@@ -749,7 +873,26 @@ export class Buildings {
   }
 
   // ---- geometry ----------------------------------------------------------------
-  #emitBuilding(B, i, s) {
+  // Nearest street a styled home faces: { x, z, dx, dz (unit along road),
+  // nx, nz (unit from road to house), road, seg } or null.
+  #front(i) {
+    const roads = this.roads;
+    if (!roads) return null;
+    const nr = roads.nearestRoad(this.cx[i], this.cz[i], 45, (q) => q.width < 16 && !q.bridge);
+    if (!nr) return null;
+    const l = Math.hypot(nr.dirX, nr.dirZ) || 1;
+    const dx = nr.dirX / l;
+    const dz = nr.dirZ / l;
+    let nx = -dz;
+    let nz = dx;
+    if ((this.cx[i] - nr.x) * nx + (this.cz[i] - nr.z) * nz < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    return { x: nr.x, z: nr.z, dx, dz, nx, nz, road: nr.road, seg: Math.floor(nr.t * (nr.road.pts.length - 1) + 1e-6), side: nx * -dz + nz * dx > 0 ? 1 : -1 };
+  }
+
+  #emitBuilding(B, i, s, front = null) {
     const n = this.#ring(i);
     const xs = this.xs;
     const zs = this.zs;
@@ -773,7 +916,7 @@ export class Buildings {
     const layerH = s.floorH * 4;
     const bayW = s.bay * 4;
 
-    const wallQuad = (x0, z0, x1, z1, y0, y1, layer, v0, v1, u1) => {
+    const wallQuad = (x0, z0, x1, z1, y0, y1, layer, v0, v1, u1, u0 = 0) => {
       const dx = x1 - x0;
       const dz = z1 - z0;
       const len = Math.hypot(dx, dz) || 1;
@@ -783,23 +926,41 @@ export class Buildings {
       // outward normal (-dz,dx) matches order a,b,c / a,c,d
       const ccw = nx * -dz + nz * dx > 0;
       if (ccw) {
-        B.v(x0, y0, z0, nx, 0, nz, c, 0, v0, layer, w);
+        B.v(x0, y0, z0, nx, 0, nz, c, u0, v0, layer, w);
         B.v(x1, y0, z1, nx, 0, nz, c, u1, v0, layer, w);
         B.v(x1, y1, z1, nx, 0, nz, c, u1, v1, layer, w);
-        B.v(x0, y0, z0, nx, 0, nz, c, 0, v0, layer, w);
+        B.v(x0, y0, z0, nx, 0, nz, c, u0, v0, layer, w);
         B.v(x1, y1, z1, nx, 0, nz, c, u1, v1, layer, w);
-        B.v(x0, y1, z0, nx, 0, nz, c, 0, v1, layer, w);
+        B.v(x0, y1, z0, nx, 0, nz, c, u0, v1, layer, w);
       } else {
-        B.v(x0, y0, z0, nx, 0, nz, c, 0, v0, layer, w);
+        B.v(x0, y0, z0, nx, 0, nz, c, u0, v0, layer, w);
         B.v(x1, y1, z1, nx, 0, nz, c, u1, v1, layer, w);
         B.v(x1, y0, z1, nx, 0, nz, c, u1, v0, layer, w);
-        B.v(x0, y0, z0, nx, 0, nz, c, 0, v0, layer, w);
-        B.v(x0, y1, z0, nx, 0, nz, c, 0, v1, layer, w);
+        B.v(x0, y0, z0, nx, 0, nz, c, u0, v0, layer, w);
+        B.v(x0, y1, z0, nx, 0, nz, c, u0, v1, layer, w);
         B.v(x1, y1, z1, nx, 0, nz, c, u1, v1, layer, w);
       }
       B.tris += 2;
     };
 
+    // styled homes: the wall facing the street starts on the door bay
+    const homeLayer = s.wall === LAYER.houseBars || s.wall === LAYER.brickBars;
+    let frontK = -1;
+    if (homeLayer && front) {
+      let bestDot = 0.3;
+      for (let k = 0; k < n; k++) {
+        const k2 = (k + 1) % n;
+        const dx = xs[k2] - xs[k];
+        const dz = zs[k2] - zs[k];
+        const len = Math.hypot(dx, dz);
+        if (len < 2.2) continue;
+        const d = -((sgn * dz) / len) * front.nx - ((-sgn * dx) / len) * front.nz;
+        if (d > bestDot) {
+          bestDot = d;
+          frontK = k;
+        }
+      }
+    }
     for (let k = 0; k < n; k++) {
       const k2 = (k + 1) % n;
       const x0 = xs[k];
@@ -809,7 +970,14 @@ export class Buildings {
       const len = Math.hypot(x1 - x0, z1 - z0);
       if (len < 0.05) continue;
       const bays = len < 1.6 ? 0.12 : Math.max(1, Math.round(len / s.bay));
-      const u1 = len < 1.6 ? 0.03 : bays / 4;
+      let u1 = len < 1.6 ? 0.03 : bays / 4;
+      if (homeLayer && len >= 1.6) {
+        // bay pattern: window, door, window, small window. Front: from the
+        // first window; side/back walls skip the door unless they are long.
+        const u0 = k === frontK ? (bays === 1 ? 0.25 : 0) : 0.5;
+        wallQuad(x0, z0, x1, z1, base, top, s.wall, (base - ground) / layerH, (top - ground) / layerH, u0 + u1, u0);
+        continue;
+      }
       if (s.ground >= 0 && s.h > s.groundH + 1) {
         const gTop = ground + s.groundH;
         const shopH = s.groundH * 4;
@@ -822,7 +990,7 @@ export class Buildings {
     void bayW;
 
     let roofDone = false;
-    if (s.roof === 'hip') roofDone = this.#hipRoof(B, n, top, s, w);
+    if (s.roof !== 'flat') roofDone = this.#pitchedRoof(B, n, top, s, w);
     if (!roofDone) this.#flatRoof(B, n, top, s, w);
     if (s.plant && this.area[i] > 150) {
       const side = Math.min(9, Math.sqrt(this.area[i]) * 0.28);
@@ -854,8 +1022,11 @@ export class Buildings {
     }
   }
 
-  // Hipped roof over the footprint's minimum-area rectangle (houses).
-  #hipRoof(B, n, y, s, w) {
+  // Pitched roof over the footprint's minimum-area rectangle: 'hip', 'gable'
+  // (wall-coloured gable ends) or 'lean' (mono-pitch shack roof). Eaves
+  // overhang the walls with a fascia board and a soffit underneath; the roof
+  // plane passes just over the wall tops so no wall pokes through.
+  #pitchedRoof(B, n, y, s, w) {
     const xs = this.xs;
     const zs = this.zs;
     let best = null;
@@ -885,7 +1056,7 @@ export class Buildings {
       const area = (maxU - minU) * (maxV - minV);
       if (!best || area < best.area) best = { area, ux, uz, minU, maxU, minV, maxV };
     }
-    if (!best || polyA / best.area < 0.72) return false;
+    if (!best || polyA / best.area < (s.styled ? 0.6 : 0.72)) return false;
     let { ux, uz } = best;
     let L = (best.maxU - best.minU) / 2;
     let W = (best.maxV - best.minV) / 2;
@@ -907,22 +1078,21 @@ export class Buildings {
       vx = -tx;
       vz = -tz;
     }
-    const o = 0.45;
+    const form = s.roof === 'gable' || s.roof === 'lean' ? s.roof : 'hip';
+    const Lw = L;
+    const Ww = W;
+    const o = s.styled ? 0.55 : 0.45;
     L += o;
     W += o;
-    const rise = Math.min(4.5, W * 0.55);
-    const r = Math.max(0, L - W);
+    const span = form === 'lean' ? 2 * W : W;
+    const rise = s.pitch ? Math.min(4.5, span * s.pitch) : Math.min(4.5, W * 0.55);
+    const slope = rise / span;
+    const eave = 0.03 - o * slope; // roof plane is 3 cm over the wall tops
     const P = (a, b, h) => [cx + ux * a + vx * b, y + h, cz + uz * a + vz * b];
-    const e1 = P(L, W, -0.25);
-    const e2 = P(-L, W, -0.25);
-    const e3 = P(-L, -W, -0.25);
-    const e4 = P(L, -W, -0.25);
-    const r1 = P(r, 0, rise);
-    const r2 = P(-r, 0, rise);
     const c = s.roofTint;
     const Ly = s.roofLayer;
     const wl = w - (w % 1);
-    const tri = (a, b, d) => {
+    const roofTri = (a, b, d) => {
       const abx = b[0] - a[0];
       const aby = b[1] - a[1];
       const abz = b[2] - a[2];
@@ -949,18 +1119,85 @@ export class Buildings {
       const hl = Math.hypot(hx, hz) || 1;
       for (const p of pts) {
         const along = (p[0] * -hz + p[2] * hx) / hl;
-        const up = (p[0] * hx + p[2] * hz) / hl / Math.max(0.3, ny) ;
+        const up = (p[0] * hx + p[2] * hz) / hl / Math.max(0.3, ny);
         B.v(p[0], p[1], p[2], nx, ny, nz, c, along / 6, -up / 6, Ly, wl);
       }
       B.tris++;
     };
-    tri(e1, e2, r2);
-    tri(e1, r2, r1);
-    tri(e3, e4, r1);
-    tri(e3, r1, r2);
-    tri(e4, e1, r1);
-    tri(e2, e3, r2);
-    // soffit (underside) so the overhang doesn't look paper thin from below
+    // flat-shaded triangle facing (hx, hy, hz); uv from a callback
+    const faceTri = (a, b, d, hx, hy, hz, col, layer, ww, uvf) => {
+      const abx = b[0] - a[0];
+      const aby = b[1] - a[1];
+      const abz = b[2] - a[2];
+      const adx = d[0] - a[0];
+      const ady = d[1] - a[1];
+      const adz = d[2] - a[2];
+      const nx = aby * adz - abz * ady;
+      const ny = abz * adx - abx * adz;
+      const nz = abx * ady - aby * adx;
+      const pts = nx * hx + ny * hy + nz * hz >= 0 ? [a, b, d] : [a, d, b];
+      for (const p of pts) {
+        const t = uvf(p);
+        B.v(p[0], p[1], p[2], hx, hy, hz, col, t[0], t[1], layer, ww);
+      }
+      B.tris++;
+    };
+    const faceQuad = (a, b, d, e, hx, hy, hz, col, layer, ww, uvf) => {
+      faceTri(a, b, d, hx, hy, hz, col, layer, ww, uvf);
+      faceTri(a, d, e, hx, hy, hz, col, layer, ww, uvf);
+    };
+    // wall-coloured gable / lean-to end: plain upper rows of the wall layer
+    const layerH = s.floorH * 4;
+    const homeL = s.wall === LAYER.houseBars || s.wall === LAYER.brickBars;
+    const vb = homeL ? 0.52 : 0.3;
+    const wallUV = (p) => [((p[0] - cx) * vx + (p[2] - cz) * vz) / (s.bay * 4), vb + (p[1] - y) / layerH];
+    const wallUVu = (p) => [((p[0] - cx) * ux + (p[2] - cz) * uz) / (s.bay * 4), vb + (p[1] - y) / layerH];
+    const flatUV = (p) => [p[0] / 12, p[2] / 12];
+    const e = eave;
+    const e1 = P(L, W, e);
+    const e2 = P(-L, W, e);
+    const e3 = P(-L, -W, e);
+    const e4 = P(L, -W, e);
+    if (form === 'lean') {
+      const h1 = P(L, W, e + rise);
+      const h2 = P(-L, W, e + rise);
+      roofTri(e3, e4, h1);
+      roofTri(e3, h1, h2);
+      const hw = 0.03 + 2 * Ww * slope; // roof height over the high wall
+      for (const sg of [1, -1]) {
+        faceTri(P(sg * Lw, -Ww, 0), P(sg * Lw, Ww, 0), P(sg * Lw, Ww, hw), ux * sg, 0, uz * sg, s.wallTint, s.wall, w, wallUV);
+      }
+      faceQuad(P(-Lw, Ww, 0), P(Lw, Ww, 0), P(Lw, Ww, hw), P(-Lw, Ww, hw), vx, 0, vz, s.wallTint, s.wall, w, wallUVu);
+      // fascia on the low eave
+      faceQuad(e3, e4, P(L, -W, e - 0.18), P(-L, -W, e - 0.18), -vx, 0, -vz, FASCIA, LAYER.roofFlat, 0, flatUV);
+      return true;
+    }
+    const r = form === 'gable' ? L : Math.max(0, L - W);
+    const r1 = P(r, 0, e + rise);
+    const r2 = P(-r, 0, e + rise);
+    roofTri(e1, e2, r2);
+    roofTri(e1, r2, r1);
+    roofTri(e3, e4, r1);
+    roofTri(e3, r1, r2);
+    if (form === 'hip') {
+      roofTri(e4, e1, r1);
+      roofTri(e2, e3, r2);
+    } else {
+      // gable ends at the end walls, under the overhanging roof
+      for (const sg of [1, -1]) {
+        faceTri(P(sg * Lw, Ww, 0), P(sg * Lw, -Ww, 0), P(sg * Lw, 0, e + rise - 0.02), ux * sg, 0, uz * sg, s.wallTint, s.wall, w, wallUV);
+      }
+    }
+    // fascia boards on the eaves
+    const fd = 0.18;
+    faceQuad(e1, e2, P(-L, W, e - fd), P(L, W, e - fd), vx, 0, vz, FASCIA, LAYER.roofFlat, 0, flatUV);
+    faceQuad(e3, e4, P(L, -W, e - fd), P(-L, -W, e - fd), -vx, 0, -vz, FASCIA, LAYER.roofFlat, 0, flatUV);
+    if (form === 'hip') {
+      faceQuad(e4, e1, P(L, W, e - fd), P(L, -W, e - fd), ux, 0, uz, FASCIA, LAYER.roofFlat, 0, flatUV);
+      faceQuad(e2, e3, P(-L, -W, e - fd), P(-L, W, e - fd), -ux, 0, -uz, FASCIA, LAYER.roofFlat, 0, flatUV);
+    }
+    // soffit (underside) so the overhang casts a dark line on the walls
+    faceQuad(P(L, W, e - fd), P(-L, W, e - fd), P(-L, -W, e - fd), P(L, -W, e - fd), 0, -1, 0, FASCIA, LAYER.roofFlat, 0, flatUV);
     return true;
   }
 
@@ -1037,13 +1274,18 @@ export class Buildings {
 
   #buildNear(cell) {
     const B = new GeoBuf();
+    let fenced = false;
     for (const i of cell.ids) {
       const s = this.#classify(i);
       if (s.skip || s.h >= TALL) continue;
       if (!this.#accept(i)) continue;
-      this.#emitBuilding(B, i, s);
+      const front = s.styled ? this.#front(i) : null;
+      this.#emitBuilding(B, i, s, front);
       if (s.pool) this.#pool(B, i);
+      if (s.fence && front) fenced = true;
     }
+    // fences are built later, only once the camera comes near (update)
+    cell.fenceTodo = fenced;
     const g = B.geometry();
     if (g) {
       const mesh = new THREE.Mesh(g, this.material);
@@ -1087,6 +1329,166 @@ export class Buildings {
       c.mesh.geometry.dispose();
     }
     c.mesh = null;
+    if (c.fence) {
+      this.group.remove(c.fence);
+      this.stats.tris -= c.fence.userData.tris;
+      c.fence.geometry.dispose();
+      c.fence = null;
+    }
+  }
+
+  // ---- boundary walls / fences (styled homes) -------------------------------
+  // A fence line parallel to the street the house faces, between the kerb
+  // (pavement kept clear) and the front wall, spanning the house plus a
+  // margin each side, with a gate in front of the house.
+  #fenceCand(i, s, f) {
+    const n = this.#ring(i);
+    const xs = this.xs;
+    const zs = this.zs;
+    let a0 = Infinity;
+    let a1 = -Infinity;
+    let nMin = Infinity;
+    for (let k = 0; k < n; k++) {
+      const px = xs[k] - f.x;
+      const pz = zs[k] - f.z;
+      const a = px * f.dx + pz * f.dz;
+      const b = px * f.nx + pz * f.nz;
+      if (a < a0) a0 = a;
+      if (a > a1) a1 = a;
+      if (b < nMin) nMin = b;
+    }
+    const hw = f.road.width / 2;
+    let off = hw + 1.8;
+    if (nMin - off < 1.2) off = nMin - 1.2;
+    if (off < hw + 0.8 || a1 - a0 > 40) return null;
+    const m = 1.6 + ((i * 0.618) % 1) * 1.6;
+    return { i, f, off, lo: a0 - m, hi: a1 + m, gate: (a0 + a1) / 2 + (((i * 0.37) % 1) - 0.5) * (a1 - a0) * 0.5, type: s.fence, tint: s.fenceTint, gateTint: s.gateTint };
+  }
+
+  #fencesFor(cell) {
+    cell.fenceTodo = false;
+    const cands = [];
+    for (const i of cell.ids) {
+      const s = this.#classify(i);
+      if (s.skip || s.h >= TALL || !s.fence) continue;
+      if (!this.#accept(i)) continue;
+      const front = this.#front(i);
+      if (!front) continue;
+      const fc = this.#fenceCand(i, s, front);
+      if (fc) cands.push(fc);
+    }
+    if (cands.length) this.#buildFences(cell, cands);
+  }
+
+  #buildFences(cell, cands) {
+    // neighbours on the same straight piece of street: split overlaps at the
+    // middle so two fences never share a line (no z-fighting)
+    const groups = new Map();
+    for (const c of cands) {
+      let rid = this._rid.get(c.f.road);
+      if (rid === undefined) this._rid.set(c.f.road, (rid = ++this._ridN));
+      const key = rid * 4096 * 4 + c.f.seg * 4 + (c.f.side > 0 ? 1 : 0);
+      let g = groups.get(key);
+      if (!g) groups.set(key, (g = []));
+      // into the frame of the group's first candidate
+      const r = g.length ? g[0].f : c.f;
+      const o = (c.f.x - r.x) * r.dx + (c.f.z - r.z) * r.dz;
+      c.A0 = o + c.lo;
+      c.A1 = o + c.hi;
+      c.base = o;
+      g.push(c);
+    }
+    for (const g of groups.values()) {
+      g.sort((p, q) => p.A0 - q.A0);
+      for (let k = 1; k < g.length; k++) {
+        const p = g[k - 1];
+        const q = g[k];
+        if (q.A0 < p.A1) {
+          const cut = Math.min(Math.max((q.A0 + p.A1) / 2, p.A0 + 1), q.A1 - 1);
+          p.A1 = Math.min(p.A1, cut - 0.02);
+          q.A0 = Math.max(q.A0, cut + 0.02);
+        }
+      }
+      for (const c of g) {
+        c.lo = c.A0 - c.base;
+        c.hi = c.A1 - c.base;
+      }
+    }
+    // footprints near the fences (skip panels that would cut a building)
+    const polys = this.#cellPolys(cell);
+    const G = 20;
+    const grid = new Map();
+    for (const p of polys) {
+      for (let gx = Math.floor(p.minx / G); gx <= Math.floor(p.maxx / G); gx++) {
+        for (let gz = Math.floor(p.minz / G); gz <= Math.floor(p.maxz / G); gz++) {
+          const key = gx * 100000 + gz;
+          let l = grid.get(key);
+          if (!l) grid.set(key, (l = []));
+          l.push(p);
+        }
+      }
+    }
+    const hitsBuilding = (x, z) => {
+      const l = grid.get(Math.floor(x / G) * 100000 + Math.floor(z / G));
+      if (!l) return false;
+      for (const p of l) {
+        if (x < p.minx - 0.4 || x > p.maxx + 0.4 || z < p.minz - 0.4 || z > p.maxz + 0.4) continue;
+        let inside = false;
+        for (let k = 0, j = p.n - 1; k < p.n; j = k++) {
+          const ax = p.xs[j], az = p.zs[j], bx = p.xs[k], bz = p.zs[k];
+          if (bz > z !== az > z && x < ((ax - bx) * (z - bz)) / (az - bz) + bx) inside = !inside;
+        }
+        if (inside) return true;
+        // near an edge?
+        for (let k = 0, j = p.n - 1; k < p.n; j = k++) {
+          const ax = p.xs[j], az = p.zs[j];
+          const dx = p.xs[k] - ax, dz = p.zs[k] - az;
+          const l2 = dx * dx + dz * dz;
+          let t = l2 > 0 ? ((x - ax) * dx + (z - az) * dz) / l2 : 0;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          if (Math.hypot(x - ax - dx * t, z - az - dz * t) < 0.4) return true;
+        }
+      }
+      return false;
+    };
+    const roads = this.roads;
+    const hf = this.hf;
+    const FB = new FenceBuf();
+    for (const c of cands) {
+      const len = c.hi - c.lo;
+      if (len < 2) continue;
+      const T = FENCE[c.type];
+      const f = c.f;
+      const at = (a) => [f.x + f.dx * a + f.nx * c.off, f.z + f.dz * a + f.nz * c.off];
+      const gate0 = len > 6 && c.gate - 1.6 > c.lo + 0.6 && c.gate + 1.6 < c.hi - 0.6 ? c.gate - 1.6 : null;
+      // pieces: [from, to, tile, tint]
+      const pieces = gate0 === null ? [[c.lo, c.hi, T.tile, c.tint]] : [[c.lo, gate0, T.tile, c.tint], [gate0, gate0 + 3.2, T.gate, c.gateTint], [gate0 + 3.2, c.hi, T.tile, c.tint]];
+      for (const [p0, p1, tile, tint] of pieces) {
+        const gate = tile === T.gate && p1 - p0 < 3.3 && T.gate !== T.tile;
+        const step = gate ? p1 - p0 : PANEL;
+        for (let a = p0; a < p1 - 0.05; a += step) {
+          const b = Math.min(p1, a + step);
+          const [x0, z0] = at(a);
+          const [x1, z1] = at(b);
+          const mx = (x0 + x1) / 2;
+          const mz = (z0 + z1) / 2;
+          const nr = roads && roads.nearestRoad(mx, mz, 14);
+          if (nr && nr.dist < nr.road.width / 2 + 0.6) continue;
+          if (hitsBuilding(mx, mz) || hitsBuilding(x0, z0) || hitsBuilding(x1, z1)) continue;
+          FB.panel(x0, z0, hf.heightAt(x0, z0), x1, z1, hf.heightAt(x1, z1), gate && T.gate === 6 ? Math.min(T.h, 1.9) : T.h, tile, (b - a) / step, tint);
+        }
+      }
+    }
+    const g = FB.geometry();
+    if (!g) return;
+    if (!this.fenceMat) this.fenceMat = fenceMaterial();
+    const mesh = new THREE.Mesh(g, this.fenceMat);
+    mesh.matrixAutoUpdate = false;
+    mesh.userData.tris = FB.tris;
+    mesh.name = 'fences';
+    cell.fence = mesh;
+    this.group.add(mesh);
+    this.stats.tris += FB.tris;
   }
 
   // Stream cells around the camera. `budget` = cells built this call.
@@ -1111,12 +1513,18 @@ export class Buildings {
         }
       }
     }
+    const FSHOW = FENCE_SHOW * Math.max(0.75, rg) + CELL * 0.7;
+    let fenceBuilt = 0;
     for (const key of this.builtNear) {
       const cell = this.cells.get(key);
       const d = Math.hypot((cell.gx + 0.5) * CELL - camX, (cell.gz + 0.5) * CELL - camZ);
       if (d > NEAR_OUT_) {
         this.#dispose(cell);
         this.builtNear.delete(key);
+      } else if (cell.fence) cell.fence.visible = d < FSHOW;
+      else if (cell.fenceTodo && d < FSHOW && fenceBuilt < budget) {
+        this.#fencesFor(cell);
+        fenceBuilt++;
       }
     }
     while (bestCell && built < budget) {

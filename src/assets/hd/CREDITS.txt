@@ -23,3 +23,10 @@ foliage_atlas.jpg + foliage_atlas_alpha.jpg   tree leaves, palm fronds, bark   b
   palm_bark              palm trunks      https://polyhaven.com/a/palm_bark        Charlotte Baglioni (Poly Haven), CC0
   palm frond leaflets: drawn procedurally in the script (CC0, this project)
 grass_tuft.png         instanced grass tufts (Medium+)   drawn procedurally in scripts/build-tree-atlas.py (CC0, this project)
+
+HD houses (house looks per area):
+Street imagery attributes derived from Mapillary (CC BY-SA)   https://www.mapillary.com   https://creativecommons.org/licenses/by-sa/4.0/
+  src/data/durban-house-styles.json: wall colours/finish, roof type and colour, boundary walls and fences per area,
+  hand-tagged from Mapillary street photos (2017-2020) of residential streets; photo ids listed per area. No photos are stored.
+  Sampling script: scripts/fetch-house-mapillary.py
+Fence / boundary wall atlas and barred-window house facades: drawn procedurally in src/world/fences.js and src/world/facades.js (CC0, this project)
