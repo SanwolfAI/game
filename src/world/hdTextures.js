@@ -91,6 +91,8 @@ export function groundGrass(fallback) {
 //   layer 7 facebrick  -> red brick colour (1 m sample)
 //   plaster-like walls -> plaster detail (keeps the wall tint)
 //   layer 10 roofIron  -> corrugated iron (2.7 m)
+//   office/hotel/flats/industrial walls + flat roofs -> concrete (2.7 m)
+//   layer 9 roofTile   -> clay roof tiles (2.5 m)
 export function buildingDetail() {
   if (!HD.on) return null;
   return {
@@ -99,11 +101,15 @@ export function buildingDetail() {
       tBrick: { value: hdTex('red_brick_03') },
       tPlaster: { value: hdTex('white_plaster_rough_01') },
       tIron: { value: hdTex('corrugated_iron_02') },
+      tConc: { value: hdTex('concrete_wall_008') },
+      tTile: { value: hdTex('clay_roof_tiles_02') },
       ...(HD.normals
         ? {
             nBrick: { value: hdTex('red_brick_03', 'nor_gl') },
             nPlaster: { value: hdTex('white_plaster_rough_01', 'nor_gl') },
-            nIron: { value: hdTex('corrugated_iron_02', 'nor_gl') }
+            nIron: { value: hdTex('corrugated_iron_02', 'nor_gl') },
+            nConc: { value: hdTex('concrete_wall_008', 'nor_gl') },
+            nTile: { value: hdTex('clay_roof_tiles_02', 'nor_gl') }
           }
         : {})
     }

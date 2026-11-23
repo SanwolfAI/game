@@ -123,9 +123,9 @@ class GeoBuf {
 const HD_PARS = `
 varying vec3 vWP;
 varying vec3 vWN;
-uniform sampler2D tBrick, tPlaster, tIron;
+uniform sampler2D tBrick, tPlaster, tIron, tConc, tTile;
 #ifdef IZK_HDN
-uniform sampler2D nBrick, nPlaster, nIron;
+uniform sampler2D nBrick, nPlaster, nIron, nConc, nTile;
 vec3 izkPerturb(vec3 eye, vec3 n, vec3 mapN, vec2 uv) {
   vec3 q0 = dFdx(eye), q1 = dFdy(eye);
   vec2 st0 = dFdx(uv), st1 = dFdy(uv);
@@ -144,10 +144,14 @@ vec3 izkN = normalize(vWN);
 bool izkRoof = abs(izkN.y) > 0.5;
 vec2 izkUV = izkRoof ? vWP.xz : vec2(dot(vWP.xz, normalize(vec2(-izkN.z, izkN.x) + 1e-5)), vWP.y);
 float izkWall = 1.0 - fWin;
-int izkK = 0; // 1 brick, 2 plaster, 3 iron
-if (!izkRoof && izkL > 6.5 && izkL < 7.5) izkK = 1;
-else if (!izkRoof && (izkL < 0.5 || (izkL > 1.5 && izkL < 5.5) || (izkL > 10.5 && izkL < 11.5))) izkK = 2;
-else if (izkRoof && izkL > 9.5 && izkL < 10.5) izkK = 3;
+int izkK = 0; // 1 brick, 2 plaster, 3 iron, 4 concrete, 5 clay roof tiles
+int izkI = int(izkL);
+if (!izkRoof && izkI == 7) izkK = 1;
+else if (!izkRoof && (izkI == 2 || izkI == 5 || izkI == 11)) izkK = 2;
+else if (!izkRoof && (izkI == 0 || izkI == 3 || izkI == 4 || izkI == 6)) izkK = 4;
+else if (izkRoof && izkI == 10) izkK = 3;
+else if (izkRoof && izkI == 8) izkK = 4;
+else if (izkI == 9) izkK = 5;
 if (izkK == 1) {
   // only where the painted facade is brick-red (keeps white window frames)
   float red = clamp((fTex.r - fTex.b) * 5.0 - 0.4, 0.0, 1.0);
@@ -159,11 +163,17 @@ if (izkK == 1) {
 } else if (izkK == 3) {
   float m = izkLum(texture2D(tIron, izkUV / 2.7).rgb) / 0.343;
   diffuseColor.rgb *= mix(1.0, m, 0.85);
+} else if (izkK == 4) {
+  float m = izkLum(texture2D(tConc, izkUV / 2.7).rgb) / 0.522;
+  diffuseColor.rgb *= mix(1.0, m, 0.6 * (izkRoof ? 1.0 : izkWall));
+} else if (izkK == 5) {
+  float m = izkLum(texture2D(tTile, izkUV / 2.5).rgb) / 0.373;
+  diffuseColor.rgb *= mix(1.0, m, 0.8);
 }`;
 const HD_NORMAL = `
 #ifdef IZK_HDN
-if (izkK > 0 && izkWall > 0.5 && (izkK != 1 || fTex.r - fTex.b > 0.12)) {
-  vec3 mn = izkK == 1 ? texture2D(nBrick, izkUV).xyz : izkK == 2 ? texture2D(nPlaster, izkUV * 0.5).xyz : texture2D(nIron, izkUV / 2.7).xyz;
+if (izkK > 0 && (izkWall > 0.5 || izkRoof) && (izkK != 1 || fTex.r - fTex.b > 0.12)) {
+  vec3 mn = izkK == 1 ? texture2D(nBrick, izkUV).xyz : izkK == 2 ? texture2D(nPlaster, izkUV * 0.5).xyz : izkK == 3 ? texture2D(nIron, izkUV / 2.7).xyz : izkK == 4 ? texture2D(nConc, izkUV / 2.7).xyz : texture2D(nTile, izkUV / 2.5).xyz;
   mn = mn * 2.0 - 1.0;
   mn.xy *= 0.8;
   normal = izkPerturb(-vViewPosition, normal, mn, izkUV);
@@ -229,7 +239,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb * fTex.rgb, fTex.rgb, fWin);` + (hd ? HD
 }`
       );
   };
-  mat.customProgramCacheKey = () => 'izk-building-v1' + (hd ? (hd.N ? '-hdn' : '-hd') : '');
+  mat.customProgramCacheKey = () => 'izk-building-v2' + (hd ? (hd.N ? '-hdn' : '-hd') : '');
   return mat;
 }
 

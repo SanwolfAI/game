@@ -1,6 +1,6 @@
 HD texture pack, slice 1 (1K, diffuse + OpenGL normal, re-encoded JPG q80).
 All CC0 (public domain) from Poly Haven - https://polyhaven.com/license
-Used on the Medium/High graphics tiers only; Low keeps the original flat look.
+Used on all tiers (Low only on phones with 4 GB+ RAM); normal maps on High/HD.
 
 asphalt_02            roads            https://polyhaven.com/a/asphalt_02             Rob Tuytel
 brushed_concrete      kerbs, bridges   https://polyhaven.com/a/brushed_concrete       Dimitrios Savva, Dario Barresi
@@ -11,3 +11,5 @@ red_brick_03          face-brick walls https://polyhaven.com/a/red_brick_03     
 corrugated_iron_02    iron roofs       https://polyhaven.com/a/corrugated_iron_02     Sergej Majboroda, Jenelle van Heerden
 
 Downloads: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/<id>/<id>_{diff,nor_gl}_1k.jpg
+concrete_wall_008     concrete walls, flat roofs https://polyhaven.com/a/concrete_wall_008 Dario Barresi, Charlotte Baglioni
+clay_roof_tiles_02    tiled roofs      https://polyhaven.com/a/clay_roof_tiles_02     Amal Kumar
