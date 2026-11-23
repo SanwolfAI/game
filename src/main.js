@@ -41,7 +41,7 @@ import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
 import { SHADOW, blobMaterial } from './world/blobShadow.js';
-import { GFX, GFX_SETTINGS, saveSetting, tierCaps } from './core/gfx.js';
+import { GFX } from './core/gfx.js';
 import { Kasi } from './world/kasi.js';
 import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
@@ -139,7 +139,8 @@ function buildStars() {
 
 // Crash guard: a launch that never reaches a stable ~20 s of play (whole-phone
 // freeze, GPU hang, killed WebView) leaves this flag behind, so the next
-// launch starts in SAFE MODE: low resolution, no street life/real people,
+// launch starts in SAFE MODE: same HD look (textures, sharpen, >=1.5x), but
+// lighter safety budget (src/core/gfx.js), no street life/real people,
 // (keeps the autosave). ?safe=1 forces it, ?safe=0 skips it.
 const BOOT_KEY = 'izk-boot';
 const qs0 = new URLSearchParams(location.search);
@@ -265,15 +266,16 @@ async function main() {
   // Phones: no MSAA (edges are smoothed by the FXAA in the sharpen pass),
   // default GPU mode. A Hisense-class GPU hung the whole device at 2x + MSAA
   // with the full city on the first frame. Pixels come from the graphics
-  // tier (src/core/gfx.js) and never go below 1x (safe mode = exactly 1x).
+  // one HD mode (src/core/gfx.js): never below 1.5x, safe mode included.
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(SAFE ? 1 : GFX.caps.startPx);
+  renderer.setPixelRatio(GFX.caps.startPx);
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
-  // crisp frames: edge smoothing + light sharpen in one pass (?sharp=0 turns it off)
-  const sharp = new Sharpen(renderer, { off: SAFE || new URLSearchParams(location.search).get('sharp') === '0' });
+  // crisp frames: edge smoothing + light sharpen in one pass, always on in the
+  // HD mode (?sharp=0 turns it off for debugging only)
+  const sharp = new Sharpen(renderer, { off: new URLSearchParams(location.search).get('sharp') === '0' });
 
   const scene = new THREE.Scene();
   const skyDay = new THREE.Color(0x9fc6e2);
@@ -423,7 +425,7 @@ void main(){
   // shader compile and upload); never in safe mode.
   streetLife.group.visible = false;
   let streetLifeOn = false;
-  let streetLifeDelay = SAFE ? Infinity : 4;
+  let streetLifeDelay = SAFE || !GFX.caps.streetLife ? Infinity : 4;
   const traffic = new Traffic(roads, hf, mulberry32(99117), vehicle.x, vehicle.z);
   traffic.props = props;
   traffic.player = vehicle;
@@ -1113,33 +1115,25 @@ void main(){
     if (buildings) buildings.range = r;
     fogRange = r;
   };
-  // ---- graphics tier: live knobs (pixels, draw range, blobs, people) -----
+  // ---- HD mode: invisible performance safety (no menu, no toasts) -------
+  // The look never changes: HD textures, sharpen and >=1.5x pixels stay.
+  // Slow frames trim, in order: an extra pixel step above the start, draw
+  // range, blob shadows, people, grass tufts, more range, and only then
+  // pixels down to the 1.5x floor. Headroom restores in reverse.
   const gfxStats = { ms: 0, steps: 0, upBlock: 0, lastUp: -1e9 };
-  let caps = GFX.caps;
+  const caps = GFX.caps;
   const blobMat = blobMaterial();
   const humanCap = () => (streetLife.humans ? streetLife.humans.cap : caps.humanCap);
   const setHumanCap = (c) => {
     if (streetLife.humans) streetLife.humans.cap = Math.max(1, Math.min(c, streetLife.humans.cand.length));
   };
-  const applyCaps = (c) => {
-    caps = c;
-    if (!SAFE) renderer.setPixelRatio(c.startPx);
-    renderer.setSize(innerWidth, innerHeight);
-    sharp.resize();
-    setRange(c.range);
-    blobMat.visible = true;
-    setHumanCap(c.humanCap);
-    if (sharp.target) sharp.enabled = true;
-  };
-  // Sharpness is the last thing Auto gives up: range, shadows and people go
-  // first; pixels only drop to the tier's floor (minPx, 1.5x on phones) and
-  // the sharpen/edge pass stays on. Only a phone stuck under ~20 fps at the
-  // floor goes lower, and never below 1x.
+  const setTufts = (d) => tufts.setDensity && tufts.setDensity(d);
+  const tuftD = () => (tufts.density == null ? caps.tufts : tufts.density);
   function gfxAdapt(avg) {
     const now = performance.now();
     const cur = renderer.getPixelRatio();
     const rg = roads.range;
-    const floor = caps.minPx || 1;
+    const floor = caps.minPx;
     if (avg > 0.03) {
       if (now - gfxStats.lastUp < 7000) gfxStats.upBlock = now + 30000;
       gfxStats.steps++;
@@ -1147,14 +1141,16 @@ void main(){
       else if (rg > 0.5 + 1e-3) setRange(Math.max(0.5, rg - 0.15));
       else if (blobMat.visible) blobMat.visible = false;
       else if (humanCap() > 6) setHumanCap(Math.max(6, Math.round(humanCap() * 0.6)));
+      else if (tuftD() > 0.3 + 1e-3) setTufts(Math.max(0.3, tuftD() - 0.25));
       else if (rg > 0.4 + 1e-3) setRange(0.4);
       else if (cur > floor + 1e-3) renderer.setPixelRatio(Math.max(floor, cur - 0.25));
-      else if (cur > 1 + 1e-3 && avg > 0.05) renderer.setPixelRatio(Math.max(1, cur - 0.25)); // last resort
       else gfxStats.steps--;
     } else if (avg < 0.021 && now > gfxStats.upBlock) {
       gfxStats.lastUp = now;
       if (!sharp.enabled && sharp.target) sharp.enabled = true;
-      else if (cur < floor - 1e-3) renderer.setPixelRatio(Math.min(floor, cur + 0.25));
+      else if (cur < floor - 1e-3) renderer.setPixelRatio(floor);
+      else if (rg < 0.5 - 1e-3) setRange(0.5);
+      else if (tuftD() < caps.tufts - 1e-3) setTufts(Math.min(caps.tufts, tuftD() + 0.25));
       else if (humanCap() < caps.humanCap) setHumanCap(Math.min(caps.humanCap, humanCap() + 6));
       else if (!blobMat.visible) blobMat.visible = true;
       else if (rg < caps.range - 1e-3) setRange(Math.min(caps.range, rg + 0.1));
@@ -1162,28 +1158,8 @@ void main(){
       else gfxStats.lastUp = -1e9;
     }
   }
-  const tierName = (t) => (t === 'hd' ? 'HD' : t[0].toUpperCase() + t.slice(1));
-  const gfxLabel = () => (GFX.setting === 'auto' ? 'Auto (' + tierName(caps.tier) + ')' : tierName(GFX.setting));
-  {
-    const btn = document.getElementById('m-gfx');
-    if (btn) btn.textContent = gfxLabel();
-    btn?.addEventListener('click', () => {
-      const next = GFX_SETTINGS[(GFX_SETTINGS.indexOf(GFX.setting) + 1) % GFX_SETTINGS.length];
-      GFX.setting = next;
-      GFX.auto = next === 'auto';
-      saveSetting(next);
-      const c = tierCaps(next === 'auto' ? GFX.detected : next);
-      const texNote = c.hd !== GFX.caps.hd || c.normals !== GFX.caps.normals;
-      applyCaps(c);
-      btn.textContent = gfxLabel();
-      if ((next === 'high' || next === 'hd') && GFX.detected === 'low') hud.toast('Heavy for this phone: it may freeze. Auto or Low is safest', 3);
-      else if (texNote) hud.toast('Textures change next time the game starts', 2.5);
-    });
-  }
-  if (!SAFE) {
-    setRange(caps.range);
-    setHumanCap(caps.humanCap);
-  }
+  setRange(caps.range);
+  setHumanCap(caps.humanCap);
   let lastT = performance.now();
   let beatT = 0;
   function frame() {
@@ -1219,10 +1195,8 @@ void main(){
         bootFrames = -1;
       }
     }
-    // Adaptive quality (Auto graphics): aim for ~33-45 fps on any phone.
-    // Slow frames cut, in order: draw distance, blob shadows, animated
-    // people, and only last pixels (never below 1x). Headroom restores in
-    // reverse. A step up that makes things slow again blocks steps up for
+    // Invisible performance safety: aim for ~33-45 fps on any phone while
+    // the HD look stays (see gfxAdapt). Headroom restores in reverse. A step up that makes things slow again blocks steps up for
     // 30 s, so it does not flip-flop.
     resT += Math.min(raw, 0.1);
     resSum += raw;
@@ -1234,7 +1208,7 @@ void main(){
         gfxStats.humansInit = true;
         setHumanCap(caps.humanCap);
       }
-      if (GFX.auto && !SAFE) gfxAdapt(avg);
+      gfxAdapt(avg);
       resT = resSum = resN = 0;
     }
     // watchdog: very slow frames well after street life appeared (not the
@@ -1429,7 +1403,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.bike = bike;
@@ -1454,7 +1428,6 @@ void main(){
   } catch {}
   setBoot('running');
   addEventListener('pagehide', () => { if (bootFrames < 0 || bootTime > 3) setBoot(null); });
-  if (SAFE) setTimeout(() => hud.toast('Safe mode: graphics lowered after a freeze', 4), 4500);
   hud.toast(saved ? 'Welcome back — carrying on where you left off' : `Welcome to Izinja zase Kasi (IZK) — ${seasonForDate(now).name} ${formatSeasonTime(now)}`, 4);
   frame();
 }
