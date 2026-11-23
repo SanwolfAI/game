@@ -5,6 +5,7 @@ import { GameClock, seasonForDate, solarState } from './core/time.js';
 import { Heightfield } from './world/heightfield.js';
 import { buildTerrain, buildLandcover, createGroundMaterial } from './world/terrain.js';
 import { buildLanduse } from './world/landuse.js';
+import { GrassTufts } from './world/grassTufts.js';
 import { RoadNetwork } from './world/roads.js';
 import { City } from './world/city.js';
 import { Buildings } from './world/buildings.js';
@@ -244,6 +245,7 @@ async function main() {
   }
   const props = new Props({ roads, hf, buildings, areas: areaData?.areas, features: featData?.features, coastXZ });
   props.detail = osmDetail;
+  const tufts = new GrassTufts({ hf, roads, buildings, detail: osmDetail });
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
   await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadHumans().then((lib) => (lib ? lib : loadPeople()))]), new Promise((r) => setTimeout(r, 20000))]);
@@ -329,6 +331,7 @@ void main(){
   scene.add(cityGroup);
   if (buildings) scene.add(buildings.group);
   scene.add(props.group);
+  scene.add(tufts.group);
   const dirSigns = new DirSigns({ roads, features: featData?.features });
   scene.add(dirSigns.group);
   const medians = new Medians(roads);
@@ -1364,6 +1367,7 @@ void main(){
     if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
     if (grounds) grounds.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
+    tufts.update(camera.position.x, camera.position.z);
     dirSigns.update(camera.position.x, camera.position.z);
     water.update(dt);
     realLandmarks.update(camera.position.x, camera.position.z);
@@ -1412,10 +1416,11 @@ void main(){
   if (kasi) kasi.update(camera.position.x, camera.position.z);
   if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
   props.update(camera.position.x, camera.position.z, 0, 12);
+  tufts.update(camera.position.x, camera.position.z, true);
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.bike = bike;

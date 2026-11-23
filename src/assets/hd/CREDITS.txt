@@ -13,3 +13,13 @@ corrugated_iron_02    iron roofs       https://polyhaven.com/a/corrugated_iron_0
 Downloads: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/<id>/<id>_{diff,nor_gl}_1k.jpg
 concrete_wall_008     concrete walls, flat roofs https://polyhaven.com/a/concrete_wall_008 Dario Barresi, Charlotte Baglioni
 clay_roof_tiles_02    tiled roofs      https://polyhaven.com/a/clay_roof_tiles_02     Amal Kumar
+
+HD trees and grass (all CC0 / public domain):
+Grass004_diff_1k.jpg   ground grass blades, every tier   https://ambientcg.com/a/Grass004   ambientCG, CC0 https://docs.ambientcg.com/license/
+  (512 copy for phones without HD textures: src/assets/textures/grass004_512.jpg)
+foliage_atlas.jpg + foliage_atlas_alpha.jpg   tree leaves, palm fronds, bark   built by scripts/build-tree-atlas.py from:
+  LeafSet024, LeafSet009 (photo leaves)   https://ambientcg.com/a/LeafSet024  https://ambientcg.com/a/LeafSet009   ambientCG, CC0
+  bark_brown_02          tree trunks      https://polyhaven.com/a/bark_brown_02    Rob Tuytel (Poly Haven), CC0
+  palm_bark              palm trunks      https://polyhaven.com/a/palm_bark        Charlotte Baglioni (Poly Haven), CC0
+  palm frond leaflets: drawn procedurally in the script (CC0, this project)
+grass_tuft.png         instanced grass tufts (Medium+)   drawn procedurally in scripts/build-tree-atlas.py (CC0, this project)

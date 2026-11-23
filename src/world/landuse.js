@@ -8,7 +8,8 @@ const LANDUSE_COLOR = {
 };
 
 // Drapes OSM residential/informal polygons over the terrain as a subtle tint.
-export function buildLanduse(hf, areas, { lift = 0.45, opacity = 0.4 } = {}) {
+// Kept light (was 0.4) so the HD grass texture underneath still reads.
+export function buildLanduse(hf, areas, { lift = 0.45, opacity = 0.16 } = {}) {
   const group = new THREE.Group();
   group.name = 'landuse';
   if (!Array.isArray(areas) || areas.length === 0) return group;
