@@ -1,5 +1,6 @@
 import { registerDialog } from '../ui/dialogs.js';
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { toXZ } from '../core/geo.js';
 
 // Choose where you live (Bheko, 19 Nov 2026). A new player arrives with
@@ -66,9 +67,7 @@ export class Homes {
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(h.x, y + 0.08, h.z);
     g.add(ring);
-    const c = document.createElement('canvas');
-    c.width = 256;
-    c.height = 96;
+    const c = hdCanvas(256, 96);
     const x = c.getContext('2d');
     x.fillStyle = '#1e5a32';
     x.fillRect(0, 0, 256, 96);

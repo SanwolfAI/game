@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { mulberry32 } from '../core/utils.js';
 
 // Township ("kasi") street dressing for Umlazi and KwaMashu.
@@ -39,8 +40,7 @@ const TILE = { side: 0, hatch: 1, doors: 2, roof: 3, wood: 4, wire: 5, brick: 6,
 
 function makeAtlas() {
   const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S * T;
+  const c = hdCanvas(S * T, S * T);
   const g = c.getContext('2d');
   const at = (i) => [(i % T) * S, Math.floor(i / T) * S];
   // corrugated side (light, tinted by paint)
@@ -149,7 +149,7 @@ function makeAtlas() {
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 2;
+  tex.anisotropy = 8;
   return tex;
 }
 

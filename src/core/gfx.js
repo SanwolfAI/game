@@ -1,16 +1,22 @@
-// Graphics quality: Auto / Low / Medium / High, saved on the phone
+// Graphics quality: Auto / Low / Medium / High / HD, saved on the phone
 // (localStorage izk.gfx.v1). Tiers only change the 3D canvas; the HTML HUD
 // is never scaled or blurred by them.
 //
-//  low    1x pixels, current flat textures, fewer people, shorter draw range
-//  medium up to 1.5x pixels, HD (1K CC0) diffuse textures
+// Sharpness first: a phone screen packs 2-3 real pixels into every CSS pixel,
+// so drawing at 1x and stretching looks blurry ("worse than an 80s game").
+// Every tier now draws at least 1.5 real pixels per CSS pixel on such screens.
+//
+//  low    1.5x pixels, HD textures if 4 GB+ RAM (no normal maps), fewer people
+//  medium up to 2x pixels, HD (1K CC0) diffuse textures
 //  high   up to 2x pixels, HD diffuse + normal maps, max anisotropy
+//  hd     full screen pixels (up to 3x), HD diffuse + normal maps
 //
 // Auto picks a starting tier from device signals (pixel density, screen
 // size, RAM, CPU cores, GPU name), then main.js adjusts from frame time.
-// Pixel ratio never drops below 1.0 on any tier.
+// Auto cuts draw range, shadows and people before pixels, and never goes
+// below minPx.
 const KEY = 'izk.gfx.v1';
-export const GFX_SETTINGS = ['auto', 'low', 'medium', 'high'];
+export const GFX_SETTINGS = ['auto', 'low', 'medium', 'high', 'hd'];
 
 function readSetting() {
   try {
@@ -60,13 +66,19 @@ export function detectTier(mobile) {
   return { tier, signals };
 }
 
-// What each tier allows. maxPx is clamped to the screen's own density but
-// never below 1.
+// What each tier allows. maxPx/minPx are clamped to the screen's own
+// density (never above it, never below 1).
 export function tierCaps(tier) {
   const dpr = Math.max(1, devicePixelRatio || 1);
-  if (tier === 'low') return { tier, maxPx: 1, hd: false, normals: false, aniso: 4, humanCap: 14, range: 0.8 };
-  if (tier === 'medium') return { tier, maxPx: Math.max(1, Math.min(dpr, 1.5)), hd: true, normals: false, aniso: 8, humanCap: 22, range: 1 };
-  return { tier, maxPx: Math.max(1, Math.min(dpr, 2)), hd: true, normals: true, aniso: 16, humanCap: 30, range: 1 };
+  const px = (v) => Math.max(1, Math.min(dpr, v));
+  // Low is for budget phones (Hisense E32 Pro, Samsung A04 class), where
+  // High (2x + normal maps + 30 people) froze the phone: 1.5x, no climbing
+  // above it, HD diffuse textures only when the phone has 4 GB+ RAM.
+  const mem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 0;
+  if (tier === 'low') return { tier, maxPx: px(1.5), startPx: px(1.5), minPx: px(1.25), hd: !(mem && mem < 4), normals: false, aniso: 8, humanCap: 14, range: 0.8 };
+  if (tier === 'medium') return { tier, maxPx: px(2), startPx: px(2), minPx: px(1.5), hd: true, normals: false, aniso: 8, humanCap: 22, range: 1 };
+  if (tier === 'hd') return { tier, maxPx: px(3), startPx: px(3), minPx: px(2), hd: true, normals: true, aniso: 16, humanCap: 30, range: 1 };
+  return { tier, maxPx: px(2), startPx: px(2), minPx: px(1.5), hd: true, normals: true, aniso: 16, humanCap: 30, range: 1 };
 }
 
 // Resolved once at boot (textures are built from it). A changed setting

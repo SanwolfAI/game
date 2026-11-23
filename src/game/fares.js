@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { PLACES, toXZ } from '../core/geo.js';
 
 // Every rank runs its own routes, like the real thing (Bheko 19 Nov: "every
@@ -63,9 +64,7 @@ function loadWallet() {
 }
 
 function boardTexture() {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 96;
+  const c = hdCanvas(256, 96);
   const g = c.getContext('2d');
   g.fillStyle = '#f5c400';
   g.fillRect(0, 0, 256, 96);

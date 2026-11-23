@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { mulberry32 } from '../core/utils.js';
+import { TEX_SCALE } from '../core/hdcanvas.js';
 
 // Procedural facade/roof texture array (WebGL2 sampler2DArray, repeat-wrapped
 // per layer, so one material and one draw call cover every building style).
@@ -23,11 +24,12 @@ export const LAYER = {
   glassDark: 12
 };
 export const LAYER_COUNT = 13;
-const S = 256;
+const S = 256; // drawing units per layer
+const R = S * TEX_SCALE; // real pixels per layer (HD)
 
 function canvas() {
   const c = document.createElement('canvas');
-  c.width = c.height = S;
+  c.width = c.height = R;
   return c;
 }
 
@@ -305,23 +307,25 @@ const PAINTERS = {
 };
 
 export function buildFacadeArray() {
-  const data = new Uint8Array(S * S * 4 * LAYER_COUNT);
+  const data = new Uint8Array(R * R * 4 * LAYER_COUNT);
   const names = Object.keys(LAYER).sort((a, b) => LAYER[a] - LAYER[b]);
   for (let i = 0; i < names.length; i++) {
     const c = canvas();
     const mc = canvas();
     const g = c.getContext('2d', { willReadFrequently: true });
     const m = mc.getContext('2d', { willReadFrequently: true });
+    g.scale(TEX_SCALE, TEX_SCALE);
+    m.scale(TEX_SCALE, TEX_SCALE);
     m.fillStyle = '#fff';
     PAINTERS[names[i]](g, m, mulberry32(1000 + i * 77));
-    const col = g.getImageData(0, 0, S, S).data;
-    const msk = m.getImageData(0, 0, S, S).data;
-    const off = i * S * S * 4;
+    const col = g.getImageData(0, 0, R, R).data;
+    const msk = m.getImageData(0, 0, R, R).data;
+    const off = i * R * R * 4;
     // flip vertically so v=0 is the bottom of the layer (ground)
-    for (let y = 0; y < S; y++) {
-      const src = (S - 1 - y) * S * 4;
-      const dst = off + y * S * 4;
-      for (let x = 0; x < S * 4; x += 4) {
+    for (let y = 0; y < R; y++) {
+      const src = (R - 1 - y) * R * 4;
+      const dst = off + y * R * 4;
+      for (let x = 0; x < R * 4; x += 4) {
         data[dst + x] = col[src + x];
         data[dst + x + 1] = col[src + x + 1];
         data[dst + x + 2] = col[src + x + 2];
@@ -329,7 +333,7 @@ export function buildFacadeArray() {
       }
     }
   }
-  const tex = new THREE.DataArrayTexture(data, S, S, LAYER_COUNT);
+  const tex = new THREE.DataArrayTexture(data, R, R, LAYER_COUNT);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -337,7 +341,7 @@ export function buildFacadeArray() {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   tex.needsUpdate = true;
   return tex;
 }

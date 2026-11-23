@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 import { trafficCarModel } from '../game/carModels.js';
 
 // School-day life at the real OSM schools (grounds.sites kind 'school'):
@@ -15,9 +16,7 @@ const UNIFORMS = [0x7a1f2b, 0x1f2f5c, 0x1e5a32, 0x23408f, 0x5a2a6e, 0x2b2b2b, 0x
 const SKIN = [0x3b2416, 0x4a2e1f, 0x5c3a26, 0x6e4a30, 0x8a6446, 0xc89a78];
 
 function boardTexture() {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 48;
+  const c = hdCanvas(256, 48);
   const g = c.getContext('2d');
   g.fillStyle = '#ffd400';
   g.fillRect(0, 0, 256, 48);
