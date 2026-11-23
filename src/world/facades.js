@@ -21,9 +21,11 @@ export const LAYER = {
   roofTile: 9,
   roofIron: 10,
   shop: 11,
-  glassDark: 12
+  glassDark: 12,
+  houseBars: 13,
+  brickBars: 14
 };
-export const LAYER_COUNT = 13;
+export const LAYER_COUNT = 15;
 const S = 256; // drawing units per layer
 const R = S * TEX_SCALE; // real pixels per layer (HD)
 
@@ -39,6 +41,97 @@ function noise(g, rng, alpha, n = 1400, size = 2) {
     g.fillStyle = `rgba(${v},${v},${v},${alpha * rng()})`;
     g.fillRect(rng() * S, rng() * S, size, size);
   }
+}
+
+// Small SA homes (house styles from Mapillary photos, see durban-house-styles.json).
+// One layer = 4 bays x 4 floors; v = 0 (canvas bottom) is the ground.
+// Ground row (canvas y 192-256): window, door with a steel security gate,
+// window, small window - all windows behind burglar bars. Row above: barred
+// windows for double storeys. Top two rows are plain wall (gable ends).
+function barredWindow(g, m, x, y, w, h, frame) {
+  g.fillStyle = 'rgba(0,0,0,0.18)';
+  g.fillRect(x - 3, y - 3, w + 6, h + 7);
+  g.fillStyle = frame;
+  g.fillRect(x - 2, y - 2, w + 4, h + 4);
+  g.fillStyle = '#2c3843';
+  g.fillRect(x, y, w, h);
+  m.fillRect(x, y, w, h);
+  g.fillStyle = 'rgba(170,195,215,0.35)';
+  g.fillRect(x, y, w, h * 0.35);
+  g.fillStyle = frame;
+  g.fillRect(x + w / 2 - 1, y, 2, h);
+  // burglar bars: verticals + two rails, punched out of the glass mask
+  g.fillStyle = '#d8d8d4';
+  for (let bx = x + 3; bx < x + w - 1; bx += 4.5) {
+    g.fillRect(bx, y, 1.3, h);
+    m.clearRect(bx, y, 1.3, h);
+  }
+  g.fillRect(x, y + h * 0.33, w, 1.3);
+  g.fillRect(x, y + h * 0.66, w, 1.3);
+  // sill
+  g.fillStyle = '#c9c3b6';
+  g.fillRect(x - 3, y + h + 2, w + 6, 3);
+}
+function homeDoor(g, x, y, w, h) {
+  g.fillStyle = 'rgba(0,0,0,0.2)';
+  g.fillRect(x - 3, y - 3, w + 6, h + 3);
+  g.fillStyle = '#6b4a33';
+  g.fillRect(x, y, w, h);
+  g.fillStyle = '#5a3d2a';
+  g.fillRect(x + 3, y + 4, w - 6, h / 2 - 6);
+  g.fillRect(x + 3, y + h / 2 + 2, w - 6, h / 2 - 6);
+  // steel security gate over the door
+  g.fillStyle = '#2b2d30';
+  g.fillRect(x - 1, y - 1, w + 2, 2);
+  g.fillRect(x - 1, y - 1, 2, h + 1);
+  g.fillRect(x + w - 1, y - 1, 2, h + 1);
+  for (let bx = x + 4; bx < x + w - 2; bx += 4) g.fillRect(bx, y, 1.2, h);
+  g.fillRect(x, y + h * 0.5, w, 1.5);
+  // step
+  g.fillStyle = '#bdb8ae';
+  g.fillRect(x - 4, y + h, w + 8, 4);
+}
+function homeLayer(g, m, rng, brick) {
+  if (brick) {
+    g.fillStyle = '#9a5a40';
+    g.fillRect(0, 0, S, S);
+    for (let row = 0; row < S / 5; row++) {
+      const off = row % 2 ? 5 : 0;
+      for (let x = -10; x < S; x += 10) {
+        const v = 0.85 + rng() * 0.3;
+        g.fillStyle = `rgb(${Math.round(156 * v)},${Math.round(88 * v)},${Math.round(60 * v)})`;
+        g.fillRect(x + off, row * 5, 9, 4);
+      }
+    }
+  } else {
+    g.fillStyle = '#f2ede2';
+    g.fillRect(0, 0, S, S);
+    noise(g, rng, 0.1, 3200);
+    // faint damp / dust patches
+    for (let i = 0; i < 14; i++) {
+      g.fillStyle = `rgba(120,100,80,${0.03 + rng() * 0.04})`;
+      g.fillRect(rng() * S, rng() * S, 10 + rng() * 40, 6 + rng() * 20);
+    }
+  }
+  const frame = brick ? '#ece8df' : '#f7f6f2';
+  for (let f = 2; f < 4; f++) {
+    const y = f * 64;
+    // eave shadow at the top of each storey
+    const grd = g.createLinearGradient(0, y, 0, y + 8);
+    grd.addColorStop(0, 'rgba(0,0,0,0.35)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, y, S, 8);
+    for (let b = 0; b < 4; b++) {
+      const x = b * 64;
+      if (f === 3 && b === 1) homeDoor(g, x + 21, y + 17, 22, 47);
+      else if (b === 3) barredWindow(g, m, x + 22, y + 22, 20, 16, frame);
+      else barredWindow(g, m, x + 14, y + 20, 36, 24, frame);
+    }
+  }
+  // plinth / splash dirt at the ground
+  g.fillStyle = brick ? 'rgba(40,25,15,0.25)' : 'rgba(110,90,70,0.28)';
+  g.fillRect(0, S - 5, S, 5);
 }
 
 // Each painter draws colour into `g` and the glass mask (white) into `m`.
@@ -286,6 +379,12 @@ const PAINTERS = {
       g.fillStyle = `rgba(140,80,40,${rng() * 0.2})`;
       g.fillRect(rng() * S, rng() * S, 8 + rng() * 30, 4 + rng() * 20);
     }
+  },
+  houseBars(g, m, rng) {
+    homeLayer(g, m, rng, false);
+  },
+  brickBars(g, m, rng) {
+    homeLayer(g, m, rng, true);
   },
   shop(g, m, rng) {
     // Upper floors plaster, ground row = shop windows (used for the first floor of CBD blocks).

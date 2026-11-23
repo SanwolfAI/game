@@ -144,4 +144,4 @@ Test hooks in the URL: `?time=7.2` sets the hour, `?wx=clear` sets the weather, 
 
 ## Licences and credits
 
-The game earns ad revenue, so every asset is commercial-friendly: CC0, CC BY, CC BY-SA, public domain, or ODbL only. Map data © OpenStreetMap contributors (ODbL). Model credits are listed in the game's big map screen (`src/ui/bigmap.js`). No real brand logos are used.
+The game earns ad revenue, so every asset is commercial-friendly: CC0, CC BY, CC BY-SA, public domain, or ODbL only. Map data © OpenStreetMap contributors (ODbL). Street imagery attributes derived from Mapillary (CC BY-SA): house wall colours, roofs and fences per area (`src/data/durban-house-styles.json`, no photos stored). Model credits are listed in the game's big map screen (`src/ui/bigmap.js`). No real brand logos are used.
