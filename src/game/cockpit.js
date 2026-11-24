@@ -294,7 +294,7 @@ function buildGeneric() {
   g.userData.sweep = Math.PI * 1.5;
   g.userData.speedMax = 220;
   g.userData.rpmMax = 8000;
-  g.userData.eye = [DRIVER_X, 1.25, -0.24];
+  g.userData.eye = [DRIVER_X, 1.25, -0.13]; // ~0.55 m behind the hub (seat a little forward, 24 Nov)
   g.userData.mirror = { rearY: 1.47, rearZ: 0.47, roofY: 1.58, wingY: 1.17, wingZ: 0.9 };
   g.userData.hideInMirror = [column];
   return g;
@@ -971,8 +971,9 @@ function buildE30() {
   g.userData.speedMax = 240;
   g.userData.rpmMax = 7000;
   g.userData.paint = paint;
-  // seated eye: ~0.65 m behind the hub, 1.13 m up (E30 hip point ~0.42 m)
-  g.userData.eye = [D, 1.13, -0.23];
+  // seated eye: ~0.55 m behind the hub (Bheko 24 Nov: "move the seat a lil bit forward",
+  // was 0.65 m), 1.13 m up (E30 hip point ~0.42 m)
+  g.userData.eye = [D, 1.13, -0.13];
   g.userData.fixedLift = 0;
   // wing mirrors where the E30 model has them (door front corner, z ~0.5)
   g.userData.mirror = { rearY: 1.29, rearZ: 0.53, roofY: ROOF, wingY: 0.99, wingZ: 0.58, wingZL: 0.84, camZ: 0.44 };

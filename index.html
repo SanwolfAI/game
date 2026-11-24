@@ -587,14 +587,25 @@
         :root { --e: 8px; --sl: max(8px, env(safe-area-inset-left)); --sr: max(8px, env(safe-area-inset-right)); }
         #map-box { left: var(--sl); top: var(--e); padding: 4px; border-radius: 12px; }
         #minimap { width: 72px; height: 72px; }
-        #place, #clock-box, #wallet { display: none !important; }
+        #clock-box, #wallet { display: none !important; }
+        /* the place as a small pill right of the minimap: road on top, area
+           under it in small text, no big box (24 Nov 2026, Bheko). The
+           indicators sit right of it, the centre mirror stays clear below. */
+        #place { display: flex; flex-direction: column; justify-content: center; left: calc(var(--sl) + 90px); top: calc(var(--e) + 4px);
+          width: max-content; max-width: 150px; min-width: 0; height: 36px; box-sizing: border-box; padding: 3px 11px 4px;
+          border-radius: 18px; border: 0; background: rgba(10, 16, 24, 0.42); box-shadow: none; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); pointer-events: none; }
+        #place #street { order: 1; margin: 0; max-width: 128px; font-size: 11.5px; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+        #place #street::before { content: none; }
+        #place #place-name { order: 2; max-width: 128px; font-size: 9.5px; font-weight: 600; line-height: 1.2; letter-spacing: 0.4px; color: var(--accent);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+        #place #place-kind, #place #coords { display: none; }
         #speedo { left: auto; right: calc(var(--sr) + 204px); bottom: var(--e); transform: none; min-width: 0; padding: 3px 12px 4px; border-radius: 12px; }
         #speed-val { font-size: 22px; line-height: 1; }
         #speed-unit, #speed-gear { display: none !important; }
         #speed-bar { margin-top: 3px; height: 3px; width: 56px; }
         #dest { top: var(--e); right: calc(var(--sr) + 54px); left: auto; transform: none; max-width: 210px; padding: 4px 10px 4px 6px; }
         #toast { top: auto; bottom: 48px; max-width: min(360px, 46vw); }
-        #t-signals { left: calc(var(--sl) + 90px); top: var(--e); gap: 6px; }
+        #t-signals { left: calc(var(--sl) + 98px + var(--place-w, 150px)); top: var(--e); gap: 6px; }
         #touch #t-signals .tbtn { width: 44px; height: 44px; border-radius: 12px; }
         #touch .tbtn.small#t-menu { position: absolute; right: var(--sr); top: var(--e); left: auto; width: 44px; height: 44px; border-radius: 12px; z-index: 3; }
         #touch #t-menu .m-close, #touch #t-menu.open .m-open { display: none; }
@@ -605,7 +616,7 @@
         #t-wheel.honk #t-wheel-inner svg { filter: drop-shadow(0 0 10px rgba(255, 207, 92, 0.9)); }
         #t-gas { right: var(--sr); bottom: var(--e); width: 54px; height: 108px; }
         #t-brake { right: calc(var(--sr) + 62px); bottom: var(--e); width: 70px; height: 84px; }
-        #t-gear { right: calc(var(--sr) + 140px); bottom: var(--e); }
+        #t-gear { right: calc(var(--sr) + 140px); bottom: var(--e); gap: 3px; padding: 4px; }
         /* the drawer: a panel under the menu icon, info on the left, icons on the right */
         #touch #t-drawer.open { display: flex; position: absolute; right: var(--sr); top: 58px; gap: 8px; padding: 8px; max-height: calc(100% - 66px); overflow: auto;
           pointer-events: auto; border-radius: 14px; background: rgba(10, 16, 24, 0.86); border: 1px solid var(--edge); z-index: 3; }

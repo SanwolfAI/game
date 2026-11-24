@@ -951,7 +951,7 @@ void main(){
       const sz = vehicle.mesh && vehicle.mesh.userData.size;
       let lift = sz ? Math.max(0, sz.y * 0.88 - 1.24) : 0;
       // driver view: a normal seated eye point from the cockpit (24 Nov 2026,
-      // Bheko: "it's like the car seat is pushed to the front"): about 0.65 m
+      // Bheko: "it's like the car seat is pushed to the front"): about 0.55 m
       // behind the wheel hub, eyes level with the top of the windscreen third,
       // looking a little down the road so the dash and gauges show
       const eye = mode.cockpit && cockpit.userData.eye;
@@ -963,7 +963,13 @@ void main(){
       const ez = eye ? eye[2] : mode.local[2];
       camPos.set(ex, ey + lift, ez);
       ent.group.localToWorld(camPos);
-      camLook.set(ex, ey + lift - (mode.cockpit ? 0.85 : 0.25), ez + 12);
+      // with the seat 0.1 m further forward the passenger wing mirror sat
+      // past the left screen edge, so the driver view turns ~4 deg in toward
+      // the car's centre (as a driver does): both wing mirrors stay framed;
+      // and looks ~1.7 deg further down so the closer wheel, the gauges and
+      // the right wing mirror sit clear of the R/N/D stack
+      const turnIn = mode.cockpit ? -Math.sign(ex || -1) * 0.85 : 0;
+      camLook.set(ex + turnIn, ey + lift - (mode.cockpit ? 1.2 : 0.25), ez + 12);
       ent.group.localToWorld(camLook);
       camera.position.copy(camPos);
       camera.lookAt(camLook);
@@ -1068,20 +1074,30 @@ void main(){
   {
     const menu = document.getElementById('menu');
     // ☰ opens the settings drawer (24 Nov 2026: tidy screen); the gear icon
-    // inside it opens this pause menu. On phones the place, clock and wallet
-    // panels live in the drawer too.
+    // inside it opens this pause menu. On phones the clock and wallet panels
+    // live in the drawer too; the place (road + area) stays on screen as a
+    // small pill beside the minimap (24 Nov 2026, Bheko: "where the location
+    // gone that was beside the map?").
     const drawer = document.getElementById('t-drawer');
     const menuBtn = document.getElementById('t-menu');
     const info = drawer?.querySelector('.dr-info');
     const coarse = matchMedia('(pointer: coarse)').matches;
     const fillInfo = () => {
       if (!coarse || !info) return;
-      for (const id of ['place', 'clock-box', 'wallet']) {
+      for (const id of ['clock-box', 'wallet']) {
         const el = document.getElementById(id);
         if (el && el.parentNode !== info) info.appendChild(el);
       }
     };
     fillInfo();
+    // the indicators sit just right of the place pill, whatever its width
+    const placeEl = document.getElementById('place');
+    if (coarse && placeEl && window.ResizeObserver) {
+      new ResizeObserver(() => {
+        const w = placeEl.offsetWidth;
+        if (w) document.documentElement.style.setProperty('--place-w', `${w}px`);
+      }).observe(placeEl);
+    }
     const setDrawer = (open) => {
       if (!drawer) return;
       if (open) fillInfo();
