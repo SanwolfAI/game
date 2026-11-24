@@ -893,7 +893,7 @@ void main(){
     const inCar = inVehicle && !!mode.local;
     cockpit.visible = inVehicle && !!mode.cockpit;
     if (vehicle.mesh) vehicle.mesh.visible = !cockpit.visible;
-    if (cockpit.visible) updateCockpit(cockpit, vehicle.steer || 0);
+    if (cockpit.visible) updateCockpit(cockpit, vehicle.steer || 0, vehicle);
     setNear(inCar ? mode.near : 1.0);
     if (inCar) {
       // Rigidly mounted in the car (follows pitch and roll). Taller vans

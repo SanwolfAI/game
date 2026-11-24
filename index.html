@@ -548,6 +548,37 @@
         #place { left: 14px; top: 198px; }
         #clock-box { top: 198px; }
       }
+      /* ---- Driver (inside) view: a tidy windscreen (Bheko, 23 Nov 2026).
+         mirrors.js puts the rear-view mirror at the top centre and the wing
+         mirrors at each side; licence.js sets body.mirrors-on and the
+         --mirror-b (bottom of the rear-view mirror) variable. The HUD shrinks,
+         moves to the edges and never covers a mirror. ---- */
+      body.mirrors-on #help, body.mirrors-on #coords { display: none; }
+      body.mirrors-on #dest { top: var(--mirror-b, 92px); }
+      body.mirrors-on #toast { top: calc(var(--mirror-b, 92px) + 52px); }
+      body.mirrors-on #speedo { padding: 6px 12px 7px; min-width: 120px; }
+      body.mirrors-on #speed-val { font-size: 30px; }
+      @media (pointer: coarse) {
+        body.mirrors-on #place, body.mirrors-on #clock-box, body.mirrors-on #wallet { display: none !important; }
+        body.mirrors-on #map-box { left: 8px; top: 8px; padding: 5px; }
+        body.mirrors-on #minimap { width: 90px; height: 90px; }
+        body.mirrors-on #t-signals { left: 110px; top: 8px; }
+        body.mirrors-on #t-interact { right: 8px; top: 8px; }
+        body.mirrors-on #t-cam { right: 60px; top: 8px; }
+        body.mirrors-on #t-cycle { right: 112px; top: 8px; }
+        body.mirrors-on #t-gps { right: 164px; top: 8px; }
+        body.mirrors-on #t-map { right: 216px; top: 8px; }
+        body.mirrors-on #touch .tbtn.small#t-menu { right: 8px; top: 62px; }
+        body.mirrors-on #touch .tbtn.small#t-mute { right: 54px; top: 62px; }
+        body.mirrors-on #touch #t-hand, body.mirrors-on #touch #t-horn { width: 44px; height: 44px; font-size: 10px; }
+        body.mirrors-on #t-horn { right: 90px; bottom: 122px; }
+        body.mirrors-on #t-hand { right: 172px; bottom: 122px; }
+        body.mirrors-on #speedo { bottom: 6px; min-width: 104px; padding: 4px 10px 5px; }
+        body.mirrors-on #speed-val { font-size: 24px; }
+        body.mirrors-on #speed-unit { font-size: 10px; }
+        body.mirrors-on #speed-bar { margin-top: 4px; height: 3px; }
+        body.mirrors-on #toast { max-width: min(360px, 46vw); }
+      }
     </style>
     <script type="importmap">
       {
