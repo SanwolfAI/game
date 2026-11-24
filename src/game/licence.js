@@ -598,11 +598,12 @@ transformed.xz *= max(1.0, 1.0 / poleRpx);`);
   }
 
   // ---------- mirrors (every car, inside view) ----------
-  // Real mirrors (mirrors.js): rear-view at the top centre of the windscreen,
-  // wing mirrors low at each side at door level, each drawn from its real
-  // place on the car (wings show the side of your own car), flipped like a
-  // mirror. Drag a mirror to aim it, double-tap to reset (Bheko, 19 Nov).
-  renderMirrors(renderer, scene, vehicle, inVehicle, insideView) {
+  // Real 3D mirrors on the car (mirrors.js): the rear-view hangs from the top
+  // of the windscreen, the wing mirrors sit on the door corners outside the
+  // side glass, each drawn from its real place on the car (the wings show the
+  // flank and tail of your own car), flipped like a mirror. Drag a mirror to
+  // aim it, double-tap to reset (Bheko, 19 Nov).
+  renderMirrors(renderer, scene, camera, vehicle, inVehicle, insideView) {
     // yard poles keep a minimum on-screen width: pixels per metre at 1 m
     if (this.poleU) this.poleU.uPxPerM.value = renderer.domElement.height / 1.3;
     if (!inVehicle || !insideView || this.mirrorsOff) {
@@ -618,21 +619,17 @@ transformed.xz *= max(1.0, 1.0 / poleRpx);`);
       this.mirrors = new CarMirrors(renderer);
       if (this.lowEnd) this.mirrors.lowEnd = true;
     }
-    const W = renderer.domElement.clientWidth;
-    const H = renderer.domElement.clientHeight;
-    const boxes = this.mirrors.layout(W, H);
     if (!this.mirrorFrames) {
-      this.mirrorFrames = boxes.map(() => {
+      this.mirrorFrames = [0, 1, 2].map(() => {
         const d = document.createElement('div');
         d.className = 'mirror-hit';
-        d.style.cssText = 'position:fixed;z-index:5;pointer-events:auto;touch-action:none;cursor:grab;border-radius:10px;background:transparent';
+        d.style.cssText = 'position:fixed;z-index:5;pointer-events:auto;touch-action:none;cursor:grab;border-radius:8px;background:transparent;display:none';
         document.body.appendChild(d);
         return d;
       });
       try { this.mirrorAim = JSON.parse(localStorage.getItem('izk.mirrors.v2')) || null; } catch (e) { this.mirrorAim = null; }
       if (!this.mirrorAim || this.mirrorAim.length !== 3) this.mirrorAim = [[0, 0], [0, 0], [0, 0]];
       const save = () => { try { localStorage.setItem('izk.mirrors.v2', JSON.stringify(this.mirrorAim)); } catch (e) { /* ignore */ } };
-      this.mirrorHot = -1;
       this.mirrorFrames.forEach((d, k) => {
         let drag = null;
         let lastTap = 0;
@@ -648,14 +645,13 @@ transformed.xz *= max(1.0, 1.0 / poleRpx);`);
           }
           lastTap = now;
           drag = { x: e.clientX, y: e.clientY, a: this.mirrorAim[k][0], b: this.mirrorAim[k][1] };
-          this.mirrorHot = k;
           try { d.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
         });
         d.addEventListener('pointermove', (e) => {
           if (!drag) return;
           e.stopPropagation();
-          const yawMax = 0.35;
-          const pitchMax = 0.2;
+          const yawMax = 0.3;
+          const pitchMax = 0.15;
           this.mirrorAim[k][0] = Math.max(-yawMax, Math.min(yawMax, drag.a + (e.clientX - drag.x) * 0.004));
           this.mirrorAim[k][1] = Math.max(-pitchMax, Math.min(pitchMax, drag.b - (e.clientY - drag.y) * 0.004));
         });
@@ -663,35 +659,36 @@ transformed.xz *= max(1.0, 1.0 / poleRpx);`);
           if (!drag) return;
           e.stopPropagation();
           drag = null;
-          this.mirrorHot = -1;
           save();
         };
         d.addEventListener('pointerup', end);
         d.addEventListener('pointercancel', end);
       });
     }
-    const key = `${W}x${H}`;
-    if (this.mirrorKey !== key || !this.framesShown) {
-      this.mirrorKey = key;
-      boxes.forEach((v, k) => {
-        const st = this.mirrorFrames[k].style;
-        st.left = `${v.x - 4}px`;
-        st.top = `${v.y - 4}px`;
-        st.width = `${v.w + 8}px`;
-        st.height = `${v.h + 8}px`;
-        st.display = 'block';
-      });
-      // the HUD keeps clear of the mirrors (index.html: body.mirrors-on)
-      const bs = document.body.style;
-      bs.setProperty('--mirror-b', `${boxes[0].y + boxes[0].h + 8}px`);
-      bs.setProperty('--wing-t', `${boxes[1].y - 6}px`);
-      bs.setProperty('--wing-b', `${boxes[1].y + boxes[1].h + 8}px`);
-      bs.setProperty('--wing-w', `${boxes[1].x + boxes[1].w + 8}px`);
-      document.body.classList.add('mirrors-on');
-    }
-    this.framesShown = true;
     const cockpit = vehicle.group.getObjectByName('cockpit');
-    this.mirrors.render(scene, vehicle, cockpit, this.mirrorAim, boxes, this.mirrorHot);
+    this.mirrors.render(scene, camera, vehicle, cockpit, this.mirrorAim);
+    // touch areas follow the glass on screen (a little bigger for a thumb)
+    const W = renderer.domElement.clientWidth;
+    const H = renderer.domElement.clientHeight;
+    const boxes = this.mirrors.screenBoxes(camera, W, H);
+    boxes.forEach((v, k) => {
+      const st = this.mirrorFrames[k].style;
+      if (!v) {
+        st.display = 'none';
+        return;
+      }
+      const pad = Math.max(6, (44 - Math.min(v.w, v.h)) / 2);
+      const key = `${Math.round(v.x)}|${Math.round(v.y)}|${Math.round(v.w)}|${Math.round(v.h)}`;
+      if (this.mirrorFrames[k].dataset.k === key && st.display === 'block') return;
+      this.mirrorFrames[k].dataset.k = key;
+      st.left = `${Math.round(v.x - pad)}px`;
+      st.top = `${Math.round(v.y - pad)}px`;
+      st.width = `${Math.round(v.w + pad * 2)}px`;
+      st.height = `${Math.round(v.h + pad * 2)}px`;
+      st.display = 'block';
+    });
+    if (!this.framesShown) document.body.classList.add('mirrors-on');
+    this.framesShown = true;
   }
 
   // ---------- lesson pick-up at home ----------

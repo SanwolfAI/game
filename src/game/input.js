@@ -177,6 +177,10 @@ export class Input {
     let pid = null;
     let lastAng = 0;
     let lastX = 0;
+    // horn in the steering wheel (Bheko, 24 Nov: "take out horn button, suppose
+    // to be in the steering"): a short tap on the hub with little movement
+    // sounds the horn; any real drag is steering
+    let tap = null;
     const polar = (e) => {
       const r = el.getBoundingClientRect();
       const cx = r.left + r.width / 2;
@@ -192,6 +196,7 @@ export class Input {
       const p = polar(e);
       lastAng = p.ang;
       lastX = e.clientX;
+      tap = p.rad < 0.34 ? { t: performance.now(), x: e.clientX, y: e.clientY, deg: this.wheelDeg } : null;
       this.wheelHeld = true;
       this.lastSource = 'touch';
       el.classList.add('active');
@@ -217,6 +222,13 @@ export class Input {
     const up = (e) => {
       if (e.pointerId !== pid) return;
       pid = null;
+      if (tap && e.type === 'pointerup' && performance.now() - tap.t < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 12) {
+        this.wheelDeg = tap.deg; // a tap is not a turn
+        this.queue.push('horn');
+        el.classList.add('honk');
+        setTimeout(() => el.classList.remove('honk'), 160);
+      }
+      tap = null;
       this.wheelHeld = false;
       el.classList.remove('active');
     };

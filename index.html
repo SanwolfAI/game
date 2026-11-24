@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1620" />
     <link rel="icon" href="data:," />
     <title>Izinja zase Kasi (IZK) — Durban</title>
@@ -509,7 +509,7 @@
       #ride-cabin .rc-l { left: -4%; top: 0; bottom: 0; width: 11%; transform: skewX(-12deg); background: linear-gradient(90deg, #1b1d20, #2c2f33); }
       #ride-cabin .rc-r { right: -4%; top: 0; bottom: 0; width: 11%; transform: skewX(12deg); background: linear-gradient(270deg, #1b1d20, #2c2f33); }
       #ride-cabin .rc-dash { left: 0; right: 0; bottom: 0; height: 24%; border-radius: 45% 45% 0 0 / 22% 22% 0 0; background: linear-gradient(#34373b, #1a1c1f 40%); }
-      body.riding #touch > *:not(#t-menu):not(#t-mute):not(#t-map) { display: none !important; }
+      body.riding #touch > *:not(#t-menu):not(#t-drawer) { display: none !important; }
       @media (pointer: coarse) {
         #touch { display: block; }
         #help { display: none; }
@@ -548,36 +548,80 @@
         #place { left: 14px; top: 198px; }
         #clock-box { top: 198px; }
       }
-      /* ---- Driver (inside) view: a tidy windscreen (Bheko, 23 Nov 2026).
-         mirrors.js puts the rear-view mirror at the top centre and the wing
-         mirrors at each side; licence.js sets body.mirrors-on and the
-         --mirror-b (bottom of the rear-view mirror) variable. The HUD shrinks,
-         moves to the edges and never covers a mirror. ---- */
-      body.mirrors-on #help, body.mirrors-on #coords { display: none; }
-      body.mirrors-on #dest { top: var(--mirror-b, 92px); }
-      body.mirrors-on #toast { top: calc(var(--mirror-b, 92px) + 52px); }
-      body.mirrors-on #speedo { padding: 6px 12px 7px; min-width: 120px; }
-      body.mirrors-on #speed-val { font-size: 30px; }
+      /* ---- HUD icons (24 Nov 2026, Bheko: "no names, icons like a camera
+         icon for cam, all HD"). Inline SVG from the sprite at the top of
+         <body>, so they stay sharp at any pixel ratio. ---- */
+      #touch .ico { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; flex: none; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55)); }
+      #touch .tbtn.small .ico { width: 24px; height: 24px; }
+      #touch #t-hand .ico, #touch #t-horn .ico { width: 30px; height: 30px; }
+      #touch #t-signals .ico { width: 22px; height: 22px; }
+      #touch #t-signals #t-ind-l .ico, #touch #t-signals #t-ind-r .ico { fill: currentColor; fill-opacity: 0.25; }
+      #touch #t-signals .tbtn.on .ico { fill-opacity: 1; color: #fff4d6; }
+      #touch #t-haz .ico { stroke-width: 2.2; }
+      #touch #t-lights .ico.hi, #touch #t-lights.high .ico.lo { display: none; }
+      #touch #t-lights.high .ico.hi { display: block; }
+      #touch #t-lights-mode { position: absolute; right: 2px; bottom: 1px; line-height: 0; }
+      #touch #t-lights-mode .ico { width: 12px; height: 12px; stroke-width: 2.6; color: var(--accent); filter: none; display: none; }
+      #touch #t-lights[data-mode="auto"] .m-auto { display: block; }
+      #touch #t-lights[data-mode="off"] .m-off { display: block; position: absolute; right: 9px; bottom: 7px; width: 26px; height: 26px; color: #ff8a6b; stroke-width: 2.2; }
+      #touch #t-lights[data-mode="off"] .ico.lo { opacity: 0.55; }
+      #touch #t-mute .off-snd, #touch #t-mute.muted .on-snd { display: none; }
+      #touch #t-mute.muted .off-snd { display: block; color: #ffb4a8; }
+      #touch #t-menu .ico { width: 22px; height: 22px; }
+      #touch .pedal { align-items: flex-end; padding-bottom: 8px; }
+      #touch .pedal .ico { width: 24px; height: 24px; stroke-width: 2.4; color: #1b2127; filter: none; position: relative; z-index: 1; }
+      #touch #t-run .ico { width: 32px; height: 32px; }
+      #touch #t-act { min-width: 0; width: 60px; height: 60px; padding: 0; border-radius: 50%; }
+      #touch #t-act .ico { width: 30px; height: 30px; display: none; filter: none; }
+      #touch #t-act[data-kind="car"] .k-car, #touch #t-act[data-kind="bike"] .k-bike, #touch #t-act[data-kind="bike-off"] .k-bike-off,
+      #touch #t-act[data-kind="rank"] .k-rank, #touch #t-act[data-kind="desk"] .k-desk { display: block; }
+      /* ---- Tidy phone HUD (24 Nov 2026, Bheko: "the screen is too dirty,
+         tidy it ... hide other things in settings ... and tidy up").
+         On the driving screen only: small minimap (top-left), indicators,
+         one menu icon (top-right), small speed, steering wheel (horn in the
+         hub), pedals and R/N/D. Everything else is in the drawer the menu
+         icon opens. 8 px from every edge, 44-48 px touch targets, nothing
+         overlaps, and the corners keep clear of the 3D mirrors. ---- */
+      #touch #t-drawer { display: none; }
       @media (pointer: coarse) {
-        body.mirrors-on #place, body.mirrors-on #clock-box, body.mirrors-on #wallet { display: none !important; }
-        body.mirrors-on #map-box { left: 8px; top: 8px; padding: 5px; }
-        body.mirrors-on #minimap { width: 90px; height: 90px; }
-        body.mirrors-on #t-signals { left: 110px; top: 8px; }
-        body.mirrors-on #t-interact { right: 8px; top: 8px; }
-        body.mirrors-on #t-cam { right: 60px; top: 8px; }
-        body.mirrors-on #t-cycle { right: 112px; top: 8px; }
-        body.mirrors-on #t-gps { right: 164px; top: 8px; }
-        body.mirrors-on #t-map { right: 216px; top: 8px; }
-        body.mirrors-on #touch .tbtn.small#t-menu { right: 8px; top: 62px; }
-        body.mirrors-on #touch .tbtn.small#t-mute { right: 54px; top: 62px; }
-        body.mirrors-on #touch #t-hand, body.mirrors-on #touch #t-horn { width: 44px; height: 44px; font-size: 10px; }
-        body.mirrors-on #t-horn { right: 90px; bottom: 122px; }
-        body.mirrors-on #t-hand { right: 172px; bottom: 122px; }
-        body.mirrors-on #speedo { bottom: 6px; min-width: 104px; padding: 4px 10px 5px; }
-        body.mirrors-on #speed-val { font-size: 24px; }
-        body.mirrors-on #speed-unit { font-size: 10px; }
-        body.mirrors-on #speed-bar { margin-top: 4px; height: 3px; }
-        body.mirrors-on #toast { max-width: min(360px, 46vw); }
+        :root { --e: 8px; --sl: max(8px, env(safe-area-inset-left)); --sr: max(8px, env(safe-area-inset-right)); }
+        #map-box { left: var(--sl); top: var(--e); padding: 4px; border-radius: 12px; }
+        #minimap { width: 72px; height: 72px; }
+        #place, #clock-box, #wallet { display: none !important; }
+        #speedo { left: auto; right: calc(var(--sr) + 204px); bottom: var(--e); transform: none; min-width: 0; padding: 3px 12px 4px; border-radius: 12px; }
+        #speed-val { font-size: 22px; line-height: 1; }
+        #speed-unit, #speed-gear { display: none !important; }
+        #speed-bar { margin-top: 3px; height: 3px; width: 56px; }
+        #dest { top: var(--e); right: calc(var(--sr) + 54px); left: auto; transform: none; max-width: 210px; padding: 4px 10px 4px 6px; }
+        #toast { top: auto; bottom: 48px; max-width: min(360px, 46vw); }
+        #t-signals { left: calc(var(--sl) + 90px); top: var(--e); gap: 6px; }
+        #touch #t-signals .tbtn { width: 44px; height: 44px; border-radius: 12px; }
+        #touch .tbtn.small#t-menu { position: absolute; right: var(--sr); top: var(--e); left: auto; width: 44px; height: 44px; border-radius: 12px; z-index: 3; }
+        #touch #t-menu .m-close, #touch #t-menu.open .m-open { display: none; }
+        #touch #t-menu.open .m-close { display: block; }
+        #touch .tbtn.small#t-menu.open { background: #ffcf5c; border-color: #ffe08a; color: #17202a; }
+        #touch #t-menu.open .ico { filter: none; }
+        #t-wheel { left: var(--sl); bottom: var(--e); width: 120px; height: 120px; }
+        #t-wheel.honk #t-wheel-inner svg { filter: drop-shadow(0 0 10px rgba(255, 207, 92, 0.9)); }
+        #t-gas { right: var(--sr); bottom: var(--e); width: 54px; height: 108px; }
+        #t-brake { right: calc(var(--sr) + 62px); bottom: var(--e); width: 70px; height: 84px; }
+        #t-gear { right: calc(var(--sr) + 140px); bottom: var(--e); }
+        /* the drawer: a panel under the menu icon, info on the left, icons on the right */
+        #touch #t-drawer.open { display: flex; position: absolute; right: var(--sr); top: 58px; gap: 8px; padding: 8px; max-height: calc(100% - 66px); overflow: auto;
+          pointer-events: auto; border-radius: 14px; background: rgba(10, 16, 24, 0.86); border: 1px solid var(--edge); z-index: 3; }
+        #t-drawer .dr-grid { display: grid; grid-template-columns: repeat(3, 48px); grid-auto-rows: 48px; gap: 8px; align-content: start; }
+        #touch #t-drawer .dr-grid .tbtn.small { position: relative !important; inset: auto !important; width: 48px !important; height: 48px !important; border-radius: 12px; }
+        #t-drawer .dr-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 220px; }
+        #t-drawer .dr-info:empty { display: none; }
+        #t-drawer .dr-info > * { position: static !important; display: block !important; inset: auto !important; transform: none !important; margin: 0 !important; }
+        #t-drawer .dr-info #place, #t-drawer .dr-info #clock-box { padding: 6px 10px; text-align: left; }
+        #t-drawer .dr-info #wallet { align-self: flex-start; }
+        body.on-foot #t-drawer #t-cycle, body.on-foot #t-drawer #t-hand, body.on-foot #t-drawer #t-lights { display: none !important; }
+        #touch #t-act { right: var(--sr); bottom: 120px; }
+        #touch #t-run { right: var(--sr); bottom: var(--e); }
+        body.riding #touch > #t-drawer { display: none !important; }
+        body.riding #touch > #t-drawer.open { display: flex !important; }
+        body.riding #t-drawer .tbtn:not(#t-mute):not(#t-map):not(#t-pause) { display: none !important; }
       }
     </style>
     <script type="importmap">
@@ -590,6 +634,35 @@
     </script>
   </head>
   <body>
+    <svg id="ico-sprite" width="0" height="0" style="position:absolute" aria-hidden="true">
+      <!-- HUD icons: Lucide (ISC, lucide.dev) and our own drawings; see src/assets/hd/CREDITS.txt -->
+      <symbol id="i-cam" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /> <circle cx="12" cy="13" r="3" /></symbol>
+      <symbol id="i-car" viewBox="0 0 24 24"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" /> <circle cx="7" cy="17" r="2" /> <path d="M9 17h6" /> <circle cx="17" cy="17" r="2" /></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" /> <path d="M15 5.764v15" /> <path d="M9 3.236v15" /></symbol>
+      <symbol id="i-gps" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" /></symbol>
+      <symbol id="i-door" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14" /> <path d="M2 20h3" /> <path d="M13 20h9" /> <path d="M10 12v.01" /> <path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z" /></symbol>
+      <symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" /> <path d="M16 9a5 5 0 0 1 0 6" /> <path d="M19.364 18.364a9 9 0 0 0 0-12.728" /></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" /> <line x1="22" x2="16" y1="9" y2="15" /> <line x1="16" x2="22" y1="9" y2="15" /></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12" /> <line x1="4" x2="20" y1="6" y2="6" /> <line x1="4" x2="20" y1="18" y2="18" /></symbol>
+      <symbol id="i-horn" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z" /> <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></symbol>
+      <symbol id="i-gas" viewBox="0 0 24 24"><path d="m12 14 4-4" /> <path d="M3.34 19a10 10 0 1 1 17.32 0" /></symbol>
+      <symbol id="i-brake" viewBox="0 0 24 24"><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z" /> <path d="M8 12h8" /></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="M18 15h-6v4l-7-7 7-7v4h6v6z" /></symbol>
+      <symbol id="i-right" viewBox="0 0 24 24"><path d="M6 9h6V5l7 7-7 7v-4H6V9z" /></symbol>
+      <symbol id="i-run" viewBox="0 0 24 24"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z" /> <path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z" /> <path d="M16 17h4" /> <path d="M4 13h4" /></symbol>
+      <symbol id="i-bike" viewBox="0 0 24 24"><circle cx="18.5" cy="17.5" r="3.5" /> <circle cx="5.5" cy="17.5" r="3.5" /> <circle cx="15" cy="5" r="1" /> <path d="M12 17.5V14l-3-3 4-3 2 3h2" /></symbol>
+      <symbol id="i-bus" viewBox="0 0 24 24"><path d="M8 6v6" /> <path d="M15 6v6" /> <path d="M2 12h19.6" /> <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" /> <circle cx="7" cy="18" r="2" /> <path d="M9 18h5" /> <circle cx="16" cy="18" r="2" /></symbol>
+      <symbol id="i-school" viewBox="0 0 24 24"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" /> <path d="M22 10v6" /> <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" /></symbol>
+      <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /> <polyline points="16 17 21 12 16 7" /> <line x1="21" x2="9" y1="12" y2="12" /></symbol>
+      <symbol id="i-auto" viewBox="0 0 24 24"><path d="M12 8a2.83 2.83 0 0 0 4 4 4 4 0 1 1-4-4" /> <path d="M12 2v2" /> <path d="M12 20v2" /> <path d="m4.9 4.9 1.4 1.4" /> <path d="m17.7 17.7 1.4 1.4" /> <path d="M2 12h2" /> <path d="M20 12h2" /> <path d="m6.3 17.7-1.4 1.4" /> <path d="m19.1 4.9-1.4 1.4" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /> <circle cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18" /> <path d="m6 6 12 12" /></symbol>
+      <symbol id="i-hazard" viewBox="0 0 24 24"><path d="M12 3 22 20H2Z"/><path d="M12 10 15.5 16h-7Z"/></symbol>
+      <symbol id="i-low" viewBox="0 0 24 24"><path d="M14 5c4 0 7 3.1 7 7s-3 7-7 7c-.9 0-1.5-.6-1.5-1.5v-11C12.5 5.6 13.1 5 14 5Z"/><path d="M9.5 6.5 3 8.5"/><path d="M9.5 11 3 13"/><path d="M9.5 15.5 3 17.5"/></symbol>
+      <symbol id="i-high" viewBox="0 0 24 24"><path d="M14 5c4 0 7 3.1 7 7s-3 7-7 7c-.9 0-1.5-.6-1.5-1.5v-11C12.5 5.6 13.1 5 14 5Z"/><path d="M9.5 7H3"/><path d="M9.5 12H3"/><path d="M9.5 17H3"/></symbol>
+      <symbol id="i-slash" viewBox="0 0 24 24"><path d="M3 3 21 21"/></symbol>
+      <symbol id="i-hbrake" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M5.2 5.5a9.5 9.5 0 0 0 0 13"/><path d="M18.8 5.5a9.5 9.5 0 0 1 0 13"/><path d="M12 8.6v4.2"/><path d="M12 15.6h.01"/></symbol>
+    </svg>
     <div id="app"></div>
 
     <div id="hud">
@@ -659,38 +732,45 @@
             <path d="M50 50 L91 47 L91 55 L50 58 Z" fill="url(#wMetal)" />
             <path d="M46 52 L44 91 L56 91 L54 52 Z" fill="url(#wMetal)" />
             <circle cx="50" cy="52" r="14" fill="url(#wHub)" stroke="#9aa2a8" stroke-width="1.2" />
-            <circle cx="50" cy="52" r="5" fill="none" stroke="#6b7177" stroke-width="1" />
+            <use href="#i-horn" x="44" y="46" width="12" height="12" fill="none" stroke="#c9cfd4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
             <rect x="47.6" y="2.6" width="4.8" height="9.8" rx="1.2" fill="#ffcf5c" />
           </svg>
         </div>
       </div>
-      <div class="pedal" id="t-brake" data-action="brake">BRAKE</div>
-      <div class="pedal" id="t-gas" data-action="gas">GAS</div>
+      <div class="pedal" id="t-brake" data-action="brake" aria-label="Brake"><svg class="ico"><use href="#i-brake"/></svg></div>
+      <div class="pedal" id="t-gas" data-action="gas" aria-label="Accelerator"><svg class="ico"><use href="#i-gas"/></svg></div>
       <div id="t-gear" class="panel" aria-label="Gear selector">
         <button class="gear-btn" type="button" data-gear="R">R</button>
         <button class="gear-btn" type="button" data-gear="N">N</button>
         <button class="gear-btn active" type="button" data-gear="D">D</button>
       </div>
-      <div class="tbtn" id="t-hand" data-action="handbrake">DRIFT</div>
-      <div class="tbtn" id="t-horn" data-action="horn" data-press="true">HORN</div>
-      <div class="tbtn small" id="t-interact" data-action="interact" data-press="true">IN/OUT</div>
-      <div class="tbtn small" id="t-cam" data-action="camera" data-press="true">CAM</div>
-      <div class="tbtn small" id="t-cycle" data-action="cycle" data-press="true">CAR</div>
-      <div class="tbtn small" id="t-gps" data-action="destination" data-press="true">GPS</div>
-      <div class="tbtn small" id="t-map" data-action="map" data-press="true">MAP</div>
-      <div class="tbtn small" id="t-mute" data-action="mute" data-press="true">SND</div>
-      <div class="tbtn small" id="t-menu" aria-label="Menu">☰</div>
+      <div class="tbtn small" id="t-menu" aria-label="Menu" aria-expanded="false"><svg class="ico m-open"><use href="#i-menu"/></svg><svg class="ico m-close"><use href="#i-x"/></svg></div>
+      <!-- Settings drawer (24 Nov 2026, Bheko: "the screen is too dirty, tidy it"):
+           everything that is not needed every second lives here, as icons. -->
+      <div id="t-drawer" aria-hidden="true">
+        <div class="dr-info"></div>
+        <div class="dr-grid">
+          <div class="tbtn small" id="t-map" data-action="map" data-press="true" aria-label="Map"><svg class="ico"><use href="#i-map"/></svg></div>
+          <div class="tbtn small" id="t-gps" data-action="destination" data-press="true" aria-label="GPS destination"><svg class="ico"><use href="#i-gps"/></svg></div>
+          <div class="tbtn small" id="t-cam" data-action="camera" data-press="true" aria-label="Camera view"><svg class="ico"><use href="#i-cam"/></svg></div>
+          <div class="tbtn small" id="t-cycle" data-action="cycle" data-press="true" aria-label="Change car"><svg class="ico"><use href="#i-car"/></svg></div>
+          <div class="tbtn small" id="t-interact" data-action="interact" data-press="true" aria-label="Get in or out"><svg class="ico"><use href="#i-door"/></svg></div>
+          <div class="tbtn small" id="t-lights" data-action="lights" data-press="true" aria-label="Headlights" data-mode="auto"><svg class="ico lo"><use href="#i-low"/></svg><svg class="ico hi"><use href="#i-high"/></svg><span id="t-lights-mode"><svg class="ico m-auto"><use href="#i-auto"/></svg><svg class="ico m-off"><use href="#i-slash"/></svg></span></div>
+          <div class="tbtn small" id="t-hand" data-action="handbrake" aria-label="Handbrake / drift"><svg class="ico"><use href="#i-hbrake"/></svg></div>
+          <div class="tbtn small" id="t-mute" data-action="mute" data-press="true" aria-label="Sound on or off"><svg class="ico on-snd"><use href="#i-vol"/></svg><svg class="ico off-snd"><use href="#i-mute"/></svg></div>
+          <div class="tbtn small" id="t-pause" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></div>
+        </div>
+      </div>
       <div id="t-foot">
         <div id="t-joy-zone" aria-label="Walk joystick"></div>
         <div id="t-joy"><div id="t-joy-knob"></div></div>
-        <div class="tbtn" id="t-run" aria-label="Run">RUN<div id="t-stam"><i></i></div></div>
-        <div class="tbtn none" id="t-act" data-action="interact" data-press="true">ACTION</div>
+        <div class="tbtn" id="t-run" aria-label="Run"><svg class="ico"><use href="#i-run"/></svg><div id="t-stam"><i></i></div></div>
+        <div class="tbtn none" id="t-act" data-action="interact" data-press="true" aria-label="Action"><svg class="ico k-car"><use href="#i-door"/></svg><svg class="ico k-bike"><use href="#i-bike"/></svg><svg class="ico k-bike-off"><use href="#i-out"/></svg><svg class="ico k-rank"><use href="#i-bus"/></svg><svg class="ico k-desk"><use href="#i-school"/></svg></div>
       </div>
       <div id="t-signals">
-        <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator">◀</div>
-        <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards">▲</div>
-        <div class="tbtn sig" id="t-ind-r" data-action="indRight" data-press="true" aria-label="Right indicator">▶</div>
-        <div class="tbtn sig" id="t-lights" data-action="lights" data-press="true" aria-label="Headlights">LIGHT<span id="t-lights-mode">A</span></div>
+        <div class="tbtn sig" id="t-ind-l" data-action="indLeft" data-press="true" aria-label="Left indicator"><svg class="ico"><use href="#i-left"/></svg></div>
+        <div class="tbtn sig" id="t-haz" data-action="hazard" data-press="true" aria-label="Hazards"><svg class="ico"><use href="#i-hazard"/></svg></div>
+        <div class="tbtn sig" id="t-ind-r" data-action="indRight" data-press="true" aria-label="Right indicator"><svg class="ico"><use href="#i-right"/></svg></div>
       </div>
     </div>
 
