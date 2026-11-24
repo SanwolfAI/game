@@ -1,0 +1,58 @@
+/* Full screen on any phone (src/ui/fit.js sets --hud-z; the Android app sets --nat-*).
+   Kept in its own file so the main layout in index.html stays as it is.
+   Every rule starts with "html" so it wins over the same rule in index.html. */
+:root {
+  /* notch / camera hole / rounded corners: the larger of what the browser
+     reports (env) and what the Android app measured (--nat-*, in CSS px) */
+  --sa-l: max(env(safe-area-inset-left, 0px), var(--nat-l, 0px));
+  --sa-r: max(env(safe-area-inset-right, 0px), var(--nat-r, 0px));
+  --sa-t: max(env(safe-area-inset-top, 0px), var(--nat-t, 0px));
+  --sa-b: max(env(safe-area-inset-bottom, 0px), var(--nat-b, 0px));
+  /* the HUD boxes already sit ~10 px from the edge; only add what a rounded
+     screen corner needs beyond that */
+  --sa-c: max(0px, calc(var(--nat-c, 0px) - 8px));
+  --hud-l: max(var(--sa-l), var(--sa-c));
+  --hud-r: max(var(--sa-r), var(--sa-c));
+  --hud-t: max(var(--sa-t), var(--sa-c));
+  --hud-b: max(var(--sa-b), var(--sa-c));
+}
+/* The 3D view fills the whole visible screen, notch areas included. */
+html, html body { width: 100%; height: 100%; height: 100dvh; overflow: hidden; }
+html #app { inset: 0; width: 100%; height: 100%; }
+html #app canvas { touch-action: none; }
+
+/* HUD and touch controls live inside the safe rectangle, and grow / shrink
+   with the screen (--hud-z: 1 on an 800 x 360 phone such as the Samsung A04,
+   bigger on tablets and big phones, smaller on tiny screens). Zoom also scales
+   the box's own insets, so they are divided back by the zoom. */
+html #hud, html #touch {
+  zoom: var(--hud-z, 1);
+  top: calc(var(--hud-t) / var(--hud-z, 1));
+  right: calc(var(--hud-r) / var(--hud-z, 1));
+  bottom: calc(var(--hud-b) / var(--hud-z, 1));
+  left: calc(var(--hud-l) / var(--hud-z, 1));
+}
+/* The walk joystick is placed from finger positions in screen pixels, so it
+   is drawn unzoomed. */
+html #t-joy { zoom: calc(1 / var(--hud-z, 1)); }
+
+/* Other full-screen layers: keep their buttons out of the notch too. */
+html #bigmap-top { left: calc(10px + var(--hud-l)); top: calc(10px + var(--hud-t)); }
+html #bigmap-btns { right: calc(10px + var(--hud-r)); top: calc(10px + var(--hud-t)); }
+html #bigmap-info { bottom: calc(12px + var(--hud-b)); }
+html #ride-bar { bottom: calc(12px + var(--hud-b)); }
+html #menu { padding: var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l); }
+
+/* Loading screen: the app icon above the title. */
+html #loading::before {
+  content: "";
+  width: clamp(84px, 26vmin, 200px);
+  height: clamp(84px, 26vmin, 200px);
+  border-radius: 22%;
+  background: #0d1620 url("../assets/icons/icon-512.png") center / cover no-repeat;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+@media (max-height: 380px) {
+  html #loading { gap: 8px; }
+  html #loading h1 { font-size: clamp(26px, 7vmin, 44px); }
+}
