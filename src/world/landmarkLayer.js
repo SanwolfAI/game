@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { hdCanvas } from '../core/hdcanvas.js';
 
 // Real landmarks from OpenStreetMap (src/data/durban-landmarks.json, built by
 // scripts/build-landmarks.py): hospitals, clinics, schools, campuses, police,
@@ -227,13 +228,11 @@ export class LandmarkLayer {
       const yaw = Math.atan2(near.dirX, near.dirZ);
       this.spots.push({ l, x, z, yaw, y: this.hf.heightAt(x, z) });
     }
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 1024;
-    this.canvas.height = 640;
+    this.canvas = hdCanvas(1024, 640); // HD scale: boards drawn in old units, 2x pixels
     this.ctx = this.canvas.getContext('2d');
     this.tex = new THREE.CanvasTexture(this.canvas);
     this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.tex.anisotropy = 4;
+    this.tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
     this.slots = new Array(SLOTS).fill(null);
     // board: two faces (front + back) per slot, UVs set per slot
     const boardGeo = new THREE.PlaneGeometry(3.6, 1.8);

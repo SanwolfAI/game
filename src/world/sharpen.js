@@ -52,6 +52,7 @@ export class Sharpen {
   constructor(renderer, opts = {}) {
     this.renderer = renderer;
     this.enabled = false;
+    this.debugOff = !!opts.off; // ?sharp=0 (debug only); the game never turns it off
     const gl = renderer.getContext();
     const ok = renderer.capabilities.isWebGL2 && (gl.getExtension('EXT_color_buffer_half_float') || gl.getExtension('EXT_color_buffer_float'));
     if (!ok || opts.off) return;
@@ -107,8 +108,8 @@ export class Sharpen {
 }
 
 // Sharper textures at grazing angles (roads, ground, facades): raise every
-// loaded texture's anisotropy to what the GPU allows (capped per graphics tier).
-export function sharpenTextures(scene, renderer, cap = 8) {
+// loaded texture's anisotropy to what the GPU allows, with mipmaps.
+export function sharpenTextures(scene, renderer, cap = 16) {
   const max = Math.min(cap, renderer.capabilities.getMaxAnisotropy() || 1);
   if (max <= 1) return;
   const seen = new Set();
@@ -120,10 +121,18 @@ export function sharpenTextures(scene, renderer, cap = 8) {
         const t = m[k];
         if (t && !seen.has(t) && t.isTexture && !t.isRenderTargetTexture) {
           seen.add(t);
+          let dirty = false;
           if (t.anisotropy < max) {
             t.anisotropy = max;
-            if (t.image && t.version > 0) t.needsUpdate = true;
+            dirty = true;
           }
+          // mipmaps on every image texture (no blurry-then-shimmering far detail)
+          if (!t.isDataTexture && !t.isCompressedTexture && t.minFilter === THREE.LinearFilter) {
+            t.minFilter = THREE.LinearMipmapLinearFilter;
+            t.generateMipmaps = true;
+            dirty = true;
+          }
+          if (dirty && t.image && t.version > 0) t.needsUpdate = true;
         }
       }
     }

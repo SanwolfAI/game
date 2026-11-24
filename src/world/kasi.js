@@ -149,7 +149,7 @@ function makeAtlas() {
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return tex;
 }
 

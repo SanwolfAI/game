@@ -57,7 +57,7 @@ function paliTexture(col, razor = false) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return t;
 }
 
@@ -689,7 +689,7 @@ export class Grounds {
     geo.computeBoundingSphere();
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
     mesh.name = 'hospital-signs';
     this.group.add(mesh);
@@ -806,7 +806,7 @@ export class Grounds {
     geo.computeBoundingSphere();
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
     this.schoolTex = tex;
     this.schoolGeo = geo;
     this.schoolSlots = new Array(SLOTS).fill(null);

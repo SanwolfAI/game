@@ -2,8 +2,9 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { GFX } from '../core/gfx.js';
 import { specFor, WALK_W } from './roads.js';
 
-// Instanced grass tufts on open ground within ~30 m of the camera (Medium,
-// High and HD tiers only; Low never builds them). One InstancedMesh, ONE draw
+// Instanced grass tufts on open ground within ~30 m of the camera. Density
+// (0..1) comes from the HD mode's safety budget (gfx.js) and is trimmed live
+// by main.js on slow phones. One InstancedMesh, ONE draw
 // call, up to 1400 tufts of 3 crossed alpha-cut cards. The ring is refilled
 // (over ~5 frames) after the camera moves 9 m, from a fixed 1.5 m world grid with hashed jitter, so
 // tufts never swim. Roads, pavements, buildings, water, the beach and the
@@ -28,7 +29,8 @@ export class GrassTufts {
     this.roads = roads;
     this.buildings = buildings;
     this.detail = detail;
-    this.enabled = GFX.caps.tier !== 'low';
+    this.enabled = true;
+    this.density = GFX.caps.tufts == null ? 1 : GFX.caps.tufts;
     this.group = new THREE.Group();
     this.group.name = 'grassTufts';
     this.last = { x: 1e9, z: 1e9 };
@@ -116,7 +118,7 @@ export class GrassTufts {
     const stop = full ? k1 : Math.min(k1, J.iz + ROWS - 1);
     for (let iz = J.iz; iz <= stop && J.n < MAX; iz++) {
       for (let ix = i0; ix <= i1 && J.n < MAX; ix++) {
-        if (hash(ix, iz, 1) > 0.85) continue;
+        if (hash(ix, iz, 1) > 0.85 * this.density) continue;
         const x = (ix + hash(ix, iz, 2)) * CELL;
         const z = (iz + hash(ix, iz, 3)) * CELL;
         const d = Math.hypot(x - J.x, z - J.z);
@@ -145,6 +147,17 @@ export class GrassTufts {
       this.mesh.instanceColor.needsUpdate = true;
       this.job = null;
     }
+  }
+
+  // live density change: refill the ring around the last spot
+  setDensity(d) {
+    d = Math.max(0, Math.min(1, d));
+    if (Math.abs(d - this.density) < 1e-3) return;
+    this.density = d;
+    this.job = null;
+    const x = this.last.x, z = this.last.z;
+    this.last.x = this.last.z = 1e9;
+    if (x < 1e8) this.job = { x, z, iz: Math.floor((z - R) / CELL), n: 0 };
   }
 
   #m = null;
