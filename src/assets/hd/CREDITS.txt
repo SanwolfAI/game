@@ -31,11 +31,10 @@ Street imagery attributes derived from Mapillary (CC BY-SA)   https://www.mapill
   Sampling script: scripts/fetch-house-mapillary.py
 Fence / boundary wall atlas and barred-window house facades: drawn procedurally in src/world/fences.js and src/world/facades.js (CC0, this project)
 
-Bus / taxi stop shelters (src/world/shelters.js):
-src/assets/props/bus-shelter.glb   "Bus Stop Shelter" by Grab3D, CC0 1.0 (public domain)
-  https://grab3d.com/models/city/bus-stop-shelter/   https://creativecommons.org/publicdomain/zero/1.0/
-  Recoloured to the blue of eThekwini municipal shelters, textures cut to 512 px, bolts/fittings dropped and
-  simplified to ~2k triangles by scripts/optimize-shelter.mjs.
+Bus / taxi stop shelters (src/world/shelters.js): both shelter models (the eThekwini municipal dark-blue box
+  shelter and the People Mover glass shelter) are built in code from boxes, shaped and coloured from Mapillary
+  street photos of real Durban stops (CC0, this project). No third-party model is used.
 Shelter spots: OpenStreetMap contributors (ODbL) - highway=bus_stop + shelter=yes, amenity=shelter +
-  shelter_type=public_transport; two Phoenix-area stops confirmed on Mapillary street photos (CC BY-SA);
-  built by scripts/add-shelters.py into src/data/durban-shelters.json. No photos are stored.
+  shelter_type=public_transport, each checked against the nearest Mapillary street photos (CC BY-SA); stops
+  added or removed on that evidence are listed with their Mapillary image ids in scripts/add-shelters.py,
+  which builds src/data/durban-shelters.json. No photos are stored.

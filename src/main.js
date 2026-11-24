@@ -535,9 +535,15 @@ void main(){
   let shelters = null;
   try {
     const sdata = await loadJson('./src/data/durban-shelters.json');
-    shelters = new Shelters(sdata, { roads, hf, buildings });
+    shelters = new Shelters(sdata, { roads, hf, buildings, grounds });
     await shelters.load();
     scene.add(shelters.group);
+    // shelter back / end panels are solid for the player, bikes and traffic
+    if (buildings && shelters.sites.length) {
+      const solidS = buildings.collide.bind(buildings);
+      const sh = shelters;
+      buildings.collide = (x, z, r) => solidS(x, z, r) || sh.collide(x, z, r);
+    }
   } catch (err) {
     console.warn('[IZK] shelters not built', err);
   }
