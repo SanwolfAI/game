@@ -440,7 +440,7 @@ export function buildFacadeArray() {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   tex.needsUpdate = true;
   return tex;
 }

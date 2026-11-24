@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { hdCanvas } from '../core/hdcanvas.js';
+import { renderMirrorView } from '../core/mirrorCache.js';
 import { toXZ } from '../core/geo.js';
 import { registerDialog, dialogOpen } from '../ui/dialogs.js';
 import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
@@ -634,7 +635,7 @@ export class Licence {
       // GL viewport origin is bottom-left
       renderer.setViewport(v.vx, H - v.vy - v.vh, v.vw, v.vh);
       renderer.setScissor(v.vx, H - v.vy - v.vh, v.vw, v.vh);
-      renderer.render(scene, c);
+      renderMirrorView(renderer, scene, c, k, v.vx, H - v.vy - v.vh, v.vw, v.vh); // update rate = GFX.live.mirrorEvery
     }
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, W, H);

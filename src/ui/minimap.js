@@ -10,8 +10,13 @@ const SAND = '#b7a878';
 
 export function createMinimap(hf, roads) {
   const canvas = document.getElementById('minimap');
+  // Crisp on any screen: the drawing code works in the canvas' 336-unit
+  // layout, the buffer is sized to its CSS box x the native pixel ratio.
+  const size = canvas.width; // 336 drawing units
+  const cssW = Math.max(canvas.clientWidth || 0, 168);
+  const k = Math.max(1, (cssW * Math.min(3, devicePixelRatio || 1)) / size);
+  canvas.width = canvas.height = Math.round(size * k);
   const ctx = canvas.getContext('2d');
-  const size = canvas.width;
 
   const worldW = (hf.cols - 1) * hf.cell;
   const worldH = (hf.rows - 1) * hf.cell;
@@ -83,6 +88,8 @@ export function createMinimap(hf, roads) {
 
   let smoothYaw = null;
   function update(x, z, yaw, dest, route = null) {
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, size, size);
     const sw = VIEW_METERS * scale;
     const sx = (x - hf.minX) * scale - sw / 2;

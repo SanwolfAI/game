@@ -1,19 +1,23 @@
 // Graphics: ONE look, "HD", on every phone. There is no graphics menu.
 //
-// Always on (never given up): HD 1K CC0 diffuse textures, the sharpen/edge
-// pass, anisotropic filtering (8-16x) and at least 1.5 real pixels per CSS
-// pixel (up to the screen's own density, capped at 2.5x).
+// FULL SHARPNESS, always (never given up, never lowered automatically):
+//  - the screen's own native pixel ratio (devicePixelRatio, capped at 3),
+//    on phones too: one drawing-buffer pixel per screen pixel
+//  - HD 1K CC0 diffuse textures with mipmaps + the GPU's max anisotropy
+//  - the sharpen/FXAA edge pass
 //
 // What changes between phones is invisible performance SAFETY, not the look:
 // a budget phone (Hisense E32 Pro / Samsung A04 class: 2-3 GB RAM, weak GPU)
-// starts with a shorter draw range, fewer people, thinner grass tufts and no
-// normal maps, and main.js keeps trimming those (draw range, blob shadows,
-// people, tufts) from frame time before it ever touches resolution, which
-// never goes below 1.5x.
+// starts with a shorter draw range, fewer people and cars, thinner grass
+// tufts and trees, slower mirror refresh and no normal maps. When frames are
+// slow, main.js trims, in order: draw distance, shadows, people/traffic
+// density, grass tufts + tree density, mirror update rate. Resolution,
+// sharpen and texture size are never touched.
 //
 // Freeze rescue: if the last launch froze (crash-guard flag still set, or
 // ?safe=1 from the Android "Restart (safe)" button) the game quietly starts
-// one safety step lighter. Still HD textures, still sharp, no message.
+// one safety step lighter: it cuts those same things harder and keeps full
+// native resolution, HD textures and sharpen. No message.
 //
 // The old per-phone choice (localStorage izk.gfx.v1: auto/low/medium/high/hd)
 // is ignored and removed on start.
@@ -22,11 +26,14 @@ try {
   localStorage.removeItem(OLD_KEY);
 } catch {}
 
+let maxAniso = 1;
 function gpuName() {
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2') || c.getContext('webgl');
     if (!gl) return '';
+    const af = gl.getExtension('EXT_texture_filter_anisotropic') || gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic');
+    if (af) maxAniso = Math.max(1, gl.getParameter(af.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 1);
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const s = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
     gl.getExtension('WEBGL_lose_context')?.loseContext();
@@ -57,28 +64,36 @@ export function detectSafety(mobile) {
   return { level, signals };
 }
 
+// Native pixel ratio of this screen (capped at 3). Read live: it changes
+// when a window moves between screens or the page is zoomed.
+export const PX_CAP = 3;
+export function nativePx() {
+  return Math.max(1, Math.min(PX_CAP, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
+}
+
 // The HD look plus the safety budget for a level (0..3; 3 = budget phone
-// after a freeze). Pixels are clamped to the screen's own density.
+// after a freeze). Pixels are ALWAYS the screen's native ratio.
 export function hdCaps(level) {
-  const dpr = Math.max(1, devicePixelRatio || 1);
-  const px = (v) => Math.max(1, Math.min(dpr, v));
   const L = Math.max(0, Math.min(3, level | 0));
-  const maxPx = px(2.5);
-  const minPx = px(1.5); // resolution floor: never below 1.5x
-  const startPx = px([2.5, 2, 1.5, 1.5][L]);
+  const px = nativePx();
   return {
     tier: 'hd',
     safety: L,
     hd: true, // HD diffuse textures: always
-    sharpen: true, // sharpen/edge pass: always
-    normals: L === 0, // normal maps are the first look extra to go
-    aniso: L <= 1 ? 16 : 8,
-    maxPx: L >= 2 ? Math.max(minPx, Math.min(maxPx, px(2))) : maxPx,
-    startPx,
-    minPx,
+    sharpen: true, // sharpen/FXAA pass: always
+    nativePx: true, // full native resolution: always
+    normals: L === 0, // normal maps are a start-up extra only (diffuse stays HD)
+    aniso: 16, // three clamps to the GPU's own max
+    maxPx: px,
+    startPx: px,
+    minPx: px, // the resolution floor IS native: never lowered
     humanCap: [30, 22, 12, 6][L],
     range: [1, 1, 0.8, 0.6][L],
     tufts: [1, 1, 0.6, 0.35][L], // grass tuft density
+    trees: [1, 1, 0.8, 0.6][L], // tree draw distance / far density
+    traffic: [1, 1, 0.75, 0.5][L], // share of far traffic cars drawn
+    mirrorEvery: [1, 1, 2, 3][L], // mirrors redraw every N frames
+    blobs: L < 3, // soft ground shadows
     streetLife: L < 3
   };
 }
@@ -101,5 +116,9 @@ export const GFX = {
   detected: det.level,
   rescued,
   signals: det.signals,
-  caps: hdCaps(level)
+  maxAniso, // the GPU's max anisotropic filtering (every texture uses it)
+  caps: hdCaps(level),
+  // live safety values read by other modules each frame (main.js sets them)
+  live: { mirrorEvery: 1 }
 };
+GFX.live.mirrorEvery = GFX.caps.mirrorEvery;

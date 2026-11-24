@@ -42,12 +42,16 @@ import { Water } from './world/water.js';
 import { LandmarkLayer, CATS as LM_CATS } from './world/landmarkLayer.js';
 import { Grounds } from './world/grounds.js';
 import { SHADOW, blobMaterial } from './world/blobShadow.js';
-import { GFX } from './core/gfx.js';
+import { GFX, nativePx } from './core/gfx.js';
+import { mirrorFrame } from './core/mirrorCache.js';
 import { Kasi } from './world/kasi.js';
 import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
+// Full sharpness: every texture made while loading already gets the GPU's
+// max anisotropic filtering (read from a probe context in gfx.js).
+THREE.Texture.DEFAULT_ANISOTROPY = Math.max(1, GFX.maxAniso || 1);
 
 const SKY_NIGHT = new THREE.Color(0x060b18);
 const SKY_DUSK = new THREE.Color(0xe6a27a); // faint warm haze only while the sun is just above the horizon
@@ -140,8 +144,8 @@ function buildStars() {
 
 // Crash guard: a launch that never reaches a stable ~20 s of play (whole-phone
 // freeze, GPU hang, killed WebView) leaves this flag behind, so the next
-// launch starts in SAFE MODE: same HD look (textures, sharpen, >=1.5x), but
-// lighter safety budget (src/core/gfx.js), no street life/real people,
+// launch starts in SAFE MODE: same full-sharp HD look (native pixels, HD
+// textures, sharpen), but a lighter safety budget (src/core/gfx.js), no street life/real people,
 // (keeps the autosave). ?safe=1 forces it, ?safe=0 skips it.
 const BOOT_KEY = 'izk-boot';
 const qs0 = new URLSearchParams(location.search);
@@ -266,11 +270,29 @@ async function main() {
 
   // Phones: no MSAA (edges are smoothed by the FXAA in the sharpen pass),
   // default GPU mode. A Hisense-class GPU hung the whole device at 2x + MSAA
-  // with the full city on the first frame. Pixels come from the graphics
-  // one HD mode (src/core/gfx.js): never below 1.5x, safe mode included.
+  // with the full city on the first frame. FULL SHARPNESS (src/core/gfx.js):
+  // the screen's native pixel ratio (cap 3) on every device, safe mode
+  // included, and never lowered automatically.
   const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE && !SAFE, powerPreference: MOBILE ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(GFX.caps.startPx);
-  renderer.setSize(innerWidth, innerHeight);
+  // every texture made from here on gets the GPU's max anisotropy (mipmaps
+  // are three's default); textures made earlier get it in sharpenTextures()
+  THREE.Texture.DEFAULT_ANISOTROPY = Math.max(THREE.Texture.DEFAULT_ANISOTROPY, renderer.capabilities.getMaxAnisotropy() || 1);
+  // Canvas CSS size == drawing buffer / pixel ratio EXACTLY, so the browser
+  // never rescales the frame (no CSS-scaling blur, even at 2.5x / 2.75x).
+  // (three's size is set to buffer/pr + a hair, so its floor() for the buffer
+  // and round() for the viewport both land on the same whole pixel count)
+  const fitCanvas = () => {
+    const pr = nativePx();
+    const bw = Math.max(1, Math.floor(innerWidth * pr));
+    const bh = Math.max(1, Math.floor(innerHeight * pr));
+    renderer.setPixelRatio(pr);
+    renderer.setSize((bw + 1e-3) / pr, (bh + 1e-3) / pr, false);
+    const c = renderer.domElement;
+    c.style.width = `${bw / pr}px`;
+    c.style.height = `${bh / pr}px`;
+    return bw / bh;
+  };
+  fitCanvas();
   renderer.toneMapping = THREE.NeutralToneMapping; // keeps colours rich (ACES washed them out)
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
@@ -284,7 +306,7 @@ async function main() {
   scene.fog = new THREE.Fog(0x9fc6e2, 750, 5200);
 
   // near=1 m doubles depth precision vs 0.5 (no road/marking z-fighting at range)
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 1.0, 16000);
+  const camera = new THREE.PerspectiveCamera(62, renderer.domElement.width / Math.max(1, renderer.domElement.height), 1.0, 16000);
   // Sky dome: smooth fade from deep blue overhead to a soft hazy horizon
   // (which the fog matches, so distant city melts into haze), with a warm
   // glow around the sun at golden hour. Replaces the flat background colour.
@@ -973,12 +995,18 @@ void main(){
   }
 
   function onResize() {
-    camera.aspect = innerWidth / innerHeight;
+    camera.aspect = fitCanvas(); // native pixels again (DPR can change on zoom / screen move)
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
     sharp.resize();
   }
   addEventListener('resize', onResize);
+  // a DPR change without a resize (browser zoom, moving to another screen)
+  const watchDpr = () => {
+    try {
+      matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', () => { onResize(); watchDpr(); }, { once: true });
+    } catch {}
+  };
+  watchDpr();
 
   const clock = new THREE.Clock();
   // 24 in-game hours = 4 real hours. Fresh sessions start at 08:00; ?time=HH
@@ -1133,10 +1161,11 @@ void main(){
     fogRange = r;
   };
   // ---- HD mode: invisible performance safety (no menu, no toasts) -------
-  // The look never changes: HD textures, sharpen and >=1.5x pixels stay.
-  // Slow frames trim, in order: an extra pixel step above the start, draw
-  // range, blob shadows, people, grass tufts, more range, and only then
-  // pixels down to the 1.5x floor. Headroom restores in reverse.
+  // FULL SHARPNESS never changes: native pixel ratio, HD textures with
+  // mipmaps + max anisotropy, and the sharpen/FXAA pass all stay, always.
+  // Slow frames trim, in this order: draw distance, shadows, people/traffic
+  // density, grass tufts + tree density, mirror update rate, then (last
+  // resort) all of those harder. Headroom restores in reverse.
   const gfxStats = { ms: 0, steps: 0, upBlock: 0, lastUp: -1e9 };
   const caps = GFX.caps;
   const blobMat = blobMaterial();
@@ -1146,39 +1175,68 @@ void main(){
   };
   const setTufts = (d) => tufts.setDensity && tufts.setDensity(d);
   const tuftD = () => (tufts.density == null ? caps.tufts : tufts.density);
+  const trafD = () => (traffic.density == null ? 1 : traffic.density);
+  const setTraf = (d) => (traffic.density = Math.max(0, Math.min(1, d)));
+  const treeD = () => (props.treeLod == null ? 1 : props.treeLod);
+  const setTrees = (d) => props.setTreeLod && props.setTreeLod(d);
+  const mirE = () => GFX.live.mirrorEvery;
+  const setMir = (n) => (GFX.live.mirrorEvery = Math.max(1, Math.min(6, n | 0)));
+  const E = 1e-3;
+  // the native pixel ratio is the only resolution there is: put it back if
+  // anything (a resize race, an old code path) ever moved it
+  const keepNative = () => {
+    const pr = nativePx();
+    if (Math.abs(renderer.getPixelRatio() - pr) > E) onResize();
+  };
   function gfxAdapt(avg) {
     const now = performance.now();
-    const cur = renderer.getPixelRatio();
     const rg = roads.range;
-    const floor = caps.minPx;
+    keepNative();
+    if (sharp.target && !sharp.enabled && !sharp.debugOff) sharp.enabled = true; // never off
     if (avg > 0.03) {
       if (now - gfxStats.lastUp < 7000) gfxStats.upBlock = now + 30000;
       gfxStats.steps++;
-      if (cur > caps.startPx + 1e-3) renderer.setPixelRatio(Math.max(caps.startPx, cur - 0.25)); // undo an extra step up first
-      else if (rg > 0.5 + 1e-3) setRange(Math.max(0.5, rg - 0.15));
-      else if (blobMat.visible) blobMat.visible = false;
-      else if (humanCap() > 6) setHumanCap(Math.max(6, Math.round(humanCap() * 0.6)));
-      else if (tuftD() > 0.3 + 1e-3) setTufts(Math.max(0.3, tuftD() - 0.25));
-      else if (rg > 0.4 + 1e-3) setRange(0.4);
-      else if (cur > floor + 1e-3) renderer.setPixelRatio(Math.max(floor, cur - 0.25));
+      if (rg > 0.5 + E) setRange(Math.max(0.5, rg - 0.15)); // 1. draw distance
+      else if (blobMat.visible) blobMat.visible = false; // 2. shadows
+      else if (humanCap() > 6) setHumanCap(Math.max(6, Math.round(humanCap() * 0.6))); // 3. people
+      else if (trafD() > 0.5 + E) setTraf(Math.max(0.5, trafD() - 0.25)); // 3. traffic density
+      else if (tuftD() > 0.3 + E) setTufts(Math.max(0.3, tuftD() - 0.25)); // 4. grass tufts
+      else if (treeD() > 0.6 + E) setTrees(Math.max(0.6, treeD() - 0.2)); // 4. tree density / LOD
+      else if (mirE() < 3) setMir(mirE() + 1); // 5. mirror update rate
+      // last resort: the same things, harder (never pixels)
+      else if (rg > 0.35 + E) setRange(0.35);
+      else if (humanCap() > 3) setHumanCap(3);
+      else if (trafD() > 0.3 + E) setTraf(0.3);
+      else if (tuftD() > E) setTufts(0);
+      else if (treeD() > 0.4 + E) setTrees(0.4);
+      else if (mirE() < 5) setMir(5);
       else gfxStats.steps--;
     } else if (avg < 0.021 && now > gfxStats.upBlock) {
       gfxStats.lastUp = now;
-      if (!sharp.enabled && sharp.target) sharp.enabled = true;
-      else if (cur < floor - 1e-3) renderer.setPixelRatio(floor);
-      else if (rg < 0.5 - 1e-3) setRange(0.5);
-      else if (tuftD() < caps.tufts - 1e-3) setTufts(Math.min(caps.tufts, tuftD() + 0.25));
+      if (mirE() > 3) setMir(3);
+      else if (treeD() < 0.6 - E) setTrees(0.6);
+      else if (tuftD() < 0.3 - E) setTufts(0.3);
+      else if (trafD() < 0.5 - E) setTraf(0.5);
+      else if (humanCap() < 6) setHumanCap(6);
+      else if (rg < 0.5 - E) setRange(0.5);
+      else if (mirE() > caps.mirrorEvery) setMir(mirE() - 1);
+      else if (treeD() < caps.trees - E) setTrees(Math.min(caps.trees, treeD() + 0.2));
+      else if (tuftD() < caps.tufts - E) setTufts(Math.min(caps.tufts, tuftD() + 0.25));
+      else if (trafD() < caps.traffic - E) setTraf(Math.min(caps.traffic, trafD() + 0.25));
       else if (humanCap() < caps.humanCap) setHumanCap(Math.min(caps.humanCap, humanCap() + 6));
-      else if (!blobMat.visible) blobMat.visible = true;
-      else if (rg < caps.range - 1e-3) setRange(Math.min(caps.range, rg + 0.1));
-      else if (cur < caps.maxPx - 1e-3) renderer.setPixelRatio(Math.min(caps.maxPx, cur + 0.25));
+      else if (!blobMat.visible && caps.blobs) blobMat.visible = true;
+      else if (rg < caps.range - E) setRange(Math.min(caps.range, rg + 0.1));
       else gfxStats.lastUp = -1e9;
     }
   }
+  blobMat.visible = caps.blobs;
+  setTraf(caps.traffic);
+  setTrees(caps.trees);
   setRange(caps.range);
   setHumanCap(caps.humanCap);
   let lastT = performance.now();
   let beatT = 0;
+  const fullView = new THREE.Vector2();
   function frame() {
     requestAnimationFrame(frame);
     const t = performance.now();
@@ -1404,7 +1462,12 @@ void main(){
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
 
     sharp.render(scene, camera);
+    mirrorFrame();
     if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, vehicle, inVehicle, cockpit.visible);
+    // mirrors reset the viewport from the canvas' rounded CSS size; put back the
+    // exact full-frame viewport so the next frame maps 1:1 (no sub-pixel blur)
+    renderer.getSize(fullView);
+    renderer.setViewport(0, 0, fullView.x, fullView.y);
   }
 
   setLoad(100, 'Ready');
@@ -1421,7 +1484,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { shelters, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { shelters, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.bike = bike;
@@ -1441,7 +1504,9 @@ void main(){
   };
   hud.updateTime(now, seasonForDate(now), solarState(now).night > 0.5);
   try {
-    sharpenTextures(scene, renderer, GFX.caps.aniso);
+    sharpenTextures(scene, renderer, 16);
+    // textures that stream in after the first frame (signs, shelters, people)
+    setTimeout(() => { try { sharpenTextures(scene, renderer, 16); } catch {} }, 20000);
     renderer.compile(scene, camera); // warm shaders on the loading screen
   } catch {}
   setBoot('running');

@@ -112,7 +112,7 @@ export class BigMap {
   }
 
   #resize() {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const dpr = Math.min(devicePixelRatio || 1, 3); // native, like the game view
     this.dpr = dpr;
     this.canvas.width = Math.round(innerWidth * dpr);
     this.canvas.height = Math.round(innerHeight * dpr);

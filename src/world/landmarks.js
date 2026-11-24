@@ -66,7 +66,7 @@ function canvasTex(w, h, draw, rx = 1, ry = 1) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(rx, ry);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return t;
 }
 

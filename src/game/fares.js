@@ -77,7 +77,7 @@ function boardTexture() {
   g.fillText('TAXI RANK', 128, 50);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return t;
 }
 

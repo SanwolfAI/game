@@ -25,9 +25,18 @@
         -webkit-user-select: none;
         user-select: none;
         touch-action: none;
+        /* crisp UI text and icons at the screen's native density */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
       }
       #app { position: fixed; inset: 0; }
       canvas { display: block; }
+      /* the game canvas is sized to whole device pixels by main.js: never stretch it */
+      #app > canvas { image-rendering: auto; max-width: none; max-height: none; }
+      svg { shape-rendering: geometricPrecision; }
 
       .panel {
         background: var(--panel);
