@@ -1090,14 +1090,6 @@ void main(){
       }
     };
     fillInfo();
-    // the indicators sit just right of the place pill, whatever its width
-    const placeEl = document.getElementById('place');
-    if (coarse && placeEl && window.ResizeObserver) {
-      new ResizeObserver(() => {
-        const w = placeEl.offsetWidth;
-        if (w) document.documentElement.style.setProperty('--place-w', `${w}px`);
-      }).observe(placeEl);
-    }
     const setDrawer = (open) => {
       if (!drawer) return;
       if (open) fillInfo();

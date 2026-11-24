@@ -1,7 +1,7 @@
 // Keyboard + touch input with analog driving controls.
 //
 // Touch: a steering wheel you turn with your finger (600° lock-to-lock, with
-// finger rotation scaled 2.5x so ±180° of finger travel reaches full lock),
+// finger rotation scaled 4.2x so ~71° of thumb travel reaches full lock),
 // self-centring when released; analog accelerator / brake pedals (press lower
 // on the pedal for more); a D / R / N gear selector.
 // Keyboard: W/S/A/D (or arrows) ramp the same analog values smoothly.
@@ -11,6 +11,8 @@
 //   throttle  0..1
 //   brake     0..1
 //   gear     'D' | 'R' | 'N'
+
+import { clamp, pedalStep, brakePressure, THROTTLE_UP, THROTTLE_DOWN, BRAKE_DOWN, STEER_RESPONSE } from './carPhysics.js';
 
 const KEY_ACTIONS = {
   KeyW: 'gas',
@@ -47,10 +49,11 @@ const PRESS_ACTIONS = {
 };
 
 export const WHEEL_LOCK_DEG = 300; // ±300° = 600° lock-to-lock (quick rack, less winding)
-const FINGER_GAIN = 3.5; // wheel degrees per finger degree
-const KEY_STEER_RATE = 900; // °/s when steering with keys
+// wheel degrees per finger degree: 300 / 4.2 = ~71° of thumb travel for
+// full lock (was 86°) (24 Nov 2026, Bheko: "the car does not turn fast")
+export const FINGER_GAIN = 4.2;
+export const KEY_STEER_RATE = 1200; // °/s when steering with keys (full lock in 0.25 s)
 
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export class Input {
   constructor() {
@@ -348,7 +351,8 @@ export class Input {
       const r = el.getBoundingClientRect();
       // touching the top of the pedal = light press, lower = deeper press
       const t = (e.clientY - r.top) / (r.height * 0.82);
-      this.pedal[name] = name === 'brake' ? clamp(0.45 + 0.55 * t, 0.45, 1) : clamp(0.12 + 0.88 * t, 0.12, 1);
+      // brake: 50 % at the top edge, full pressure from 45 % down the pedal
+      this.pedal[name] = name === 'brake' ? brakePressure(t * 0.82) : clamp(0.12 + 0.88 * t, 0.12, 1);
     };
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -410,7 +414,8 @@ export class Input {
     // steering sensitivity (☰ menu): >1 = less wheel needed for the same turn
     const sens = this.steerSens || 1;
     const steerTarget = Math.max(-1, Math.min(1, (-this.wheelDeg / WHEEL_LOCK_DEG) * sens));
-    this.steer += (steerTarget - this.steer) * Math.min(1, dt * 16);
+    // light anti-jitter only; the car adds one more quick stage (STEER_RESPONSE)
+    this.steer += (steerTarget - this.steer) * Math.min(1, dt * STEER_RESPONSE * 1.5);
     if (Math.abs(this.steer) < 0.002 && steerTarget === 0) this.steer = 0;
 
     // --- keyboard convenience: hold S at a standstill to reverse, W to go forward
@@ -424,13 +429,13 @@ export class Input {
     const gasKey = this.down.has(swap ? 'brake' : 'gas');
     const brakeKey = this.down.has(swap ? 'gas' : 'brake');
 
-    // --- pedals (rate-limited so throttle and brake build up gradually)
+    // --- pedals: the accelerator builds up gently, the brake bites at once
+    // (no ramp; 24 Nov 2026, Bheko: "the brakes take too much time")
     const gasTarget = gasKey ? 1 : this.pedal.gas;
     const brakeTarget = brakeKey ? 1 : this.pedal.brake;
-    this.throttle += clamp(gasTarget - this.throttle, -6 * dt, 2.2 * dt);
-    this.brake += clamp(brakeTarget - this.brake, -8 * dt, 12 * dt);
-    if (this.throttle < 0.003) this.throttle = 0;
-    if (this.brake < 0.003) this.brake = 0;
+    this.brake = pedalStep(this.brake, brakeTarget, dt, Infinity, BRAKE_DOWN);
+    // brake override: pressing the brake drops the accelerator straight away
+    this.throttle = this.brake > 0.1 ? 0 : pedalStep(this.throttle, gasTarget, dt, THROTTLE_UP, THROTTLE_DOWN);
 
     this.#paint();
   }

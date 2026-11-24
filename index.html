@@ -590,7 +590,7 @@
         #clock-box, #wallet { display: none !important; }
         /* the place as a small pill right of the minimap: road on top, area
            under it in small text, no big box (24 Nov 2026, Bheko). The
-           indicators sit right of it, the centre mirror stays clear below. */
+           centre mirror stays clear below. */
         #place { display: flex; flex-direction: column; justify-content: center; left: calc(var(--sl) + 90px); top: calc(var(--e) + 4px);
           width: max-content; max-width: 150px; min-width: 0; height: 36px; box-sizing: border-box; padding: 3px 11px 4px;
           border-radius: 18px; border: 0; background: rgba(10, 16, 24, 0.42); box-shadow: none; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); pointer-events: none; }
@@ -604,9 +604,14 @@
         #speed-unit, #speed-gear { display: none !important; }
         #speed-bar { margin-top: 3px; height: 3px; width: 56px; }
         #dest { top: var(--e); right: calc(var(--sr) + 54px); left: auto; transform: none; max-width: 210px; padding: 4px 10px 4px 6px; }
-        #toast { top: auto; bottom: 48px; max-width: min(360px, 46vw); }
-        #t-signals { left: calc(var(--sl) + 98px + var(--place-w, 150px)); top: var(--e); gap: 6px; }
-        #touch #t-signals .tbtn { width: 44px; height: 44px; border-radius: 12px; }
+        #toast { top: auto; bottom: 72px; max-width: min(360px, 46vw); }
+        /* indicators at the bottom, right next to the steering wheel, in reach
+           of the left thumb while it steers: left / hazard / right (24 Nov
+           2026, Bheko: "put indicators down for fast access"). 52 px targets,
+           clear of the wheel, the speed number, R/N/D, pedals and mirrors. */
+        #t-signals { left: calc(var(--sl) + 132px); top: auto; bottom: var(--e); gap: 8px; }
+        #touch #t-signals .tbtn { width: 52px; height: 52px; border-radius: 14px; }
+        #touch #t-signals .ico { width: 26px; height: 26px; }
         #touch .tbtn.small#t-menu { position: absolute; right: var(--sr); top: var(--e); left: auto; width: 44px; height: 44px; border-radius: 12px; z-index: 3; }
         #touch #t-menu .m-close, #touch #t-menu.open .m-open { display: none; }
         #touch #t-menu.open .m-close { display: block; }
