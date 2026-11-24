@@ -9,7 +9,7 @@ function tex(file, srgb = true) {
   const t = texLoader.load(TEX + file);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return t;
 }
 

@@ -17,7 +17,9 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.wasm': 'application/wasm'
+  '.wasm': 'application/wasm',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg'
 };
 
 const server = http.createServer(async (req, res) => {

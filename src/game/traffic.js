@@ -1282,6 +1282,10 @@ export class Traffic {
           car.posd = true;
           yaw = car.yaw;
         }
+        // performance safety: at density < 1 a share of the FAR cars is not
+        // drawn (still driven, so nothing pops or ghosts near the player)
+        const dens = this.density ?? 1;
+        const hide = dens < 0.999 && (car.id % 20) >= dens * 20 && (cx - px) * (cx - px) + (cz - pz) * (cz - pz) > 12100;
         if (!car.dmg) {
           // upright car: yaw about Y + position, written straight into the
           // matrix (no Vector3/Quaternion calls boxing numbers per car)
@@ -1315,8 +1319,14 @@ export class Traffic {
           this.quat.multiply(this.tilt);
           this.matrix.compose(this.pos, this.quat, this.scale);
         }
+        if (hide) {
+          // collapse to a point: no pixels drawn (wheels follow the zero matrix)
+          const me = this.matrix.elements;
+          for (let q = 0; q < 11; q++) me[q] = 0;
+        }
         for (let pi = 0; pi < parts.length; pi++) parts[pi].setMatrixAt(i, this.matrix);
         this.#wheels(b, i, car, cx, cz);
+        if (hide) continue;
         if (night) this.lamps.setMatrixAt(li++, this.matrix);
         // indicators / hazards: amber flashes at the four corners
         if (car.blink && blinkOn && bi < this.blinkMax - 4) {

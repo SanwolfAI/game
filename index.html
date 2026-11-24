@@ -25,9 +25,18 @@
         -webkit-user-select: none;
         user-select: none;
         touch-action: none;
+        /* crisp UI text and icons at the screen's native density */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
       }
       #app { position: fixed; inset: 0; }
       canvas { display: block; }
+      /* the game canvas is sized to whole device pixels by main.js: never stretch it */
+      #app > canvas { image-rendering: auto; max-width: none; max-height: none; }
+      svg { shape-rendering: geometricPrecision; }
 
       .panel {
         background: var(--panel);
@@ -286,7 +295,6 @@
       #menu .m-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; color: #fff; }
       #menu .m-row button { display: inline-block; width: 48px; min-height: 44px; margin: 0; padding: 8px 0; font-size: 20px; }
       #menu .m-row b { min-width: 44px; text-align: center; }
-      #menu .m-row button#m-gfx { width: auto; min-width: 112px; padding: 8px 12px; font-size: 14px; }
       #t-signals { position: absolute; left: 10px; top: 150px; display: flex; gap: 5px; pointer-events: none; }
       #touch #t-signals .tbtn { position: relative; width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
       #touch #t-signals #t-lights { width: 50px; font-size: 10px; }
@@ -797,9 +805,6 @@
         <button id="m-resume" type="button">Resume</button>
         <div class="m-row">Steering sensitivity
           <button id="m-sdn" type="button">−</button><b id="m-sval">1.0×</b><button id="m-sup" type="button">+</button>
-        </div>
-        <div class="m-row">Graphics
-          <button id="m-gfx" type="button">Auto</button>
         </div>
         <button id="m-new" type="button">New game (back to the CBD)</button>
         <button id="m-safe" type="button">Restart in safe mode</button>

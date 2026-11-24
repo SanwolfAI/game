@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
+import { renderMirrorView, mirrorDue } from '../core/mirrorCache.js';
 
 // Real car mirrors for the inside (driver) view.
 // Bheko, 23-24 Nov 2026: "the mirrors are not attached to the car, they're
@@ -261,8 +262,11 @@ export class CarMirrors {
 
     // which mirrors refresh this frame
     this.frame++;
+    // GFX.live.mirrorEvery (mirrorCache.js) sets the rate: mirrors take turns
+    // when the performance safety cuts it; low-end alternates rear / wings
     const odd = this.frame & 1;
-    const due = this.lowEnd ? [!odd, !!odd, !!odd] : [true, true, true];
+    const due = [0, 1, 2].map((k) => mirrorDue(k));
+    if (this.lowEnd && due.every(Boolean)) due.splice(0, 3, !odd, !!odd, !!odd);
 
     // size each target to the glass on screen x pixel ratio
     camera.updateMatrixWorld();
@@ -327,8 +331,7 @@ export class CarMirrors {
       c.aspect = o.size.w / o.size.h;
       c.updateProjectionMatrix();
       c.updateMatrixWorld(true);
-      r.setRenderTarget(o.rt);
-      r.render(scene, c);
+      renderMirrorView(r, scene, c, o.k, 0, 0, o.rt.width, o.rt.height, o.rt);
       if (wheel && o.k === 0) for (const w of wheel) w.visible = true;
       o.drawn = true;
     }
