@@ -2,8 +2,8 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { GFX } from '../core/gfx.js';
 
 // HD texture pack, slice 1: 1K CC0 Poly Haven maps (src/assets/hd, see
-// CREDITS.txt). Medium tier = diffuse only, High = diffuse + normal maps.
-// Low tier loads them only on phones with 4 GB+ RAM (see gfx.js).
+// CREDITS.txt). Diffuse maps always (one HD mode); normal maps only on
+// strong phones with no freeze last launch (see gfx.js).
 const DIR = './src/assets/hd/';
 const loader = new THREE.TextureLoader();
 const cache = new Map();

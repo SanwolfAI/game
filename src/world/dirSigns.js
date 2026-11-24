@@ -116,7 +116,7 @@ export class DirSigns {
     this.ctx = this.canvas.getContext('2d');
     this.tex = new THREE.CanvasTexture(this.canvas);
     this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.tex.anisotropy = 8;
+    this.tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
 
     const faceGeo = new THREE.PlaneGeometry(1, 1);
     faceGeo.translate(0, 0, 0.07);

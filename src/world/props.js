@@ -248,7 +248,7 @@ export class Props {
         .loadAsync('./src/assets/signs/atlas.png')
         .then((tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
-          tex.anisotropy = 2;
+          tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
           const g = new THREE.PlaneGeometry(0.75, 0.75);
           g.translate(0, 2.35, 0.06);
           this.signTile = new Float32Array(MAX_SIGNS * 2);
@@ -675,6 +675,16 @@ export class Props {
   }
 
   // ---- streaming ---------------------------------------------------------------
+  // Tree density / LOD for the performance safety (1 = full). Below 1 the
+  // trees' draw distance shrinks and, past half of it, every other tree is
+  // skipped. Never touches texture or screen resolution.
+  setTreeLod(v) {
+    const n = Math.max(0.2, Math.min(1, v));
+    if (Math.abs(n - (this.treeLod ?? 1)) < 1e-3) return;
+    this.treeLod = n;
+    this.dirty = true;
+  }
+
   update(camX, camZ, dt = 0, budget = 1) {
     if (!this.ready) return;
     this.time += dt;
@@ -730,13 +740,18 @@ export class Props {
         const mesh = this.meshes[name];
         if (!mesh) continue;
         const t = TYPES[name];
-        if (cd > t.radius) continue;
-        const r2 = t.radius * t.radius;
+        const lod = t.tree ? this.treeLod ?? 1 : 1;
+        const rad = t.radius * lod;
+        if (cd > rad) continue;
+        const r2 = rad * rad;
+        const thin2 = lod < 0.999 ? r2 * 0.25 : Infinity; // past half the range: every other tree
         for (let i = 0; i < list.length; i += 6) {
           if (counts[name] >= t.max) break;
           const dx = list[i] - camX;
           const dz = list[i + 2] - camZ;
-          if (dx * dx + dz * dz > r2) continue;
+          const d2 = dx * dx + dz * dz;
+          if (d2 > r2) continue;
+          if (d2 > thin2 && (i / 6) % 2 === 1) continue;
           e.set(0, list[i + 3], 0);
           q.setFromEuler(e);
           p.set(list[i], list[i + 1], list[i + 2]);

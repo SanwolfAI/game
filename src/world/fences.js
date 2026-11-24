@@ -168,7 +168,7 @@ function paintAtlas() {
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  tex.anisotropy = 4;
+  tex.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
   return tex;
 }
 

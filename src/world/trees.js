@@ -33,7 +33,7 @@ export function foliageMaterial() {
   const alpha = loader.load(DIR + 'foliage_atlas_alpha.jpg');
   alpha.colorSpace = THREE.NoColorSpace;
   for (const t of [map, alpha]) {
-    t.anisotropy = 4;
+    t.anisotropy = THREE.Texture.DEFAULT_ANISOTROPY; // GPU max (main.js)
     t.generateMipmaps = true;
     t.minFilter = THREE.LinearMipmapLinearFilter;
   }
