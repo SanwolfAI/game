@@ -1,3 +1,5 @@
+import { createE30Engine, E30_IDLE, E30_REDLINE } from './engineE30.js';
+
 let ctx = null;
 
 function context() {
@@ -99,7 +101,15 @@ function ensureEngine() {
   const player = makeVoice(audio, master, 'sawtooth', 'square');
   const traffic = [];
   for (let i = 0; i < 3; i++) traffic.push(makeVoice(audio, master, 'triangle', 'sawtooth'));
-  engine = { audio, master, player, traffic, gear: 1, shift: 0 };
+  // recorded BMW straight-six for the gusheshe (loads in the background;
+  // the synth voice covers until it is ready or if it fails to load)
+  let e30 = null;
+  try {
+    e30 = createE30Engine(audio, master);
+  } catch (err) {
+    console.warn('E30 engine sound unavailable', err);
+  }
+  engine = { audio, master, player, traffic, e30, gear: 1, shift: 0 };
   return engine;
 }
 
@@ -121,8 +131,9 @@ export function toggleMute() {
 const GEAR_TOP = [0, 22, 45, 72, 105, 145, 999]; // km/h per gear
 
 // kmh: player speed, throttle 0..1, running: engine on (in a vehicle),
-// cars: [{d, v}] nearest traffic (distance m, speed m/s), at most 3.
-export function updateEngine(dt, kmh, throttle, running, cars) {
+// cars: [{d, v}] nearest traffic (distance m, speed m/s), at most 3,
+// typeId: the player's vehicle type ('gusheshe' gets the recorded E30 engine).
+export function updateEngine(dt, kmh, throttle, running, cars, typeId) {
   const e = ensureEngine();
   if (!e) return;
   const t = e.audio.currentTime;
@@ -141,11 +152,18 @@ export function updateEngine(dt, kmh, throttle, running, cars) {
   if (v < 2) rpm = 850 + throttle * 2800; // revving at standstill
   if (e.shift > 0) rpm *= 0.82;
   const f = (rpm / 60) * 2; // 4-cylinder firing frequency
+  // gusheshe: recorded M20-style straight-six, revs ~820 idle to 6500 redline
+  let e30rpm = v < 2 ? E30_IDLE + throttle * 2600 : 1100 + frac * 4700 + throttle * 400;
+  if (e.shift > 0) e30rpm *= 0.8;
+  e30rpm = Math.min(E30_REDLINE, e30rpm);
+  const isE30 = typeId === 'gusheshe';
+  const e30On = e.e30 ? e.e30.update(dt, e30rpm, throttle, running, isE30) : false;
   const p = e.player;
   p.osc.frequency.setTargetAtTime(f, t, 0.05);
   p.osc2.frequency.setTargetAtTime(f / 2, t, 0.05);
   p.filter.frequency.setTargetAtTime(380 + throttle * 1300 + frac * 500, t, 0.08);
-  p.gain.gain.setTargetAtTime(running ? 0.05 + throttle * 0.07 + frac * 0.02 : 0, t, 0.08);
+  const synthOn = running && !(isE30 && e30On);
+  p.gain.gain.setTargetAtTime(synthOn ? 0.05 + throttle * 0.07 + frac * 0.02 : 0, t, 0.08);
   for (let i = 0; i < 3; i++) {
     const tv = e.traffic[i];
     const c = cars && i < cars.length ? cars[i] : null;

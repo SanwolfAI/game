@@ -38,3 +38,16 @@ Shelter spots: OpenStreetMap contributors (ODbL) - highway=bus_stop + shelter=ye
   shelter_type=public_transport, each checked against the nearest Mapillary street photos (CC BY-SA); stops
   added or removed on that evidence are listed with their Mapillary image ids in scripts/add-shelters.py,
   which builds src/data/durban-shelters.json. No photos are stored.
+
+Gusheshe engine sound (src/assets/audio/e30_*.ogg / .m4a, built by scripts/build-engine-sound.py):
+No free-licence recording of a real E30 325i (M20 straight-six) could be found, so these are the closest
+BMW straight-six recordings with a licence that allows commercial use (six-cylinder firing pattern
+checked from the recordings' sound; the models are as their uploaders name them).
+  e30_idle.m4a, e30_start.m4a   "car-start.mp3" by Erdie (BMW Z3 start-up and idle)
+                                https://freesound.org/people/Erdie/sounds/21741/
+                                CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
+  e30_low.m4a, e30_mid.m4a, e30_high.m4a
+                                "BMWM3_01.wav" by ikbenraar (BMW M3 on an airstrip)
+                                https://freesound.org/people/ikbenraar/sounds/415276/
+                                CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
+  Changes: trimmed, pitch-flattened, looped, level-matched and re-encoded to Opus and AAC (this project).

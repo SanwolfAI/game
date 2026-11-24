@@ -1413,7 +1413,7 @@ void main(){
     bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
     if (input.takePressed('mute')) hud.toast(toggleMute() ? 'Sound off' : 'Sound on', 1.1);
-    updateEngine(dt, inVehicle ? vehicle.speedKmh : 0, inVehicle ? vehicle.throttleNow || 0 : 0, inVehicle, traffic.nearest(ent.x, ent.z, 3));
+    updateEngine(dt, inVehicle ? vehicle.speedKmh : 0, inVehicle ? vehicle.throttleNow || 0 : 0, inVehicle, traffic.nearest(ent.x, ent.z, 3), vehicle.typeId);
 
     newRoadTimer += dt;
     if (newRoadTimer > 0.5) {
