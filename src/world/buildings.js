@@ -1362,6 +1362,18 @@ export class Buildings {
     if (nMin - off < 1.2) off = nMin - 1.2;
     if (off < hw + 0.8 || a1 - a0 > 40) return null;
     const m = 1.6 + ((i * 0.618) % 1) * 1.6;
+    // a bus shelter in front: the fence goes behind it and its gap (panels
+    // still inside a strip are dropped in #buildFences)
+    if (this.keepOut) {
+      for (const k of this.keepOut) {
+        if (Math.abs(k.x - f.x) > 60 || Math.abs(k.z - f.z) > 60) continue;
+        if (k.nx * f.nx + k.nz * f.nz < 0.7) continue; // other side / other road
+        const za = (k.x - f.x) * f.dx + (k.z - f.z) * f.dz;
+        if (za + k.hl < a0 - m || za - k.hl > a1 + m) continue;
+        const need = (k.x - f.x) * f.nx + (k.z - f.z) * f.nz + k.far;
+        if (need > off && nMin - need >= 0.8) off = need;
+      }
+    }
     return { i, f, off, lo: a0 - m, hi: a1 + m, gate: (a0 + a1) / 2 + (((i * 0.37) % 1) - 0.5) * (a1 - a0) * 0.5, type: s.fence, tint: s.fenceTint, gateTint: s.gateTint };
   }
 
@@ -1474,6 +1486,7 @@ export class Buildings {
           const mz = (z0 + z1) / 2;
           const nr = roads && roads.nearestRoad(mx, mz, 14);
           if (nr && nr.dist < nr.road.width / 2 + 0.6) continue;
+          if (this.#keptOut(mx, mz) || this.#keptOut(x0, z0) || this.#keptOut(x1, z1)) continue;
           if (hitsBuilding(mx, mz) || hitsBuilding(x0, z0) || hitsBuilding(x1, z1)) continue;
           FB.panel(x0, z0, hf.heightAt(x0, z0), x1, z1, hf.heightAt(x1, z1), gate && T.gate === 6 ? Math.min(T.h, 1.9) : T.h, tile, (b - a) / step, tint);
         }
@@ -1700,5 +1713,35 @@ export class Buildings {
   // True when (x, z) is inside / within r of a footprint (spawning, props).
   blocked(x, z, r = 0.5) {
     return !!this.collide(x, z, r);
+  }
+
+  // Strips where no house fence may stand (bus shelters + the gap behind them):
+  // { x, z, nx, nz (away from the road), hl (half length along the kerb),
+  //   near, far (from the centre along n) }. Fences already built are redone.
+  addKeepOut(zones) {
+    this.keepOut = (this.keepOut || []).concat(zones.filter(Boolean));
+    for (const cell of this.cells.values()) {
+      if (!cell.fence) continue;
+      this.group.remove(cell.fence);
+      this.stats.tris -= cell.fence.userData.tris;
+      cell.fence.geometry.dispose();
+      cell.fence = null;
+      cell.fenceTodo = true;
+    }
+  }
+
+  // inside a keep-out strip?
+  #keptOut(x, z) {
+    const K = this.keepOut;
+    if (!K) return false;
+    for (const k of K) {
+      const dx = x - k.x;
+      const dz = z - k.z;
+      if (Math.abs(dx) > 40 || Math.abs(dz) > 40) continue;
+      const a = dx * -k.nz + dz * k.nx;
+      const n = dx * k.nx + dz * k.nz;
+      if (Math.abs(a) < k.hl && n > k.near && n < k.far - 0.05) return true;
+    }
+    return false;
   }
 }
