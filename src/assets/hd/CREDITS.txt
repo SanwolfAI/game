@@ -49,3 +49,11 @@ BMW E30 interior (src/game/cockpit.js)
   headliner, roundel without lettering) are procedural, drawn in code for this
   game. Layout taken from the E30 owner's manual and parts catalogues; no
   photos are copied into the game.
+
+Bus / taxi stop shelters (src/world/shelters.js): both shelter models (the eThekwini municipal dark-blue box
+  shelter and the People Mover glass shelter) are built in code from boxes, shaped and coloured from Mapillary
+  street photos of real Durban stops (CC0, this project). No third-party model is used.
+Shelter spots: OpenStreetMap contributors (ODbL) - highway=bus_stop + shelter=yes, amenity=shelter +
+  shelter_type=public_transport, each checked against the nearest Mapillary street photos (CC BY-SA); stops
+  added or removed on that evidence are listed with their Mapillary image ids in scripts/add-shelters.py,
+  which builds src/data/durban-shelters.json. No photos are stored.

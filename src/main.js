@@ -30,6 +30,7 @@ import { GPS } from './game/gps.js';
 import { Fares } from './game/fares.js';
 import { Learners } from './world/learners.js';
 import { BusStations } from './world/busStations.js';
+import { Shelters } from './world/shelters.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
@@ -529,6 +530,22 @@ void main(){
     scene.add(busStations.group);
   } catch (err) {
     console.warn('[IZK] bus stations not built', err);
+  }
+  // bus / taxi stop shelters at their real spots (OSM shelter=yes + Mapillary)
+  let shelters = null;
+  try {
+    const sdata = await loadJson('./src/data/durban-shelters.json');
+    shelters = new Shelters(sdata, { roads, hf, buildings, grounds });
+    await shelters.load();
+    scene.add(shelters.group);
+    // shelter back / end panels are solid for the player, bikes and traffic
+    if (buildings && shelters.sites.length) {
+      const solidS = buildings.collide.bind(buildings);
+      const sh = shelters;
+      buildings.collide = (x, z, r) => solidS(x, z, r) || sh.collide(x, z, r);
+    }
+  } catch (err) {
+    console.warn('[IZK] shelters not built', err);
   }
   // taxi rank fares (real OSM ranks) and the rand wallet
   let fares = null;
@@ -1430,6 +1447,7 @@ void main(){
     }
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
     if (busStations) busStations.update(camera.position.x, camera.position.z);
+    if (shelters) shelters.update(camera.position.x, camera.position.z);
 
     // traffic sees the car, the bike (a slow car) or the taxi you ride in
     traffic.player = riding() ? ride : onBike ? bike : vehicle;
@@ -1505,7 +1523,7 @@ void main(){
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { shelters, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, tier: caps.tier, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), range: roads.range, blobs: blobMat.visible, humans: humanCap(), sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.bike = bike;
