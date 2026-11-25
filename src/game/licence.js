@@ -1,10 +1,10 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { hdCanvas } from '../core/hdcanvas.js';
-import { renderMirrorView } from '../core/mirrorCache.js';
 import { toXZ } from '../core/geo.js';
 import { registerDialog, dialogOpen } from '../ui/dialogs.js';
 import { SECTIONS, drawTest, mark, signSVG, cockpitSVG } from './k53.js';
 import { PathMover, carMeshClone } from './taxiRide.js';
+import { CarMirrors } from './mirrors.js';
 
 // Licence before any driving job (Bheko, 19 Nov 2026).
 // A new player starts on foot with R2,500 saved, outside a driving school.
@@ -16,7 +16,7 @@ import { PathMover, carMeshClone } from './taxiRide.js';
 //   3. Driving test, R450: taken at the nearest real testing ground (Umbilo
 //      Motor Licensing or Amanzimtoti Testing Grounds). Going in is like a
 //      different game: the screen fades and you are in the fenced K53 yard
-//      (alley docking, parallel parking, three-point turn; touch a cone and
+//      (alley docking, parallel parking, three-point turn; touch a pole and
 //      you fail), then the road test round the testing ground. Pass = Code 10.
 //      Fail = come back in 2 days (game days), no same-day retry.
 //   4. PrDP at a testing ground, R250: needed to carry paying passengers.
@@ -65,11 +65,11 @@ const YARD = {
   cones: [],
   tasks: [
     // reverse into the alley (nose out)
-    { id: 'alley', label: 'Alley docking: REVERSE into the coned bay and stop', x: -32, z: 22, yaw: Math.PI, tol: 1.4, yawTol: 0.35 },
+    { id: 'alley', label: 'Alley docking: REVERSE into the bay between the poles and stop', x: -32, z: 22, yaw: Math.PI, tol: 1.4, yawTol: 0.35 },
     // parallel park beside the kerb between the two parked cars
     { id: 'parallel', label: 'Parallel parking: park in the bay by the kerb', x: 36.2, z: 14, yaw: 0, either: true, tol: 1.3, yawTol: 0.3 },
-    // turn round inside the narrow coned road
-    { id: 'turn', label: 'Three-point turn: turn round inside the coned road', x: 0, z: 30, box: [-11, 26, 11, 34] },
+    // turn round inside the narrow road marked by poles
+    { id: 'turn', label: 'Three-point turn: turn round between the two pole lines', x: 0, z: 30, box: [-11, 26, 11, 34] },
     { id: 'finish', label: 'Drive back to the start line and stop', x: 0, z: -34, tol: 3 },
   ],
 };
@@ -265,54 +265,80 @@ export class Licence {
     const O = this.yardO;
     const y0 = this.yardY;
     g.position.set(O.x, y0, O.z);
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), new THREE.MeshStandardMaterial({ color: 0x6f8f4a, roughness: 1 }));
+    // HD ground (Bheko, 23 Nov 2026: "even the land was not in HD"): real
+    // photo-scanned grass and asphalt (src/assets/hd, CC0) tiled every few
+    // metres with full anisotropic filtering, instead of one stretched canvas.
+    const hdTex = (file, rx, ry) => {
+      const t = new THREE.TextureLoader().load(`./src/assets/hd/${file}`);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      t.anisotropy = 16; // three clamps this to what the GPU allows
+      return t;
+    };
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), new THREE.MeshStandardMaterial({ map: hdTex('Grass004_diff_1k.jpg', 40, 40), color: 0xb8c79a, roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
     grass.position.y = -0.05;
     g.add(grass);
-    const tarTex = yardCanvasTex(1024, 768, (c) => {
-      c.fillStyle = '#4a4c4f';
-      c.fillRect(0, 0, 1024, 768);
-      for (let i = 0; i < 9000; i++) {
-        c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},0.06)`;
-        c.fillRect(Math.random() * 1024, Math.random() * 768, 2, 2);
-      }
-      // painted lines (yard is 100 x 80 m -> 10.24 px per m)
-      const P = (x, z) => [(x + 50) * 10.24, (z + 40) * 9.6]; // canvas top = yard -z after the plane is laid flat
-      c.strokeStyle = '#f2f2ee';
-      c.lineWidth = 4;
-      const line = (a, b) => {
-        c.beginPath();
-        c.moveTo(...P(...a));
-        c.lineTo(...P(...b));
-        c.stroke();
-      };
-      line([-8, -34], [8, -34]); // start line
-      c.strokeStyle = '#f2c230';
-      line([-34, 16.5], [-34, 26.6]);
-      line([-30, 16.5], [-30, 26.6]);
-      line([38.2, 4], [38.2, 24]);
-      line([35, 8], [35, 20]);
-    });
-    const tar = new THREE.Mesh(new THREE.PlaneGeometry(100, 80), new THREE.MeshStandardMaterial({ map: tarTex, roughness: 0.95 }));
+    const tar = new THREE.Mesh(new THREE.PlaneGeometry(100, 80), new THREE.MeshStandardMaterial({ map: hdTex('asphalt_02_diff_1k.jpg', 30, 24), color: 0x9a9c9f, roughness: 0.95 }));
     tar.rotation.x = -Math.PI / 2;
     tar.position.set(0, 0.02, 0);
     g.add(tar);
+    // painted lines as real strips of paint (crisp edges at any distance),
+    // 10 cm wide like the yard lines at a DLTC
+    const paint = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+    const white = paint(0xf2f2ee);
+    const yellow = paint(0xf2c230);
+    const line = (mat, x0, z0, x1, z1, w = 0.1) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), mat);
+      m.rotation.set(-Math.PI / 2, 0, Math.atan2(x1 - x0, z1 - z0));
+      m.position.set((x0 + x1) / 2, 0.03, (z0 + z1) / 2);
+      g.add(m);
+    };
+    line(white, -8, -34, 8, -34, 0.3); // start line
+    line(yellow, -34, 16.5, -34, 26.6);
+    line(yellow, -30, 16.5, -30, 26.6);
+    line(yellow, 38.2, 4, 38.2, 24);
+    line(yellow, 35, 8, 35, 20);
+    line(white, -11, 25.6, 11, 25.6);
+    line(white, -11, 34.4, 11, 34.4);
+    // yard edge lines
+    line(white, -48, -38, 48, -38, 0.15);
+    line(white, -48, 38, 48, 38, 0.15);
+    line(white, -48, -38, -48, 38, 0.15);
+    line(white, 48, -38, 48, 38, 0.15);
     // kerb for parallel parking
-    const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 22), new THREE.MeshStandardMaterial({ color: 0xd8d4c8 }));
+    const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 22), new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.9 }));
     kerb.position.set(38.6, 0.09, 14);
     g.add(kerb);
-    // fence
-    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.5, roughness: 0.5, transparent: true, opacity: 0.55 });
-    for (const [x, z, w, d] of [[0, 40, 100, 0.1], [0, -40, 100, 0.1], [50, 0, 0.1, 80], [-50, 0, 0.1, 80]]) {
-      const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.2, d), fenceMat);
-      f.position.set(x, 1.1, z);
+    // fence: steel posts every 4 m, two rails, faint mesh panels
+    const postGeo = new THREE.BoxGeometry(0.08, 2.2, 0.08);
+    postGeo.translate(0, 1.1, 0);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x8d949b, metalness: 0.6, roughness: 0.45 });
+    const posts = [];
+    for (let x = -50; x <= 50; x += 4) posts.push([x, -40], [x, 40]);
+    for (let z = -36; z <= 36; z += 4) posts.push([-50, z], [50, z]);
+    const postMesh = new THREE.InstancedMesh(postGeo, steel, posts.length);
+    const pm = new THREE.Matrix4();
+    posts.forEach(([x, z], i) => postMesh.setMatrixAt(i, pm.makeTranslation(x, 0, z)));
+    g.add(postMesh);
+    const meshMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.4, roughness: 0.6, transparent: true, opacity: 0.22, depthWrite: false });
+    for (const [x, z, w, d] of [[0, 40, 100, 0.03], [0, -40, 100, 0.03], [50, 0, 0.03, 80], [-50, 0, 0.03, 80]]) {
+      const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.1, d), meshMat);
+      f.position.set(x, 1.05, z);
       g.add(f);
+      for (const ry of [2.15, 0.1]) {
+        const r = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, 0.05, d + 0.05), steel);
+        r.position.set(x, ry, z);
+        g.add(r);
+      }
     }
     // examiner's office and a board
-    const office = new THREE.Mesh(new THREE.BoxGeometry(14, 3.4, 7), new THREE.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.9 }));
+    const office = new THREE.Mesh(new THREE.BoxGeometry(14, 3.4, 7), new THREE.MeshStandardMaterial({ map: hdTex('white_plaster_rough_01_diff_1k.jpg', 4, 1), color: 0xf1e9d4, roughness: 0.9 }));
     office.position.set(-30, 1.7, -32);
     g.add(office);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(15, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0x8a2b20, roughness: 0.8 }));
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(15, 0.3, 8), new THREE.MeshStandardMaterial({ map: hdTex('corrugated_iron_02_diff_1k.jpg', 5, 3), color: 0xa8402f, roughness: 0.7 }));
     roof.position.set(-30, 3.5, -32);
     g.add(roof);
     const boardTex = yardCanvasTex(512, 128, (c) => {
@@ -326,29 +352,65 @@ export class Licence {
       c.font = 'bold 24px sans-serif';
       c.fillText('ETHEKWINI · DRIVER LICENSING', 256, 96);
     });
+    boardTex.anisotropy = 8;
     const board = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshBasicMaterial({ map: boardTex, side: THREE.DoubleSide }));
     board.position.set(-30, 4.6, -28.4);
     g.add(board);
     this.yardTitle = board;
-    // cones
-    const coneGeo = new THREE.ConeGeometry(0.28, 0.75, 10);
-    coneGeo.translate(0, 0.375, 0);
-    const cones = new THREE.InstancedMesh(coneGeo, new THREE.MeshStandardMaterial({ color: 0xff6a13, roughness: 0.6 }), YARD.cones.length);
+    // K53 poles (Bheko, 23 Nov 2026: "the poles were fuzzy"): 1.2 m red and
+    // white striped poles on a black rubber foot, like a real DLTC yard.
+    // Thin things far away fall below one pixel and shimmer, so the pole
+    // shader keeps every pole at least ~2 pixels wide on screen, and the
+    // stripes are a sharp mip-mapped, anisotropic texture.
+    const stripes = yardCanvasTex(16, 128, (c) => {
+      for (let i = 0; i < 6; i++) {
+        c.fillStyle = i % 2 ? '#f4f4f0' : '#d42a1e';
+        c.fillRect(0, i * (128 / 6), 16, 128 / 6 + 1);
+      }
+    });
+    stripes.anisotropy = 16;
+    const POLE_R = 0.035;
+    const poleGeo = new THREE.CylinderGeometry(POLE_R, POLE_R, 1.2, 12, 1);
+    poleGeo.translate(0, 0.66, 0);
+    const poleMat = new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.45 });
+    this.poleU = { uPxPerM: { value: 600 } };
+    poleMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uPxPerM = this.poleU.uPxPerM;
+      sh.vertexShader = `uniform float uPxPerM;\n${sh.vertexShader}`.replace('#include <begin_vertex>', `vec3 transformed = vec3(position);
+#ifdef USE_INSTANCING
+vec4 poleC = modelViewMatrix * instanceMatrix * vec4(0.0, position.y, 0.0, 1.0);
+#else
+vec4 poleC = modelViewMatrix * vec4(0.0, position.y, 0.0, 1.0);
+#endif
+float poleRpx = ${POLE_R.toFixed(3)} * uPxPerM / max(0.3, -poleC.z);
+transformed.xz *= max(1.0, 1.0 / poleRpx);`);
+    };
+    const footGeo = new THREE.CylinderGeometry(0.13, 0.2, 0.08, 16);
+    footGeo.translate(0, 0.04, 0);
+    const cones = new THREE.InstancedMesh(poleGeo, poleMat, YARD.cones.length);
+    const feet = new THREE.InstancedMesh(footGeo, new THREE.MeshStandardMaterial({ color: 0x151617, roughness: 0.9 }), YARD.cones.length);
     const m = new THREE.Matrix4();
     YARD.cones.forEach(([x, z], i) => {
       m.makeTranslation(x, 0, z);
       cones.setMatrixAt(i, m);
+      feet.setMatrixAt(i, m);
     });
-    g.add(cones);
+    g.add(cones, feet);
     this.coneMesh = cones;
-    // the two parked cars either side of the parallel bay
+    // the two parked cars either side of the parallel bay (real car models)
     for (const [x, z] of YARD_PARKED) {
-      const car = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 4.3), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.4, roughness: 0.4 }));
-      car.position.set(x, 0.75, z);
+      let car = null;
+      try { car = carMeshClone('polo'); } catch (e) { car = null; }
+      if (!car) {
+        car = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 4.3), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.4, roughness: 0.4 }));
+        car.position.y = 0.75;
+      }
+      car.position.x = x;
+      car.position.z = z;
       g.add(car);
     }
     // target marker
-    this.yardMark = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.5, 32), new THREE.MeshBasicMaterial({ color: 0x3fd0ff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+    this.yardMark = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.5, 48), new THREE.MeshBasicMaterial({ color: 0x3fd0ff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
     this.yardMark.rotation.x = -Math.PI / 2;
     this.yardMark.position.y = 0.06;
     g.add(this.yardMark);
@@ -403,8 +465,8 @@ export class Licence {
       if (Math.abs(along) < 2.4 && Math.abs(side) < 1.15) {
         if (c.hitT && performance.now() - c.hitT < 2000) continue;
         c.hitT = performance.now();
-        if (this.mode === 'test-yard') return this.#fail('you touched a cone');
-        this.hud.toast('Cone! In the test that is an instant fail.', 2);
+        if (this.mode === 'test-yard') return this.#fail('you touched a pole');
+        this.hud.toast('Pole! In the test that is an instant fail.', 2);
       }
     }
     const t = YARD.tasks[this.task];
@@ -535,45 +597,39 @@ export class Licence {
     });
   }
 
-  // ---------- mirrors (driving school and test) ----------
-  // drawn only in the inside (driver) view, where the real mirrors sit:
-  // rear-view top-centre (a little left of the driver, RHD), wings low at each side
-  renderMirrors(renderer, scene, vehicle, inVehicle, insideView) {
+  // ---------- mirrors (every car, inside view) ----------
+  // Real 3D mirrors on the car (mirrors.js): the rear-view hangs from the top
+  // of the windscreen, the wing mirrors sit on the door corners outside the
+  // side glass, each drawn from its real place on the car (the wings show the
+  // flank and tail of your own car), flipped like a mirror. Drag a mirror to
+  // aim it, double-tap to reset (Bheko, 19 Nov).
+  renderMirrors(renderer, scene, camera, vehicle, inVehicle, insideView) {
+    // yard poles keep a minimum on-screen width: pixels per metre at 1 m
+    if (this.poleU) this.poleU.uPxPerM.value = renderer.domElement.height / 1.3;
     if (!inVehicle || !insideView || this.mirrorsOff) {
       if (this.framesShown) {
         for (const d of this.mirrorFrames) d.style.display = 'none';
         this.framesShown = false;
+        document.body.classList.remove('mirrors-on');
+        if (this.mirrors) this.mirrors.hide();
       }
       return;
     } // every car has mirrors (Bheko, 19 Nov)
-    if (!this.mirrorCams) {
-      this.mirrorCams = [0, 1, 2].map(() => new THREE.PerspectiveCamera(45, 3, 0.5, 250));
+    if (!this.mirrors) {
+      this.mirrors = new CarMirrors(renderer);
+      if (this.lowEnd) this.mirrors.lowEnd = true;
     }
-    const W = renderer.domElement.clientWidth;
-    const H = renderer.domElement.clientHeight;
-    const fx = Math.sin(vehicle.yaw);
-    const fz = Math.cos(vehicle.yaw);
-    const rx = fz;
-    const rz = -fx;
-    const y = (vehicle.y ?? this.hf.heightAt(vehicle.x, vehicle.z)) + 1.5;
-    const views = [
-      // rear-view: top centre
-      { cam: this.mirrorCams[0], ox: 0, back: 2.2, side: 0, turn: 0, vx: W * 0.47, vy: H * 0.03, vw: W * 0.26, vh: H * 0.13 },
-      // left and right wing mirrors
-      { cam: this.mirrorCams[1], ox: -1.1, back: 0, side: -1, turn: 0.18, vx: W * 0.01, vy: H * 0.56, vw: W * 0.13, vh: H * 0.14 },
-      { cam: this.mirrorCams[2], ox: 1.1, back: 0, side: 1, turn: -0.18, vx: W * 0.86, vy: H * 0.56, vw: W * 0.13, vh: H * 0.14 },
-    ];
     if (!this.mirrorFrames) {
-      this.mirrorFrames = views.map(() => {
+      this.mirrorFrames = [0, 1, 2].map(() => {
         const d = document.createElement('div');
-        d.style.cssText = 'position:fixed;z-index:5;pointer-events:auto;touch-action:none;cursor:grab;border:3px solid #111;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.5);box-sizing:border-box';
+        d.className = 'mirror-hit';
+        d.style.cssText = 'position:fixed;z-index:5;pointer-events:auto;touch-action:none;cursor:grab;border-radius:8px;background:transparent;display:none';
         document.body.appendChild(d);
         return d;
       });
-      // adjustable mirrors (Bheko, 19 Nov): drag a mirror to aim it, double-tap to reset
-      try { this.mirrorAim = JSON.parse(localStorage.getItem('izk.mirrors.v1')) || null; } catch (e) { this.mirrorAim = null; }
+      try { this.mirrorAim = JSON.parse(localStorage.getItem('izk.mirrors.v2')) || null; } catch (e) { this.mirrorAim = null; }
       if (!this.mirrorAim || this.mirrorAim.length !== 3) this.mirrorAim = [[0, 0], [0, 0], [0, 0]];
-      const save = () => { try { localStorage.setItem('izk.mirrors.v1', JSON.stringify(this.mirrorAim)); } catch (e) { /* ignore */ } };
+      const save = () => { try { localStorage.setItem('izk.mirrors.v2', JSON.stringify(this.mirrorAim)); } catch (e) { /* ignore */ } };
       this.mirrorFrames.forEach((d, k) => {
         let drag = null;
         let lastTap = 0;
@@ -589,57 +645,50 @@ export class Licence {
           }
           lastTap = now;
           drag = { x: e.clientX, y: e.clientY, a: this.mirrorAim[k][0], b: this.mirrorAim[k][1] };
-          d.style.borderColor = '#ffd21a';
           try { d.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
         });
         d.addEventListener('pointermove', (e) => {
           if (!drag) return;
           e.stopPropagation();
-          const yawMax = 0.5;
-          const pitchMax = 0.3;
-          this.mirrorAim[k][0] = Math.max(-yawMax, Math.min(yawMax, drag.a - (e.clientX - drag.x) * 0.006));
-          this.mirrorAim[k][1] = Math.max(-pitchMax, Math.min(pitchMax, drag.b - (e.clientY - drag.y) * 0.006));
+          const yawMax = 0.3;
+          const pitchMax = 0.15;
+          this.mirrorAim[k][0] = Math.max(-yawMax, Math.min(yawMax, drag.a + (e.clientX - drag.x) * 0.004));
+          this.mirrorAim[k][1] = Math.max(-pitchMax, Math.min(pitchMax, drag.b - (e.clientY - drag.y) * 0.004));
         });
         const end = (e) => {
           if (!drag) return;
           e.stopPropagation();
           drag = null;
-          d.style.borderColor = '#111';
           save();
         };
         d.addEventListener('pointerup', end);
         d.addEventListener('pointercancel', end);
       });
     }
-    views.forEach((v, k) => {
+    const cockpit = vehicle.group.getObjectByName('cockpit');
+    this.mirrors.render(scene, camera, vehicle, cockpit, this.mirrorAim);
+    // touch areas follow the glass on screen (a little bigger for a thumb)
+    const W = renderer.domElement.clientWidth;
+    const H = renderer.domElement.clientHeight;
+    const boxes = this.mirrors.screenBoxes(camera, W, H);
+    boxes.forEach((v, k) => {
       const st = this.mirrorFrames[k].style;
-      st.left = `${v.vx - 2}px`;
-      st.top = `${v.vy - 2}px`;
-      st.width = `${v.vw + 4}px`;
-      st.height = `${v.vh + 4}px`;
+      if (!v) {
+        st.display = 'none';
+        return;
+      }
+      const pad = Math.max(6, (44 - Math.min(v.w, v.h)) / 2);
+      const key = `${Math.round(v.x)}|${Math.round(v.y)}|${Math.round(v.w)}|${Math.round(v.h)}`;
+      if (this.mirrorFrames[k].dataset.k === key && st.display === 'block') return;
+      this.mirrorFrames[k].dataset.k = key;
+      st.left = `${Math.round(v.x - pad)}px`;
+      st.top = `${Math.round(v.y - pad)}px`;
+      st.width = `${Math.round(v.w + pad * 2)}px`;
+      st.height = `${Math.round(v.h + pad * 2)}px`;
       st.display = 'block';
     });
+    if (!this.framesShown) document.body.classList.add('mirrors-on');
     this.framesShown = true;
-    renderer.setScissorTest(true);
-    const old = renderer.autoClear;
-    renderer.autoClear = true;
-    for (let k = 0; k < views.length; k++) {
-      const v = views[k];
-      const aim = this.mirrorAim[k];
-      const c = v.cam;
-      c.aspect = v.vw / v.vh;
-      c.updateProjectionMatrix();
-      c.position.set(vehicle.x + rx * v.ox - fx * v.back, y - (v.side ? 0.35 : 0), vehicle.z + rz * v.ox - fz * v.back);
-      const lookYaw = vehicle.yaw + Math.PI + v.turn + aim[0];
-      c.lookAt(c.position.x + Math.sin(lookYaw) * 10, c.position.y - 0.4 + aim[1] * 10, c.position.z + Math.cos(lookYaw) * 10);
-      // GL viewport origin is bottom-left
-      renderer.setViewport(v.vx, H - v.vy - v.vh, v.vw, v.vh);
-      renderer.setScissor(v.vx, H - v.vy - v.vh, v.vw, v.vh);
-      renderMirrorView(renderer, scene, c, k, v.vx, H - v.vy - v.vh, v.vw, v.vh); // update rate = GFX.live.mirrorEvery
-    }
-    renderer.setScissorTest(false);
-    renderer.setViewport(0, 0, W, H);
-    renderer.autoClear = old;
   }
 
   // ---------- lesson pick-up at home ----------
