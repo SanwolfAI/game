@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "build:data": "node scripts/build-data.mjs",
-    "test": "node scripts/check-syntax.mjs && node scripts/check-imports.mjs && node scripts/check-story.mjs"
+    "test": "node scripts/check-syntax.mjs && node scripts/check-imports.mjs && node scripts/check-physics.mjs && node scripts/check-story.mjs"
   },
   "keywords": [],
   "author": "",
