@@ -320,6 +320,8 @@ export class BigMap {
       ctx.fillStyle = '#fff';
       ctx.fill();
     }
+    // extra pins from other systems (story mode: src/story/story.js)
+    if (this.extraDraw) this.extraDraw(ctx, X, Y);
     // player: halo, arrow and a "You are here" tag with street and suburb
     const ppx = X(this.player.x);
     const ppy = Y(this.player.z);
