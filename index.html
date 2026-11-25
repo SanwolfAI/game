@@ -510,6 +510,37 @@
       #ride-bar button.on { background: #ffd21a; color: #111; }
       body.riding #speedo { display: none; }
       body.riding #dest { display: none !important; }
+      /* hail a taxi / Hamba Ride (src/game/rides.js) */
+      #ride-btns { position: fixed; right: 12px; top: 40%; z-index: 30; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+      #ride-btns button { display: none; width: 54px; height: 54px; border-radius: 50%; border: 0; align-items: center; justify-content: center; color: #111; box-shadow: 0 2px 8px rgba(0,0,0,.45); pointer-events: auto; cursor: pointer; }
+      #rb-hail { background: #ffd21a; }
+      #rb-phone { background: #18c37e; }
+      body.can-hail #rb-hail, body.can-phone #rb-phone { display: flex; }
+      body.dialog-open #ride-btns, body.riding #ride-btns { display: none; }
+      #ride-card { display: none; position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 35; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 16px; background: rgba(18,20,24,.88); color: #fff; font: 14px system-ui, sans-serif; max-width: 94vw; }
+      #ride-card.show { display: flex; }
+      body.dialog-open #ride-card { display: none; }
+      #ride-card .rc-ic { color: #ffd21a; display: flex; }
+      #ride-card .rc-txt { display: flex; flex-direction: column; min-width: 120px; }
+      #ride-card .rc-txt span { font-size: 12px; opacity: .8; }
+      #ride-card button { width: 46px; height: 46px; border: 0; border-radius: 12px; background: #333a42; color: #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+      #ride-card button.on { background: #ffd21a; color: #111; }
+      #ride-card .rc-in { background: #18c37e; color: #06281a; }
+      .ride-msg { margin: 8px 0 2px; padding: 8px 10px; border-radius: 10px; background: rgba(214,69,50,.25); color: #ffd0c8; font-size: 13px; }
+      .pop-btn.ride-ic, .pop-btn.ha-map { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+      .ride-opt.sel { outline: 2px solid #18c37e; }
+      #hamba-app { border-top: 4px solid #18c37e; }
+      #hamba-app .ha-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+      #hamba-app .ha-top b { font-size: 20px; letter-spacing: .5px; }
+      #hamba-app .ha-top b span { color: #18c37e; }
+      #hamba-app .ha-w, #hamba-app .ha-lbl { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+      #hamba-app .ha-lbl { margin: 4px 0; opacity: .95; }
+      #hamba-app .ha-quote { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.08); font-size: 13px; }
+      #hamba-app .ha-quote span:first-child { display: flex; align-items: center; gap: 6px; }
+      #hamba-app .ha-quote b { font-size: 20px; color: #18c37e; }
+      #hamba-app .pop-btn.ha-go { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; background: #18c37e; color: #06281a; font-size: 17px; font-weight: 800; }
+      #hamba-app .pop-btn.ha-go[disabled] { opacity: .4; }
+      #menu button#m-ride { display: flex; align-items: center; justify-content: center; gap: 8px; background: #18c37e; color: #06281a; }
       #ride-cabin { display: none; position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       body.ride-inside #ride-cabin { display: block; }
       #ride-cabin i { position: absolute; display: block; background: #15171a; }

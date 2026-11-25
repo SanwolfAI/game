@@ -273,10 +273,12 @@ export class TaxiRide {
     this.ffEl.classList.toggle('on', this.ff === 4);
   }
 
-  board(from, to) {
-    const fare = this.fare(from, to);
+  // opt (rides.js: hailed taxis and Hamba Ride): { fare, type, label, toast,
+  // payAtEnd, onEnd(early, fractionDone) }
+  board(from, to, opt = {}) {
+    const fare = opt.fare ?? this.fare(from, to);
     if (this.w.r < fare) {
-      this.hud.toast(`Fare is ${R(fare)}, you have ${R(this.w.r)}`, 2.5);
+      this.hud.toast(`Not enough money. Fare ${R(fare)}, you have ${R(this.w.r)}`, 2.5);
       return false;
     }
     // the road path from the rank bay to the stop
@@ -286,25 +288,32 @@ export class TaxiRide {
       this.hud.toast('No taxi on that route right now', 2.5);
       return false;
     }
-    this.w.r -= fare;
-    this.saveWallet();
-    this.showWallet();
-    this.closePicker();
-    if (!this.mesh) {
-      this.mesh = carMeshClone('quantum');
-      this.group.add(this.mesh);
+    if (!opt.payAtEnd) {
+      this.w.r -= fare;
+      this.saveWallet();
+      this.showWallet();
     }
+    this.closePicker();
+    const type = opt.type || 'quantum';
+    if (!this.meshes) this.meshes = {};
+    if (!this.meshes[type]) {
+      this.meshes[type] = carMeshClone(type);
+      this.group.add(this.meshes[type]);
+    }
+    for (const k in this.meshes) this.meshes[k].visible = k === type;
+    this.mesh = this.meshes[type];
+    this.onEnd = opt.onEnd || null;
     this.mover.set(route);
     this.to = to;
     this.active = true;
     this.group.visible = true;
     this.stuckT = this.ghostT = 0;
-    this.toEl.textContent = to.name.replace(/ Taxi Rank.*$/, '');
+    this.toEl.textContent = opt.label || to.name.replace(/ Taxi Rank.*$/, '');
     this.ffEl.textContent = this.ff === 4 ? 'x4' : 'x1';
     this.ffEl.classList.toggle('on', this.ff === 4);
     this.etaT = 0;
     this.#sync(0);
-    this.hud.toast(`Paid ${R(fare)}. Off to ${this.toEl.textContent}`, 2.5);
+    this.hud.toast(opt.toast || `Paid ${R(fare)}. Off to ${this.toEl.textContent}`, 2.5);
     return true;
   }
 
@@ -320,6 +329,9 @@ export class TaxiRide {
     this.speed = 0;
     this.cabShown = false;
     document.body.classList.remove('ride-inside');
+    const end = this.onEnd;
+    this.onEnd = null;
+    end?.(early, m.len ? m.s / m.len : 1);
     // step out on the kerb side (left)
     const lx = Math.cos(m.yaw);
     const lz = -Math.sin(m.yaw);
