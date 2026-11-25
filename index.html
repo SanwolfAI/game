@@ -597,7 +597,7 @@
          overlaps, and the corners keep clear of the 3D mirrors. ---- */
       #touch #t-drawer { display: none; }
       @media (pointer: coarse) {
-        :root { --e: 8px; --sl: max(8px, env(safe-area-inset-left)); --sr: max(8px, env(safe-area-inset-right)); }
+        :root { --e: 8px; --sl: 8px; --sr: 8px; /* #hud and #touch already sit inside the safe area (fit.css) */ }
         #map-box { left: var(--sl); top: var(--e); padding: 4px; border-radius: 12px; }
         #minimap { width: 72px; height: 72px; }
         #clock-box, #wallet { display: none !important; }
