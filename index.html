@@ -10,6 +10,7 @@
     <link rel="apple-touch-icon" href="./src/assets/icons/apple-touch-icon.png" />
     <link rel="manifest" href="./src/manifest.webmanifest" />
     <link rel="stylesheet" href="./src/ui/fit.css" />
+    <link rel="stylesheet" href="./src/ui/polish/polish.css" />
     <script src="./src/ui/fit.js" defer></script>
     <style>
       :root {
@@ -732,6 +733,8 @@
     <script nomodule>
       document.getElementById('load-status').textContent = 'Failed: this browser/WebView does not support ES modules. Please update Android System WebView or Chrome.';
     </script>
+    <!-- title screen, garage, rewards, settings, tutorial (src/ui/polish) -->
+    <script type="module" src="./src/ui/polish/index.js"></script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
