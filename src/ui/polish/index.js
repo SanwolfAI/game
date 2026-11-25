@@ -130,6 +130,7 @@ function makeScreens() {
     pay,
     onBuy: () => rewards.unlock('look'),
     onClose: () => {
+      refreshCockpitPaint();
       if (title && title.isOpen) title.root.classList.remove('dim');
       backToTitleOrGame();
     }
@@ -263,6 +264,34 @@ function extendPauseMenu() {
   });
 }
 
+// the cockpit bonnet copies the car's paint once; ask it to copy again
+function refreshCockpitPaint() {
+  try {
+    z.scene.traverse((o) => {
+      if (o.userData && o.userData.paint && 'paintDone' in o.userData) o.userData.paintDone = false;
+    });
+  } catch {}
+}
+
+// a Garage icon in the in-game drawer (next to map, camera, settings)
+function addDrawerButton() {
+  const grid = document.querySelector('#t-drawer .dr-grid');
+  if (!grid || document.getElementById('t-garage')) return;
+  const b = document.createElement('div');
+  b.className = 'tbtn small';
+  b.id = 't-garage';
+  b.setAttribute('aria-label', 'Garage: paint and rims');
+  b.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><path d="M3 21v-9l9-6 9 6v9"/><path d="M7 21v-6h10v6"/><path d="M7 18h10"/></svg>';
+  grid.appendChild(b);
+  b.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    haptic.tap();
+    const menu = document.getElementById('t-menu');
+    if (menu && menu.classList.contains('open')) menu.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    openGarage(true);
+  });
+}
+
 function onBooted() {
   z = window.__izk;
   if (!z || !z.vehicle || !z.vehicle.input) return;
@@ -279,6 +308,7 @@ function onBooted() {
   makeScreens();
   hookGame();
   extendPauseMenu();
+  addDrawerButton();
   orbitLoop();
   window.__izk.polish = { title, garage, rewards, settings, tutorial, rwScreen, openGarage, startPlay };
   if (title) {
