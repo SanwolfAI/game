@@ -79,6 +79,9 @@ export class Player {
 
   // Walkable height: roads/bridges/sidewalks when the road network is attached.
   #groundY() {
+    // walk-in mall interiors (mallInteriors.js): flat indoor floor
+    const fy = this.interior ? this.interior.floorAt(this.x, this.z) : null;
+    if (fy !== null && fy !== undefined) return (this.y = fy);
     if (!this.roads) return this.hf.heightAt(this.x, this.z);
     const prev = this.y ?? null;
     this.y = this.roads.surfaceAt(this.x, this.z, prev).y;
@@ -173,7 +176,9 @@ export class Player {
   }
 
   #resolveCollisions() {
-    const hit = this.city.buildings ? this.city.buildings.collide(this.x, this.z, PERSON_RADIUS) : null;
+    // inside a walk-in mall its own walls replace the building's (so the door is open)
+    const indoor = this.interior && this.interior.inside(this.x, this.z);
+    const hit = indoor ? this.interior.collide(this.x, this.z, PERSON_RADIUS) : this.city.buildings ? this.city.buildings.collide(this.x, this.z, PERSON_RADIUS) : null;
     if (hit) {
       this.x = hit.x;
       this.z = hit.z;
