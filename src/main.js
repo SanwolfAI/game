@@ -51,6 +51,7 @@ import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
+import { Story } from './story/story.js';
 import { SkyHD } from './world/skyHD.js';
 // Full sharpness: every texture made while loading already gets the GPU's
 // max anisotropic filtering (read from a probe context in gfx.js).
@@ -501,8 +502,10 @@ void main(){
     }
   }
   let crashToastCd = 0;
+  let story = null; // story mode (src/story/story.js)
   traffic.onCrash = (impact) => {
     if (ride && ride.active) return; // a passenger: the driver's problem
+    if (story && !onBike) story.onCrash(impact);
     if (onBike) {
       if (impact > 5) {
         dismountBike();
@@ -1254,6 +1257,43 @@ void main(){
   }
   // an owned house without a bike yet (older saves): it waits at the door
   if (!bike.placed && fares && fares.homes.home) bike.parkAtHome(fares.homes.home);
+  // story mode: missions, dialogue, journal (src/story/*.js)
+  try {
+    story = new Story({
+      scene, hf, roads, gps, hud, fares, minimap, bigmap,
+      hooks: {
+        entity,
+        mode: () => (riding() ? 'ride' : inVehicle ? 'car' : onBike ? 'bike' : 'foot'),
+        // the car there, the player in the driver's seat
+        put: (x, z, yaw) => {
+          if (riding()) return;
+          if (onBike) dismountBike();
+          vehicle.restore(x, z, yaw);
+          if (!inVehicle) {
+            inVehicle = true;
+            player.group.visible = false;
+          }
+          camSnap = true;
+        },
+        // the car parked there (only when you are not in it)
+        park: (x, z, yaw) => {
+          if (!inVehicle) vehicle.restore(x, z, yaw);
+        },
+        foot: (x, z, yaw) => {
+          if (onBike) dismountBike();
+          inVehicle = false;
+          player.placeAt(x, z, yaw, null);
+          player.group.visible = true;
+          camSnap = true;
+        },
+        setCar: (type) => {
+          if (type !== vehicle.typeId && VEHICLE_TYPES.some((t) => t.id === type)) vehicle.setType(type);
+        },
+      },
+    });
+  } catch (err) {
+    console.warn('[IZK] story mode not built', err);
+  }
   let helpTimer = 0;
   let clockSaveTimer = 0;
 
@@ -1522,6 +1562,7 @@ void main(){
       if (fares.licence) fares.licence.passenger = riding(); // no school desks from a taxi window
       fares.update(dt, ent, inVehicle, vehicle, now);
     }
+    if (story) story.update(dt);
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
     if (busStations) busStations.update(camera.position.x, camera.position.z);
     if (shelters) shelters.update(camera.position.x, camera.position.z);
@@ -1560,6 +1601,7 @@ void main(){
     hud.update(dt, ent);
     hud.updateDestination(gps);
     minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
+    if (story) story.drawMinimap();
     bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
     if (input.takePressed('mute')) {
@@ -1611,6 +1653,7 @@ void main(){
   window.__izk = { shelters, publicPlaces, mallInteriors, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
+  window.__izk.story = story ? story.api : null; // story mode hook for other agents (src/story/story.js)
   window.__izk.bike = bike;
   window.__izk.ride = ride;
   window.__izk.mountBike = mountBike;
