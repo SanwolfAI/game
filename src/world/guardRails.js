@@ -49,7 +49,8 @@ const PN = PROF.map((p, i) => {
   return [nu / l, nv / l];
 });
 
-// guardrail_galv_512.jpg is our own procedural galvanised-spangle texture.
+// guardrail_galv_512.jpg: galvanised-spangle texture drawn in code by
+// scripts/build-guardrail-texture.py (CC0, this project).
 let railTex = null;
 function texture() {
   if (railTex) return railTex;
@@ -137,15 +138,29 @@ export class GuardRails {
         let y = Math.max(g + 0.25, this.roads.surfaceAt(near.x, near.z, g).y - 0.05);
         out.push([px, y, pz, ux, uz]);
       }
-      // smooth facing normals (nearest road can flip between neighbours)
-      for (let i = 0; i < out.length; i++) {
-        if (out[i][3] === 0 && out[i][4] === 0) {
-          const j = i > 0 ? i - 1 : i + 1;
-          if (out[j]) {
-            out[i][3] = out[j][3];
-            out[i][4] = out[j][4];
+      // samples with no road in reach copy the nearest sample that has one
+      // (both directions); a rail with no road near at all faces across its
+      // own line, so it is never built with a zero facing
+      for (let pass = 0; pass < 2; pass++) {
+        const order = pass === 0 ? [...out.keys()] : [...out.keys()].reverse();
+        let last = null;
+        for (const i of order) {
+          if (out[i][3] !== 0 || out[i][4] !== 0) last = out[i];
+          else if (last) {
+            out[i][3] = last[3];
+            out[i][4] = last[4];
           }
         }
+      }
+      for (let i = 0; i < out.length; i++) {
+        if (out[i][3] !== 0 || out[i][4] !== 0) continue;
+        const a = out[Math.max(0, i - 1)];
+        const b = out[Math.min(out.length - 1, i + 1)];
+        const dx = b[0] - a[0];
+        const dz = b[2] - a[2];
+        const l = Math.hypot(dx, dz) || 1;
+        out[i][3] = -dz / l;
+        out[i][4] = dx / l;
       }
       this.#push(out, src);
       this.stats[src]++;
@@ -268,7 +283,8 @@ export class GuardRails {
     const n = pts.length;
     const a = new Float32Array(n * 5);
     for (let i = 0; i < n; i++) a.set(pts[i], i * 5);
-    const L = { pts: a, n, src };
+    // short rails get short turned-down ends, so some of them is still solid
+    const L = { pts: a, n, src, end: Math.min(END, ((n - 1) * STEP) / 4) };
     this.lines.push(L);
     if (src === 'rule') this.stats.rule++;
     this.stats.metres += (n - 1) * STEP;
@@ -292,7 +308,7 @@ export class GuardRails {
     const a = L.pts;
     for (let i = 0; i < L.n - 1; i++) {
       const fromEnd = Math.min(i, L.n - 2 - i) * STEP;
-      if (fromEnd < END - 1) continue; // turned-down ends are drive-over
+      if (fromEnd < L.end - 1) continue; // turned-down ends are drive-over
       const s = { x0: a[i * 5], z0: a[i * 5 + 2], x1: a[i * 5 + 5], z1: a[i * 5 + 7], y: a[i * 5 + 1] };
       const k = Math.floor((s.x0 + s.x1) / 40) * 100000 + Math.floor((s.z0 + s.z1) / 40);
       let l = this.grid.get(k);
@@ -391,7 +407,7 @@ export class GuardRails {
         const fz = a[i * 5 + 4];
         // turned-down, flared terminals
         const e = Math.min(i, n - 1 - i) * STEP;
-        const f = e < END ? 1 - e / END : 0;
+        const f = e < L.end ? 1 - e / L.end : 0;
         const drop = f * f * 0.62;
         const flare = f * 0.35;
         const ids = [];
