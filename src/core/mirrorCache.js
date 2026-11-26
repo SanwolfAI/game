@@ -46,8 +46,24 @@ function entry(renderer, key, bw, bh) {
   return e;
 }
 
-export function renderMirrorView(renderer, scene, cam, key, x, y, w, h) {
+// Is mirror `key` due a fresh picture this frame? (same stagger as below)
+export function mirrorDue(key) {
   const every = Math.max(1, GFX.live.mirrorEvery | 0);
+  return every <= 1 || (frameNo + key) % every === 0;
+}
+
+// `target`: a mirror that already owns a render target (the 3D cockpit
+// mirrors in game/mirrors.js, whose glass shows that texture). Its target is
+// the cache: the caller asks mirrorDue(key) and only calls this when a fresh
+// picture is due (or the target was resized); in between the glass keeps the
+// last picture.
+export function renderMirrorView(renderer, scene, cam, key, x, y, w, h, target = null) {
+  const every = Math.max(1, GFX.live.mirrorEvery | 0);
+  if (target) {
+    renderer.setRenderTarget(target);
+    renderer.render(scene, cam);
+    return;
+  }
   if (every <= 1) {
     renderer.render(scene, cam);
     return;
