@@ -4,43 +4,12 @@ import { buildVehicleMesh, vehicleType, VEHICLE_TYPES } from './models.js';
 import { playerCarModel, animateWheels } from './carModels.js';
 import { CarLights } from './carLights.js';
 import { WORLD } from '../world/worldLight.js';
+import { physicsFor, longStep, yawFor, STEER_RESPONSE } from './carPhysics.js';
 
 const CAR_RADIUS = 2.1;
 
-// Per-vehicle driving physics derived from the catalogue spec.
-// a0: launch acceleration (m/s²), vk: speed where engine power starts to limit
-// thrust, vmax: top speed (m/s), brake: full-pedal deceleration (~0.9 g).
-// Tuned 17 Nov 2026 (Bheko: too slow). 0-100 / top: Gusheshe ~6.7 s / 226 km/h,
-// Polo ~8.5 s / 187, Hilux ~9.3 s / 180, SAPS ~7.4 s / 201, Quantum ~12 s / 151.
-const PHYS = {
-  gusheshe: { a0: 7.2, vk: 30, vmax: 72, mass: 1200 },
-  quantum: { a0: 5.2, vk: 22, vmax: 50, mass: 2300 },
-  polo: { a0: 6.2, vk: 26, vmax: 62, mass: 1100 },
-  hilux: { a0: 5.8, vk: 24, vmax: 58, mass: 1900 },
-  saps: { a0: 6.6, vk: 28, vmax: 66, mass: 2100 }
-};
-
-function physicsFor(spec) {
-  const p = PHYS[spec.id] || { a0: 3.8, vk: 16, vmax: spec.max, mass: 1500 };
-  const vk = p.vk;
-  const vmax = p.vmax;
-  const roll = 0.13;
-  // drag coefficient so full power balances resistance at vmax
-  const drag = Math.max(0.00005, (p.a0 * (vk / vmax) - roll) / (vmax * vmax));
-  return {
-    a0: p.a0,
-    vk,
-    vmax,
-    vmaxBoost: vmax * 1.25,
-    vmaxR: 9,
-    roll,
-    drag,
-    brake: p.mass > 2000 ? 9.0 : 10.0,
-    mass: p.mass,
-    wheelbase: p.mass > 2000 ? 3.0 : 2.55,
-    grip: 8.6 * (spec.handling / 1.5)
-  };
-}
+// Driving maths (brakes, engine, steering, grip) lives in carPhysics.js so
+// scripts/check-physics.mjs can test it in node.
 
 export class Vehicle {
   constructor(hf, roads, city, input, typeId = 'gusheshe') {
@@ -217,58 +186,21 @@ export class Vehicle {
     const gear = input.gear || 'D';
     const ph = this.phys;
 
-    // ---- longitudinal dynamics (m/s, m/s²) ---------------------------------
-    const v = this.speed;
-    const dir = gear === 'D' ? 1 : gear === 'R' ? -1 : 0;
-    const vmax = dir < 0 ? ph.vmaxR : boost ? ph.vmaxBoost : ph.vmax;
-    const a0 = (dir < 0 ? ph.a0 * 0.7 : ph.a0) * (boost && dir > 0 ? 1.3 : 1);
-    let accel = 0;
-    if (dir !== 0) {
-      const vAlong = v * dir; // speed in the selected direction
-      // engine: constant force at low speed, power-limited above ~vk
-      const powerLimit = Math.min(1, ph.vk / Math.max(vAlong, 0.1));
-      // above top speed (e.g. after boost ends) the engine stops pulling
-      const headroom = vAlong > vmax ? 0 : 1;
-      let aEng = throttle * a0 * powerLimit * headroom;
-      // automatic gearbox idle creep (walking pace) when off both pedals
-      if (throttle < 0.05 && brakeIn < 0.05 && !handbrake && vAlong < 1.4) aEng += 0.7 * (1 - Math.max(vAlong, 0) / 1.4);
-      // engine braking when lifting off
-      if (throttle < 0.05 && vAlong > 2) aEng -= 0.32 + 0.011 * vAlong;
-      accel += aEng * dir;
-    }
-    // rolling resistance + aerodynamic drag (balances full power at vmax)
-    const res = ph.roll + ph.drag * v * v;
-    if (Math.abs(v) > 0.01) accel -= Math.sign(v) * res;
-    // slope: gravity along the road
-    // slope > 0 = nose down (rotation.x convention), so downhill speeds you up
-    accel += 9.81 * Math.sin(this.slope || 0) * 0.6;
-
-    let vNew = v + accel * dt;
-    // brakes / handbrake oppose motion and never push the car backwards
-    const decel = brakeIn * ph.brake + (handbrake ? 5.5 : 0);
-    if (decel > 0) {
-      const dv = decel * dt;
-      if (Math.abs(vNew) <= dv) vNew = 0;
-      else vNew -= Math.sign(vNew) * dv;
-    }
-    // settle when parked in neutral or on the brake
-    if (Math.abs(vNew) < 0.05 && (dir === 0 || brakeIn > 0.05) && throttle < 0.05) vNew = 0;
-    this.speed = clamp(vNew, -ph.vmaxR * 1.05, (boost ? ph.vmaxBoost : ph.vmax) * 1.02);
-    this.accel = (this.speed - v) / Math.max(dt, 1e-4);
-
     // ---- steering: bicycle model, speed-sensitive lock, grip limited --------
     const steerIn = input.steer ?? ((input.isDown('left') ? 1 : 0) - (input.isDown('right') ? 1 : 0));
-    this.steer += (steerIn - this.steer) * Math.min(1, dt * 22);
+    this.steer += (steerIn - this.steer) * Math.min(1, dt * STEER_RESPONSE);
     const speedAbs = Math.abs(this.speed);
-    const maxAngle = (38 * Math.PI) / 180 / (1 + speedAbs / 20); // 38° parked (tight kerb-to-kerb turn), ~15° at 110 km/h
-    const delta = this.steer * maxAngle;
-    this.delta = delta;
-    let yawRate = (this.speed / ph.wheelbase) * Math.tan(delta);
-    const grip = ph.grip * (handbrake && speedAbs > 5 ? 1.7 : 1); // lateral accel limit
-    const maxYaw = grip / Math.max(speedAbs, 1);
-    if (Math.abs(yawRate) > maxYaw) yawRate = Math.sign(yawRate) * maxYaw;
+    const turn = yawFor(ph, this.speed, this.steer, handbrake);
+    const yawRate = turn.yawRate;
+    this.delta = turn.delta;
     this.yaw += yawRate * dt;
     this.yawRate = yawRate;
+
+    // ---- longitudinal dynamics (m/s, m/s²) ---------------------------------
+    const v = this.speed;
+    this.speed = longStep(ph, v, { throttle, brake: brakeIn, gear, boost, handbrake, slope: this.slope || 0, scrub: turn.scrub }, dt);
+    this.accel = (this.speed - v) / Math.max(dt, 1e-4);
+    if (brakeIn > 0.1) this.throttleNow = 0;
     const steerSpeed = clamp(speedAbs / 7, 0, 1);
 
     const fx = Math.sin(this.yaw);
