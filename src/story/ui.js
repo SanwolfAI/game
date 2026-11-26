@@ -132,6 +132,7 @@ const CSS = `
  .sz-card h2{font-size:19px}
  /* the objective sits under the top HUD row (place pill, nav card, menu), the chat line under it */
  #sz-obj{max-width:min(460px,52vw)}
+ #sz-chat{top:calc(var(--sat,0px) + 124px)}
 }
 `;
 

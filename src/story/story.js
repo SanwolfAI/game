@@ -498,7 +498,14 @@ export class Story {
     const s = MM_SIZE / (mm.viewMeters || 1900);
     const cen = MM_SIZE / 2;
     g.setTransform(k, 0, 0, k, 0, 0);
-    const pin = (x, z, color, text, r = 9) => {
+    // the phone HUD shows the minimap as small as 72 css px: grow the icons so
+    // they stay visible, and drop the tiny mission number when it can't be read
+    const cssW = c.clientWidth || 168;
+    const u = Math.min(2.2, Math.max(1, 168 / cssW));
+    const small = cssW < 110;
+    const pin = (x, z, color, text, r0 = 9) => {
+      const r = r0 * u;
+      if (small) text = text === '★' ? text : '';
       let px = cen + (x - e.x) * s;
       let py = cen + (z - e.z) * s;
       const dx = px - cen;
@@ -513,12 +520,12 @@ export class Story {
       g.arc(px, py, r, 0, Math.PI * 2);
       g.fillStyle = color;
       g.fill();
-      g.lineWidth = 2.5;
+      g.lineWidth = 2.5 * u;
       g.strokeStyle = '#fff';
       g.stroke();
       if (text) {
         g.fillStyle = '#fff';
-        g.font = `900 ${text.length > 2 ? 9 : 11}px system-ui, sans-serif`;
+        g.font = `900 ${Math.round((text.length > 2 ? 9 : 11) * u)}px system-ui, sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText(text, px, py + 0.5);
