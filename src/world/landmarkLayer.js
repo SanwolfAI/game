@@ -31,7 +31,7 @@ const SLOTS = 20; // 4 x 5 boards of 256 x 128 px
 const SIGN_R = 380;
 
 export class LandmarkLayer {
-  constructor(data, { roads, hf }) {
+  constructor(data, { roads, hf, forecourts = true }) {
     this.roads = roads;
     this.hf = hf;
     this.group = new THREE.Group();
@@ -47,7 +47,8 @@ export class LandmarkLayer {
       if (l.n && CATS[l.k]) this.named.push(l);
     }
     this.#fields(fields);
-    this.#forecourts(fuel);
+    this.fuel = fuel; // publicPlaces.js draws the HD forecourts when forecourts === false
+    if (forecourts) this.#forecourts(fuel);
     this.#signs();
     this.ms = performance.now() - t0;
   }
