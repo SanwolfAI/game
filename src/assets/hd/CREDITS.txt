@@ -71,6 +71,12 @@ checked from the recordings' sound; the models are as their uploaders name them)
                                 CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
   Changes: trimmed, pitch-flattened, looped, level-matched and re-encoded to Opus and AAC (this project).
 
+Ride icons (hail a taxi, Hamba Ride app; src/game/rides.js):
+Lucide icons hand, smartphone, car-taxi-front, car, map-pin, map, fast-forward, x, check, wallet
+  https://lucide.dev   ISC licence https://github.com/lucide-icons/lucide/blob/main/LICENSE   inlined as SVG paths
+"Hamba Ride" is a made-up in-game app name; no real e-hailing brand, name or logo is used.
+Minibus taxi and e-hail car reuse the game's own traffic models (no new 3D assets).
+
 Guard rails and bridges (src/world/guardRails.js, src/world/bridges.js, src/world/medians.js)
   guardrail_galv_512.jpg   galvanised steel on W-beam rails   drawn in code by scripts/build-guardrail-texture.py (CC0, this project)
   Rail spots: OpenStreetMap contributors (ODbL), barrier=guard_rail; plus rails seen on Mapillary street photos (CC BY-SA),

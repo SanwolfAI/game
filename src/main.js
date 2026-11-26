@@ -18,6 +18,7 @@ import { loadCarModels, applyVehicleEnvironment } from './game/carModels.js';
 import { Player } from './game/player.js';
 import { Bicycle } from './game/bicycle.js';
 import { TaxiRide } from './game/taxiRide.js';
+import { Rides } from './game/rides.js';
 import { Traffic } from './game/traffic.js';
 import { StreetLife, loadPeople } from './game/streetLife.js';
 import { loadHumans } from './game/humans.js';
@@ -614,6 +615,16 @@ void main(){
       camSnap = true;
       hud.toast(early ? 'You got off early' : `Dropped at ${name.replace(/ Taxi Rank.*$/, '')}`, 2.5);
     };
+  }
+  // hail a taxi from the roadside / Hamba Ride e-hailing (rides.js)
+  let rides = null;
+  if (ride) {
+    try {
+      rides = new Rides({ ride, roads, router: gps.router, hud, fares, shelters, bigmap, player });
+      scene.add(rides.group);
+    } catch (err) {
+      console.warn('[IZK] rides not built', err);
+    }
   }
   if (saved && saved.dest && Number.isFinite(saved.dest.x)) gps.setDestination(saved.dest.x, saved.dest.z, saved.dest.name || 'Map pin');
   document.getElementById('map-box')?.addEventListener('click', () => {
@@ -1518,6 +1529,7 @@ void main(){
     syncFootClass();
     updateFootAction(dt);
     // car/player physics in small steps so a long frame stays stable
+    if (rides) rides.update(dt, !inVehicle && !onBike && !riding() ? player : null);
     if (riding()) ride.update(dt); // moves itself along the route (x1 / x4)
     else {
       const n = Math.ceil(dt / 0.034);
@@ -1639,6 +1651,7 @@ void main(){
   window.__izk.story = story ? story.api : null; // story mode hook for other agents (src/story/story.js)
   window.__izk.bike = bike;
   window.__izk.ride = ride;
+  window.__izk.rides = rides;
   window.__izk.mountBike = mountBike;
   window.__izk.dismountBike = dismountBike;
   window.__izk.state = () => ({ inVehicle, onBike, riding: riding(), act: actLabel });
