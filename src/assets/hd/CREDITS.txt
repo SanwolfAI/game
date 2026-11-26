@@ -70,3 +70,14 @@ checked from the recordings' sound; the models are as their uploaders name them)
                                 https://freesound.org/people/ikbenraar/sounds/415276/
                                 CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
   Changes: trimmed, pitch-flattened, looped, level-matched and re-encoded to Opus and AAC (this project).
+
+Guard rails and bridges (src/world/guardRails.js, src/world/bridges.js, src/world/medians.js)
+  guardrail_galv_512.jpg   galvanised steel on W-beam rails   drawn in code by scripts/build-guardrail-texture.py (CC0, this project)
+  Rail spots: OpenStreetMap contributors (ODbL), barrier=guard_rail; plus rails seen on Mapillary street photos (CC BY-SA),
+  photo ids kept in scripts/build-guardrails.py. No photos are stored. Bridge parapets, girders, piers and abutments: built in code (CC0).
+
+HD cars, sky and light (src/game/hdCars.js, src/game/hdTraffic.js, src/world/skyHD.js)
+  VW Polo-style hatch, E30 sedan (traffic), Hilux-style bakkie and SAPS bakkie: body, wheels, lamps and paint
+  all built in code for this game (CC0, this project). No brand logos or badges.
+  Number plates: KZN "ND 123-456" style with made-up numbers, drawn on a canvas in code (CC0, this project).
+  Sky gradient, cloud noise, sun disc, humid haze, street-light halos and light cones: made in code (CC0, this project).
