@@ -251,7 +251,7 @@ export class Rides {
     const path = this.#approachPath(nr, f.x, f.z, 170);
     if (!path) return;
     this.kind = 'taxi';
-    this.#start('quantum', path, this.#kerbLane(nr));
+    this.#start('quantum', path, this.#kerbLane(nr, f.x, f.z));
     this.#setCard('taxi', 'Taxi coming', 'Wave… a Quantum is pulling over');
     this.hud.toast('Hand up: a taxi is coming', 2);
   }
@@ -309,9 +309,18 @@ export class Rides {
   }
 
   // how far left of the centre line the car pulls over: at the kerb, not mid-road
-  #kerbLane(nr) {
+  // On a wide road the car comes right up to the player: its centre stops
+  // about 2.4 m from them, so the door is 1-2 m away (never past the kerb).
+  #kerbLane(nr, px, pz) {
     const w = nr && nr.road && nr.road.width ? nr.road.width : 7;
-    return Math.max(1.8, Math.min(w / 2 - 1.15, 5));
+    const edge = Math.max(1.8, w / 2 - 1.0);
+    let want = Math.min(w / 2 - 1.15, 5);
+    if (nr && px != null) {
+      const l = Math.hypot(nr.dirX, nr.dirZ) || 1;
+      const off = Math.abs(((px - nr.x) * nr.dirZ - (pz - nr.z) * nr.dirX) / l);
+      want = off - 2.4;
+    }
+    return Math.max(1.8, Math.min(edge, want));
   }
 
   #start(type, path, endLane = null) {
@@ -324,6 +333,8 @@ export class Rides {
     this.mesh = this.meshes[type];
     this.type = type;
     this.mover.set(path, undefined, endLane);
+    const f = this.foot;
+    this.pickAt = f ? { x: f.x, z: f.z } : null;
     this.state = 'coming';
     this.stuckT = this.ghostT = 0;
     this.ff = 1;
@@ -556,7 +567,7 @@ export class Rides {
     this.kind = 'ehail';
     this.ehFare = q.fare;
     const kerb = this.roads.nearestRoad(f.x, f.z, 40, (r) => r.rank >= 2 && !r.bridge);
-    this.#start('polo', path, kerb ? this.#kerbLane(kerb) : null);
+    this.#start('polo', path, kerb ? this.#kerbLane(kerb, f.x, f.z) : null);
     this.#setCard('car', `${this.driver} is on the way`, '');
     this.hud.toast(`Hamba Ride: ${this.carName} is coming`, 2.4);
   }
@@ -616,7 +627,9 @@ export class Rides {
     }
     if (this.state === 'idle') return;
     // walked off / got in a car: the ride goes away
-    if (!foot || Math.hypot(foot.x - this.mover.x, foot.z - this.mover.z) > 120) {
+    // (measured from where you asked for it: an e-hail driver can start far away)
+    const pk = this.pickAt || this.mover;
+    if (!foot || Math.hypot(foot.x - pk.x, foot.z - pk.z) > (this.pickAt ? 60 : 120)) {
       this.cancel(true);
       return;
     }
