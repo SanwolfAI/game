@@ -620,7 +620,8 @@ export class Grounds {
         // right-hand direction for a viewer facing the board from the street
         const rx = oz, rz = -ox;
         quad(bx + ox * 0.06, y + 1.9, bz + oz * 0.06, -rx, -rz, 4, 1, ox, 0, oz, slotUV(st.slot));
-        quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, rx, rz, 4, 1, -ox, 0, -oz, grey);
+        // back shows the name too, as its own front face (reads left to right)
+        quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, rx, rz, 4, 1, -ox, 0, -oz, slotUV(st.slot));
         box(bx + rx * 1.7, y, bz + rz * 1.7, rx, rz, 0.12, 0.1, 2.4, grey);
         box(bx - rx * 1.7, y, bz - rz * 1.7, rx, rz, 0.12, 0.1, 2.4, grey);
       }
@@ -790,14 +791,15 @@ export class Grounds {
       const y = this.hf.heightAt(bx, bz);
       const rx = oz, rz = -ox;
       const at = quad(bx + ox * 0.06, y + 1.9, bz + oz * 0.06, 3.6, 0.9, ox, oz, gen);
-      quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, 3.6, 0.9, -ox, -oz, grey);
+      // back shows the name too, as its own front face (reads left to right)
+      const back = quad(bx - ox * 0.06, y + 1.9, bz - oz * 0.06, 3.6, 0.9, -ox, -oz, gen);
       for (const sd of [-1.55, 1.55]) {
         const px = bx + rx * sd, pz = bz + rz * sd;
         // two faces per post is enough at this size
         quad(px + ox * 0.05, y + 1.2, pz + oz * 0.05, 0.1, 2.4, ox, oz, grey);
         quad(px - ox * 0.05, y + 1.2, pz - oz * 0.05, 0.1, 2.4, -ox, -oz, grey);
       }
-      if (st.name) this.schoolBoards.push({ st, at, x: bx, z: bz, slot: -1 });
+      if (st.name) this.schoolBoards.push({ st, at, back, x: bx, z: bz, slot: -1 });
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
@@ -830,7 +832,10 @@ export class Grounds {
     const setUV = (b, k) => {
       const [u0, v0, u1, v1] = this.schoolUV(k);
       const q = [u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1];
-      for (let i = 0; i < 12; i++) uv.array[b.at + i] = q[i];
+      for (let i = 0; i < 12; i++) {
+        uv.array[b.at + i] = q[i];
+        uv.array[b.back + i] = q[i];
+      }
     };
     let dirty = false;
     // free slots of boards that left the nearest set

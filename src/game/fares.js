@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { readablePlane } from '../world/readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 import { PLACES, toXZ } from '../core/geo.js';
 
@@ -176,8 +177,8 @@ export class Fares {
     const paint = new THREE.MeshBasicMaterial({ color: 0xf2c200, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     const bayGeo = new THREE.PlaneGeometry(4.2, 22);
     bayGeo.rotateX(-Math.PI / 2);
-    const board = new THREE.MeshBasicMaterial({ map: boardTexture(), side: THREE.DoubleSide });
-    const boardGeo = new THREE.PlaneGeometry(2.6, 0.98);
+    const board = new THREE.MeshBasicMaterial({ map: boardTexture() });
+    const boardGeo = readablePlane(2.6, 0.98); // reads left to right from both sides
     const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 3.2, 6);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x8a8f94 });
     const shelterRoof = new THREE.BoxGeometry(2.4, 0.12, 9);

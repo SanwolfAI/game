@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { readableBothSides } from './readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 
 // Real landmarks from OpenStreetMap (src/data/durban-landmarks.json, built by
@@ -237,7 +238,8 @@ export class LandmarkLayer {
     this.slots = new Array(SLOTS).fill(null);
     // board: two faces (front + back) per slot, UVs set per slot
     const boardGeo = new THREE.PlaneGeometry(3.6, 1.8);
-    this.boardMat = new THREE.MeshBasicMaterial({ map: this.tex, side: THREE.DoubleSide, toneMapped: false });
+    // FrontSide + a turned back face: the name reads left to right from both ways
+    this.boardMat = new THREE.MeshBasicMaterial({ map: this.tex, toneMapped: false });
     this.boards = [];
     const poleGeo = new THREE.CylinderGeometry(0.11, 0.13, 4.2, 6);
     poleGeo.translate(0, 2.1, 0);
@@ -251,7 +253,7 @@ export class LandmarkLayer {
       const v0 = 1 - (Math.floor(i / 4) + 1) / 5;
       const uv = g.attributes.uv;
       for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) / 4, v0 + uv.getY(k) / 5);
-      const mesh = new THREE.Mesh(g, this.boardMat);
+      const mesh = new THREE.Mesh(readableBothSides(g), this.boardMat);
       mesh.visible = false;
       mesh.name = 'landmarkBoard';
       this.group.add(mesh);

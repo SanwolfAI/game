@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { readablePlane } from './readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 
 // Bus stations and depots from OSM amenity=bus_station
@@ -188,7 +189,7 @@ export class BusStations {
       : stop
         ? boardTex(['COACH STOP', s.n.replace(/^Coach: /, '').replace(/ Stop$/, '')], { bg: '#14365f' })
         : boardTex([s.n.replace(/ Bus Station$/, '').toUpperCase(), /Depot/.test(s.n) ? 'BUS DEPOT' : 'BUS STATION'], { bg: '#2e6b3a' });
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bw / 4), new THREE.MeshBasicMaterial({ map: nameTex, side: THREE.DoubleSide }));
+    const board = new THREE.Mesh(readablePlane(bw, bw / 4), new THREE.MeshBasicMaterial({ map: nameTex }));
     const bx = stop ? L / 2 + 2 : L / 2 + 3;
     board.position.set(bx, 3.6, D / 2 + 1.5);
     g.add(board);
