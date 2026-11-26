@@ -6,7 +6,8 @@ import { glowTexture } from '../game/carLights.js';
 //    two lookups per sky pixel), sun disc, silver lining, humid horizon haze
 //  - sun colour from the sun's height (deep orange low, warm white high)
 //  - Durban humid haze: thicker, milkier fog in summer and on muggy days
-//  - ACES filmic tone mapping (exposure tuned per time of day)
+//  - tone mapping stays Neutral (ACES checked side by side 2026-11-26: it
+//    washed the colours out); ?tm=aces or ?tm=agx to compare
 //  - night street lights: soft halo around each lamp ("bloom" without a
 //    post pass) and faint light cones in the humid air under nearby lamps
 // No extra render passes, no shadow maps.
@@ -141,7 +142,7 @@ export class SkyHD {
     this.uni = skyUni;
     this.props = props;
     const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
-    const tm = q.get('tm') || 'aces';
+    const tm = q.get('tm') || 'neutral';
     this.aces = tm === 'aces';
     if (tm === 'aces') renderer.toneMapping = THREE.ACESFilmicToneMapping;
     else if (tm === 'agx') renderer.toneMapping = THREE.AgXToneMapping;

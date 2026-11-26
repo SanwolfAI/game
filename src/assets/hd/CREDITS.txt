@@ -70,3 +70,9 @@ checked from the recordings' sound; the models are as their uploaders name them)
                                 https://freesound.org/people/ikbenraar/sounds/415276/
                                 CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
   Changes: trimmed, pitch-flattened, looped, level-matched and re-encoded to Opus and AAC (this project).
+
+HD cars, sky and light (src/game/hdCars.js, src/game/hdTraffic.js, src/world/skyHD.js)
+  VW Polo-style hatch, E30 sedan (traffic), Hilux-style bakkie and SAPS bakkie: body, wheels, lamps and paint
+  all built in code for this game (CC0, this project). No brand logos or badges.
+  Number plates: KZN "ND 123-456" style with made-up numbers, drawn on a canvas in code (CC0, this project).
+  Sky gradient, cloud noise, sun disc, humid haze, street-light halos and light cones: made in code (CC0, this project).

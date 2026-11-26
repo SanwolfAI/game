@@ -360,7 +360,7 @@ void main(){
   scene.add(moonDisc);
 
   scene.environment = applyVehicleEnvironment(renderer, scene);
-  const skyHD = new SkyHD({ renderer, scene, skyDome, skyUni, props }); // HD sky, haze, ACES, night lamp glow
+  const skyHD = new SkyHD({ renderer, scene, skyDome, skyUni, props }); // HD sky, clouds, haze, night lamp glow
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
