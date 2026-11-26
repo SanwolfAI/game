@@ -87,3 +87,13 @@ HD cars, sky and light (src/game/hdCars.js, src/game/hdTraffic.js, src/world/sky
   all built in code for this game (CC0, this project). No brand logos or badges.
   Number plates: KZN "ND 123-456" style with made-up numbers, drawn on a canvas in code (CC0, this project).
   Sky gradient, cloud noise, sun disc, humid haze, street-light halos and light cones: made in code (CC0, this project).
+
+Public places (src/world/publicPlaces.js: fuel stations, mall car parks and fronts, parks, school fields, clinics, sports grounds)
+  src/assets/props/public-props.glb, built by scripts/optimize-public-props.mjs from three CC0 Poly Haven models
+  (https://polyhaven.com/license):
+  painted_wooden_bench   benches              https://polyhaven.com/a/painted_wooden_bench   Kirill Sannikov
+  planter_box_01         mall planters        https://polyhaven.com/a/planter_box_01         James Ray Cock
+  metal_trash_can        bins                 https://polyhaven.com/a/metal_trash_can        GurJas Studios
+  Changes: meshes merged and simplified, textures packed into one 1024 px atlas (this project).
+  Place spots: OpenStreetMap contributors (ODbL), built by scripts/build-public.py. Canopies, pumps, signs, goals,
+  markings and shop fronts: built in code (CC0, this project). No brand logos.
