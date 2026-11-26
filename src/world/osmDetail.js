@@ -74,7 +74,7 @@ function inRing(pts, x, z) {
 }
 
 // minimum-area rectangle (rotating calipers over the convex hull)
-function minRect(pts) {
+export function minRect(pts) {
   const hull = THREE.ShapeUtils.isClockWise(pts) ? pts.slice().reverse() : pts.slice();
   let best = null;
   for (let i = 0; i < hull.length; i++) {
@@ -117,7 +117,7 @@ function minRect(pts) {
 }
 
 // Collects flat triangles (x,z) + a colour + a stripe flag, then drapes them.
-class Flat {
+export class Flat {
   constructor() {
     this.pos = [];
     this.col = [];
@@ -297,7 +297,7 @@ class Solids {
   }
 }
 
-function flatMaterial() {
+export function flatMaterial() {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
@@ -319,6 +319,7 @@ export class OsmDetail {
     this.group.name = 'osmDetail';
     this.cells = new Map();
     this.block = new Map(); // 20 m grid of ground that must stay clear of trees
+    this.pitches = []; // {x, z, r (minRect or null), s} for publicPlaces.js (school fields, floodlights)
     this.stats = {};
     this.flatMat = flatMaterial();
     this.solidMat = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -532,6 +533,8 @@ export class OsmDetail {
     L0.poly(pts, col, stripe);
     this.#markBlock(pts);
     const r = minRect(pts);
+    const [pcx, pcz] = this.#centre(pts);
+    this.pitches.push({ x: pcx, z: pcz, r, s });
     if (!r || r.len < 8 || r.wid < 5) return;
     const W = COL.white;
     const lw = 0.12;

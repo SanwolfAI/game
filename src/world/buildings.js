@@ -387,6 +387,24 @@ export class Buildings {
     }
   }
 
+  // Mall outlines (durban-public.json, publicPlaces.js): buildings inside become
+  // mall blocks (big ones) or shops, so the HD shopfronts sit on a mall wall.
+  addSites(list) {
+    if (!this.sites) this.sites = [];
+    for (const st of list || []) {
+      const ring = st.p;
+      if (!ring || ring.length < 3) continue;
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const [x, z] of ring) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (z < z0) z0 = z;
+        if (z > z1) z1 = z;
+      }
+      this.sites.push({ k: st.k, ring, x0, z0, x1, z1 });
+    }
+  }
+
   // Per-area house looks from Mapillary street photos (durban-house-styles.json).
   setStyles(data) {
     const areas = (data && data.areas) || [];
@@ -566,6 +584,7 @@ export class Buildings {
     if (this.sites && this.sites.length && type !== 'tank' && type !== 'shack' && A > 25) {
       const sk = this.#siteAt(x, z);
       if (sk === 'police') type = 'police';
+      else if (sk === 'mall') type = A > 400 ? 'mall' : type === 'house' || type === 'mansion' ? 'shop' : type;
       else if (sk === 'school' || sk === 'campus') type = sk === 'campus' ? 'campus' : 'school';
       else if (sk) type = sk === 'hospital' && A > 120 ? 'hospital' : 'clinic';
     }
