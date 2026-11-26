@@ -28,7 +28,7 @@ function steps() {
     { id: 'steer', text: steerText, target: steerTarget, done: (g) => Math.abs(g.steer) > 0.3, hold: 0.35 },
     { id: 'gas', text: touch ? 'Press GAS (right side) to drive. Press lower on it for more.' : 'Press W to drive.', target: '#t-gas', done: (g) => g.kmh > 15 },
     { id: 'brake', text: touch ? 'Now press BRAKE to stop.' : 'Press S to brake and stop.', target: '#t-brake', done: (g) => g.kmh < 3 && g.brake > 0.2 },
-    { id: 'gear', text: touch ? 'Gears: tap R to reverse, then D to drive again.' : 'Hold S when stopped to reverse.', target: '#t-gear', done: (g) => g.gear === 'R', next: true },
+    { id: 'gear', text: touch ? 'Gears: tap R to reverse, then D to drive again.' : 'Hold S when stopped to reverse.', target: '#t-gear', done: (g) => g.sawR && g.gear === 'D', next: true },
     { id: 'map', text: 'Tap the little map to pick a place. The GPS arrow shows the way.', target: '#map-box', next: true, done: () => false },
     { id: 'end', text: 'You are ready! Taxi ranks pay fares, the garage changes your look, and a reward waits every day.', end: true }
   ];
@@ -47,6 +47,7 @@ export class Tutorial {
 
   start() {
     this.list = steps();
+    this.getState().sawR = false;
     this.i = -1;
     this.active = true;
     this.card.style.display = '';

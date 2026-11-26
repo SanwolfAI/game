@@ -44,7 +44,7 @@ let farCull = null;
 
 function story0() {
   const s = window.__izk && window.__izk.story;
-  return s && (typeof s.open === 'function' || typeof s.start === 'function' || typeof s.show === 'function') ? s : null;
+  return s && ['journal', 'open', 'show', 'start'].some((k) => typeof s[k] === 'function') ? s : null;
 }
 
 function anyScreenOpen() {
@@ -156,7 +156,7 @@ function makeScreens() {
 }
 
 // ---- per-frame hook (runs inside the game's own frame, never while paused)
-const tut = { inVehicle: true, steer: 0, kmh: 0, brake: 0, gear: 'D', locked: false };
+const tut = { inVehicle: true, steer: 0, kmh: 0, brake: 0, gear: 'D', locked: false, sawR: false };
 function tutState() {
   return tut;
 }
@@ -197,6 +197,7 @@ function perFrame(dt) {
     tut.kmh = Math.abs(speed) * 3.6;
     tut.brake = input.brake;
     tut.gear = input.gear;
+    if (input.gear === 'R') tut.sawR = true;
     tut.locked = input.locked;
     tutorial.update(dt);
   }
@@ -334,7 +335,9 @@ function onStory() {
   if (!s) return;
   startPlay();
   try {
-    (s.open || s.start || s.show).call(s);
+    // story mode's own hook (src/story/story.js): the journal lists the chapters
+    const fn = s.journal || s.open || s.show || s.start;
+    setTimeout(() => fn.call(s), 450);
   } catch (err) {
     console.warn('[IZK] story', err);
   }
