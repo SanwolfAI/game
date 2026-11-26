@@ -54,6 +54,10 @@ const FASCIA = ['#2f7d43', '#1e5aa8', '#c8372d', '#e8a90f', '#13807a', '#5b3a8e'
 
 // ------------------------------------------------------------------ helpers
 const _c = new THREE.Color();
+// Malls you can walk into (src/world/mallInteriors.js): their first entrance
+// gets open sliding doors instead of a closed glass front.
+export const OPEN_MALLS = new Set(['Gateway Theatre of Shopping', 'Galleria Mall']);
+
 // vertex-coloured box, rotated by yaw about its own centre then placed
 function box(list, x, y, z, sx, sy, sz, color, yaw = 0, rx = 0) {
   const g = new THREE.BoxGeometry(sx, sy, sz);
@@ -881,6 +885,7 @@ export class PublicPlaces {
     const [u0, v0, u1, v1] = nameUV(m.slot);
     for (const ch of ents) {
       const { mx, mz, dx, dz, nx, nz } = ch;
+      const open = OPEN_MALLS.has((m.name || '').trim()) && ch === ents[0];
       const y = this.#y(mx + nx * 2, mz + nz * 2);
       const yaw = Math.atan2(nx, nz);
       const at = (u, v) => [mx + dx * u + nx * v, mz + dz * u + nz * v];
@@ -890,18 +895,30 @@ export class PublicPlaces {
         const [qx, qz] = at(s * 5.2, 2.2);
         box(solid, qx, y + 0.2, qz, 1.3, 0.4, 1.3, '#a9a59b', yaw);
       }
-      this.entrances.push({ mall: m.name, x: mx, y, z: mz, nx, nz, dx, dz, len: ch.edge });
+      this.entrances.push({ mall: (m.name || '').trim(), x: mx, y, z: mz, nx, nz, dx, dz, len: ch.edge, open });
       const [hx, hz] = at(0, 1.5);
       box(solid, hx, y + 7.2, hz, 11.6, 1.9, 2.8, '#2c3035', yaw); // header box
       const [rx, rz] = at(0, 1.4);
       box(solid, rx, y + 8.25, rz, 12.2, 0.2, 3.4, '#ecebe6', yaw); // roof lip
       const [sx2, sz2] = at(0, 2.92);
       quad(signs, sx2, y + 7.2, sz2, 10.6, 1.25, yaw, u0, v0, u1, v1);
-      const [gx, gz] = at(0, 0.3);
-      box(glass, gx, y + 3.1, gz, 9.0, 6.0, 0.08, '#ffffff', yaw); // tall glass entrance
-      for (const u of [-2.2, 0, 2.2]) {
-        const [fx, fz] = at(u, 0.36);
-        box(solid, fx, y + 1.6, fz, 0.12, 3.2, 0.12, '#2a2e33', yaw);
+      if (open) {
+        // walk-in mall: the sliding doors stand open (5.2 m gap), glass above and to the sides
+        for (const s of [-1, 1]) {
+          const [gx, gz] = at(s * 3.75, 0.3);
+          box(glass, gx, y + 3.1, gz, 1.5, 6.0, 0.08, '#ffffff', yaw);
+          const [fx, fz] = at(s * 2.9, 0.36);
+          box(solid, fx, y + 1.6, fz, 0.14, 3.2, 0.14, '#2a2e33', yaw);
+        }
+        const [gx, gz] = at(0, 0.3);
+        box(glass, gx, y + 4.7, gz, 5.8, 2.8, 0.08, '#ffffff', yaw);
+      } else {
+        const [gx, gz] = at(0, 0.3);
+        box(glass, gx, y + 3.1, gz, 9.0, 6.0, 0.08, '#ffffff', yaw); // tall glass entrance
+        for (const u of [-2.2, 0, 2.2]) {
+          const [fx, fz] = at(u, 0.36);
+          box(solid, fx, y + 1.6, fz, 0.12, 3.2, 0.12, '#2a2e33', yaw);
+        }
       }
       const [tx, tz] = at(0, 0.38);
       box(solid, tx, y + 3.2, tz, 9.0, 0.16, 0.16, '#2a2e33', yaw);
