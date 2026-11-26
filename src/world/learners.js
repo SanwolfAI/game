@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { readablePlane } from './readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 import { trafficCarModel } from '../game/carModels.js';
 
@@ -67,8 +68,8 @@ export class Learners {
       for (let j = 0; j < PER; j++) kids.push({ a: 0, side: 1, sp: 1.1 + Math.random() * 0.5, lane: Math.random() });
       this.slots.push({ site: null, kids, vans: [] });
     }
-    this.vanBoard = new THREE.MeshBasicMaterial({ map: boardTexture(), side: THREE.DoubleSide });
-    this.vanBoardGeo = new THREE.PlaneGeometry(1.7, 0.32);
+    this.vanBoard = new THREE.MeshBasicMaterial({ map: boardTexture() });
+    this.vanBoardGeo = readablePlane(1.7, 0.32); // reads left to right from both sides
     this.vanPool = [];
     this.acc = 9;
     this.m4 = new THREE.Matrix4();

@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { readablePlane } from '../world/readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 import { toXZ } from '../core/geo.js';
 import { registerDialog, dialogOpen } from '../ui/dialogs.js';
@@ -206,9 +207,11 @@ export class Licence {
       g.fillText(lines[1], 256, 96);
     });
     const y = this.hf.heightAt(p.x, p.z);
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.1), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+    const board = new THREE.Mesh(readablePlane(4.4, 1.1), new THREE.MeshBasicMaterial({ map: tex }));
     board.position.set(p.x, y + 3.2, p.z);
-    if (p.dirX !== undefined) board.rotation.y = Math.atan2(p.dirX, p.dirZ) + Math.PI / 2;
+    // face the road (the board stands beside it); both sides read left to right
+    if (p.rx !== undefined) board.rotation.y = Math.atan2(p.rx - p.x, p.rz - p.z);
+    else if (p.dirX !== undefined) board.rotation.y = Math.atan2(p.dirX, p.dirZ) + Math.PI / 2;
     this.group.add(board);
     const pm = new THREE.MeshStandardMaterial({ color: 0x8c9196, metalness: 0.5, roughness: 0.5 });
     for (const s of [-1.9, 1.9]) {
@@ -353,7 +356,7 @@ export class Licence {
       c.fillText('ETHEKWINI · DRIVER LICENSING', 256, 96);
     });
     boardTex.anisotropy = 8;
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshBasicMaterial({ map: boardTex, side: THREE.DoubleSide }));
+    const board = new THREE.Mesh(readablePlane(6, 1.5), new THREE.MeshBasicMaterial({ map: boardTex }));
     board.position.set(-30, 4.6, -28.4);
     g.add(board);
     this.yardTitle = board;

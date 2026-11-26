@@ -1,5 +1,6 @@
 import { registerDialog } from '../ui/dialogs.js';
 import * as THREE from '../../vendor/three/three.module.js';
+import { readablePlane } from '../world/readableBoard.js';
 import { hdCanvas } from '../core/hdcanvas.js';
 import { toXZ } from '../core/geo.js';
 
@@ -78,7 +79,7 @@ export class Homes {
     x.fillText('HOME', 128, 50);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.6), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }));
+    const sign = new THREE.Mesh(readablePlane(1.6, 0.6), new THREE.MeshBasicMaterial({ map: t }));
     sign.position.set(h.x, y + 2.4, h.z);
     sign.rotation.y = h.yaw;
     g.add(sign);
