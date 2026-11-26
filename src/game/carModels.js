@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { GLTFLoader } from '../../vendor/three/loaders/GLTFLoader.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 import { blobMaterial, blobGeometry } from '../world/blobShadow.js';
+import { hdTrafficModel, hdPlayerModel, addPlayerPlates, smoothPlayerPaint, platePartGeometry, scanPlateOffsets, plateInstanceMaterial } from './hdCars.js';
 
 // Sketchfab cars (CC BY 4.0, credited in #model-credits), pre-optimised by
 // scripts/optimize-vehicles.mjs into src/assets/vehicles/*.glb.
@@ -11,7 +12,6 @@ import { blobMaterial, blobGeometry } from '../world/blobShadow.js';
 
 const SOURCES = [
   { id: 'gusheshe', file: './src/assets/vehicles/gusheshe.glb', length: 4.33, title: '1991 BMW 325i (E30)' },
-  { id: 'bmw-lowpoly', file: './src/assets/vehicles/bmw-lowpoly.glb', length: 4.4, title: 'Low-Poly BMW' },
   { id: 'hiace', file: './src/assets/vehicles/hiace.glb', length: 4.9, title: 'Toyota HiAce 2004', flip: true }
 ];
 
@@ -197,6 +197,9 @@ function prepareTraffic(gltf, src) {
     const m = upgradeMaterial(mat, false);
     parts.push({ geometry, material: m, paint: /material\.001|carpaint|paint|body/i.test(mat.name || '') });
   }
+  // made-up KZN "ND" number plates over the model's own (no brand names)
+  const plateSpots = scanPlateOffsets(parts.map((p) => p.geometry));
+  if (plateSpots) parts.push({ geometry: platePartGeometry(plateSpots), material: plateInstanceMaterial(), paint: false, plate: true });
   const box = new THREE.Box3().setFromObject(inner);
   const size = box.getSize(new THREE.Vector3());
   // soft contact shadow under the car (slightly bigger than the body)
@@ -221,13 +224,23 @@ export async function loadCarModels() {
 }
 
 // Fresh player mesh for a game vehicle id, or null (use procedural fallback).
+const HD_PLAYER_PAINT = { polo: 0x2f6fb5, hilux: 0xe8e6df, saps: 0xffffff };
+const hdPlayers = new Map();
+
 export function playerCarModel(typeId) {
   const id = PLAYER_MODEL[typeId];
   const rec = id && loaded.get(id);
-  if (!rec) return null;
+  if (!rec) {
+    // no glTF for this type: the HD built-in car (not the old boxes)
+    if (!HD_PLAYER_PAINT[typeId]) return null;
+    if (!hdPlayers.has(typeId)) hdPlayers.set(typeId, hdPlayerModel(typeId, HD_PLAYER_PAINT[typeId]));
+    return hdPlayers.get(typeId);
+  }
   if (!rec.player) {
     try {
       rec.player = preparePlayer(rec.gltf, rec.src);
+      addPlayerPlates(rec.player, typeId === 'quantum');
+      smoothPlayerPaint(rec.player);
     } catch (err) {
       console.warn('[IZK] could not prepare', id, err);
       return null;
@@ -236,7 +249,14 @@ export function playerCarModel(typeId) {
   return rec.player;
 }
 
+// HD built-in cars (hdCars.js) for these types, in traffic and parked
+const HD_TRAFFIC = new Set(['polo', 'hilux', 'saps', 'gusheshe']);
+
 export function trafficCarModel(typeId) {
+  if (HD_TRAFFIC.has(typeId)) {
+    const hd = hdTrafficModel(typeId);
+    if (hd) return hd;
+  }
   const id = TRAFFIC_MODEL[typeId];
   const rec = id && loaded.get(id);
   if (!rec) return null;

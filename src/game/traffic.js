@@ -3,6 +3,8 @@ import { clamp } from '../core/utils.js';
 import { VEHICLE_TYPES, buildVehicleMesh, BUILTIN_WHEELS, buildWheelGeometry } from './models.js';
 import { trafficCarModel } from './carModels.js';
 import { glowTexture } from './carLights.js';
+import { hdPaint, updateCarLamps } from './hdCars.js';
+import { hdTrafficType, hdTrafficWheels, hdPlates, pushPlates } from './hdTraffic.js';
 import { WORLD } from '../world/worldLight.js';
 import { honkFar, crashSound } from './audio.js';
 
@@ -174,7 +176,12 @@ export class Traffic {
       total += count;
       const model = trafficCarModel(type.id);
       const parts = [];
-      if (model) {
+      // HD cars (hdCars.js): packed near/far meshes, see hdTraffic.js
+      const hd = model && model.hd ? hdTrafficType(model, count, this.group) : null;
+      (this.hd = this.hd || []).push(hd);
+      if (hd) {
+        // parts stays empty: hd.always / hd.hi / hd.lo are drawn instead
+      } else if (model) {
         for (const part of model.parts) {
           const mesh = new THREE.InstancedMesh(part.geometry, part.material, count);
           if (part.paint) {
@@ -195,7 +202,8 @@ export class Traffic {
       }
       // spinning wheels over the baked ones (traffic bodies are one merged mesh)
       let wl;
-      if (model && model.size) {
+      if (hd) wl = [hd.layout.track, hd.layout.base, hd.layout.r];
+      else if (model && model.size) {
         const sz = model.size;
         const r = Math.min(0.46, Math.max(0.3, sz.y * 0.2));
         wl = [sz.x / 2 - 0.13, sz.z * 0.31, r];
@@ -204,11 +212,11 @@ export class Traffic {
         this.wheelGeo = buildWheelGeometry();
         this.wheelMat = new THREE.MeshLambertMaterial({ vertexColors: true });
       }
-      const wm = new THREE.InstancedMesh(this.wheelGeo, this.wheelMat, count * 4);
+      const wm = hd ? hdTrafficWheels(count) : new THREE.InstancedMesh(this.wheelGeo, this.wheelMat, count * 4);
       wm.frustumCulled = false;
       wm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       wm.count = 0;
-      wm.userData.layout = { track: model ? wl[0] : wl[0] + 0.03, base: wl[1], r: wl[2] * 1.04 };
+      wm.userData.layout = hd ? hd.layout : { track: model ? wl[0] : wl[0] + 0.03, base: wl[1], r: wl[2] * 1.04 };
       this.group.add(wm);
       (this.wheelMeshes = this.wheelMeshes || []).push(wm);
       this.meshes.push(parts);
@@ -219,6 +227,8 @@ export class Traffic {
       }
       this.buckets.push(bucket);
     }
+    this.plates = hdPlates(160);
+    this.group.add(this.plates);
     this.lamps = new THREE.InstancedMesh(
       lampGeometry(),
       new THREE.MeshBasicMaterial({ map: glowTexture(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }),
@@ -358,7 +368,8 @@ export class Traffic {
       pass: 0, // 2 = going round the stopped player
       passT: F0,
       surprise: undefined,
-      brakeCap: 8
+      brakeCap: 8,
+      paint: hdPaint(kind, this.rng)
     };
   }
 
@@ -1173,6 +1184,8 @@ export class Traffic {
 
   update(dt, px, pz) {
     const night = WORLD.night.value > 0.15;
+    updateCarLamps();
+    let pn = 0; // number plates drawn
     this.time = (this.time || 0) + dt;
     const blinkOn = this.time % 0.8 < 0.42;
     if (!this.ids) {
@@ -1195,6 +1208,8 @@ export class Traffic {
     for (let b = 0; b < this.buckets.length; b++) {
       const bucket = this.buckets[b];
       const parts = this.meshes[b];
+      const hd = this.hd[b];
+      if (hd) hd.ni = hd.fi = 0;
       for (let i = 0; i < bucket.length; i++) {
         const car = bucket[i];
         let cx;
@@ -1325,9 +1340,30 @@ export class Traffic {
           for (let q = 0; q < 11; q++) me[q] = 0;
         }
         for (let pi = 0; pi < parts.length; pi++) parts[pi].setMatrixAt(i, this.matrix);
-        this.#wheels(b, i, car, cx, cz);
-        if (hide) continue;
-        if (night) this.lamps.setMatrixAt(li++, this.matrix);
+        if (hd) {
+          for (let pi = 0; pi < hd.always.length; pi++) hd.always[pi].setMatrixAt(i, this.matrix);
+          if (hide) continue;
+          if ((cx - px) * (cx - px) + (cz - pz) * (cz - pz) < hd.near2) {
+            hd.hi.setMatrixAt(hd.ni, this.matrix);
+            hd.hi.setColorAt(hd.ni, car.paint);
+            this.#wheels(b, hd.ni, car, cx, cz);
+            pn = pushPlates(this.plates, pn, this.matrix, hd, car.id);
+            hd.ni++;
+          } else {
+            hd.lo.setMatrixAt(hd.fi, this.matrix);
+            hd.lo.setColorAt(hd.fi, car.paint);
+            hd.fi++;
+            car.wx = NaN;
+          }
+          if (night) {
+            this._lm = this._lm || new THREE.Matrix4();
+            this.lamps.setMatrixAt(li++, this._lm.multiplyMatrices(this.matrix, hd.lampAdj));
+          }
+        } else {
+          this.#wheels(b, i, car, cx, cz);
+          if (hide) continue;
+          if (night) this.lamps.setMatrixAt(li++, this.matrix);
+        }
         // indicators / hazards: amber flashes at the four corners
         if (car.blink && blinkOn && bi < this.blinkMax - 4) {
           const hx = car.hx;
@@ -1361,8 +1397,26 @@ export class Traffic {
         parts[pi].instanceMatrix.needsUpdate = true;
       }
       const wm = this.wheelMeshes[b];
-      wm.count = bucket.length * 4;
+      wm.count = (hd ? hd.ni : bucket.length) * 4;
       wm.instanceMatrix.needsUpdate = true;
+      if (hd) {
+        for (const m of hd.always) {
+          m.count = bucket.length;
+          m.instanceMatrix.needsUpdate = true;
+        }
+        for (const m of [hd.hi, hd.lo]) {
+          m.count = m === hd.hi ? hd.ni : hd.fi;
+          m.visible = m.count > 0;
+          m.instanceMatrix.needsUpdate = true;
+          m.instanceColor.needsUpdate = true;
+        }
+      }
+    }
+    this.plates.count = pn;
+    this.plates.visible = pn > 0;
+    if (pn) {
+      this.plates.instanceMatrix.needsUpdate = true;
+      this.plates.userData.cell.needsUpdate = true;
     }
     this.lamps.count = li;
     this.lamps.visible = li > 0;
@@ -1497,6 +1551,57 @@ export class Traffic {
     car.vb = vb;
   }
 
+  // Screenshot / debug hook: show one car of each type at the given poses
+  // ([{ b, x, y, z, yaw }]); the next update() puts traffic back.
+  poseShowcase(list) {
+    let li = 0;
+    let pn = 0;
+    const q = new THREE.Quaternion();
+    for (const L of list) {
+      const b = L.b;
+      const car = this.buckets[b][0];
+      if (!car) continue;
+      this.matrix.compose(this.pos.set(L.x, L.y, L.z), q.setFromAxisAngle(this.axis, L.yaw), this.scale);
+      const hd = this.hd[b];
+      for (const m of this.meshes[b]) m.count = 0;
+      if (hd) {
+        for (const m of hd.always) {
+          m.setMatrixAt(0, this.matrix);
+          m.count = 1;
+          m.instanceMatrix.needsUpdate = true;
+        }
+        hd.hi.setMatrixAt(0, this.matrix);
+        hd.hi.setColorAt(0, car.paint);
+        hd.hi.count = 1;
+        hd.hi.visible = true;
+        hd.hi.instanceMatrix.needsUpdate = hd.hi.instanceColor.needsUpdate = true;
+        hd.lo.count = 0;
+        pn = pushPlates(this.plates, pn, this.matrix, hd, car.id);
+      } else {
+        for (const m of this.meshes[b]) {
+          m.setMatrixAt(0, this.matrix);
+          m.count = 1;
+          m.instanceMatrix.needsUpdate = true;
+        }
+      }
+      car.wx = NaN;
+      car.steer = 0;
+      this.#wheels(b, 0, car, L.x, L.z);
+      this.wheelMeshes[b].count = 4;
+      this.wheelMeshes[b].instanceMatrix.needsUpdate = true;
+      this._lm = this._lm || new THREE.Matrix4();
+      this.lamps.setMatrixAt(li++, hd ? this._lm.multiplyMatrices(this.matrix, hd.lampAdj) : this.matrix);
+    }
+    this.lamps.count = li;
+    this.lamps.visible = WORLD.night.value > 0.15;
+    this.lamps.instanceMatrix.needsUpdate = true;
+    this.plates.count = pn;
+    this.plates.visible = pn > 0;
+    this.plates.instanceMatrix.needsUpdate = true;
+    this.plates.userData.cell.needsUpdate = true;
+    this.blinkers.count = 0;
+  }
+
   // four rolling wheels per car, placed off the car's own matrix (this.matrix)
   #wheels(b, i, car, cx, cz) {
     const wm = this.wheelMeshes[b];
@@ -1531,7 +1636,7 @@ export class Traffic {
         const c2z = ct * ca * r;
         const tx = sx * L.track;
         const ty = r;
-        const tz = sz * L.base;
+        const tz = sz * L.base + (L.mid || 0);
         const o = k * 16;
         // world column = car 3x3 * local column (c0y = 0)
         arr[o] = e[0] * c0x + e[8] * c0z;
