@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { GuardRails } from './guardRails.js';
 
 // Central median barriers, only where we have evidence they exist:
 //  - N2 and N3 freeways: concrete (New Jersey / F-shape) median barrier
@@ -10,8 +11,15 @@ import * as THREE from '../../vendor/three/three.module.js';
 // OSM has no barrier=jersey_barrier ways in Durban, so the barrier is placed
 // midway between the two one-way carriageways of the same route where they
 // run side by side (inner edges less than ~14 m apart). Nothing elsewhere.
+// Checked on Mapillary street photos (2017-2019), see scripts/build-guardrails.py:
+//  - N2 north of the Umgeni (Briardene, Mt Edgecombe, Umhlanga, z < -7040):
+//    steel W-beam median, not concrete (concrete stays south of it).
+//  - M4 Ruth First / Leo Boyd Highway and the M41: steel W-beam median.
 const RULES = [
+  { refs: ['N2'], classes: ['motorway'], kind: 'armco', test: (r) => r.pts[0][1] < -7040 },
   { refs: ['N3', 'N2'], classes: ['motorway'], kind: 'concrete' },
+  { refs: ['M4'], classes: ['motorway', 'trunk'], kind: 'armco', test: (r) => /^(Ruth First|Leo Boyd)/.test(r.name || '') },
+  { refs: ['M41'], classes: ['motorway', 'trunk'], kind: 'armco' },
   { refs: ['M7', 'M13', 'M19'], classes: ['motorway', 'trunk'], kind: 'armco' },
   // Umgeni Road (Bheko 19 Nov): raised kerbed pavement island down the middle
   // with the street lights standing on it. Surface sections only.
@@ -26,7 +34,7 @@ function ruleFor(road) {
   if (!road.ref) return null;
   const refs = road.ref.split(';');
   for (const r of RULES) {
-    if (!r.refs || !r.classes.includes(road.cls)) continue;
+    if (!r.refs || !r.classes.includes(road.cls) || (r.test && !r.test(road))) continue;
     for (const ref of refs) if (r.refs.includes(ref)) return { rule: r, ref };
   }
   return null;
@@ -54,6 +62,17 @@ export class Medians {
       this.#trace(road, m);
     }
     this.#build();
+    // Steel W-beam guard rails along the road edges (real OSM / Mapillary
+    // rails plus bridge approaches, ramps and steep drops). They stream in
+    // per 400 m chunk with the road detail and are solid like the medians.
+    try {
+      this.rails = new GuardRails(roads);
+      this.group.add(this.rails.group);
+      (roads.extras || (roads.extras = [])).push((x, z, budget) => this.rails.update(x, z, budget > 2 ? 99 : 1));
+    } catch (e) {
+      console.warn('guard rails not built', e);
+      this.rails = null;
+    }
     this.ms = performance.now() - t0;
   }
 
@@ -220,8 +239,12 @@ export class Medians {
     this.count = C.length + A.length + I.length;
   }
 
-  // Solid for the player: push a circle (x, z, r) out of any barrier.
+  // Solid for the player: push a circle (x, z, r) out of any barrier or rail.
   collide(x, z, r) {
+    return this.#collideMedian(x, z, r) || (this.rails ? this.rails.collide(x, z, r) : null);
+  }
+
+  #collideMedian(x, z, r) {
     const cx = Math.floor(x / 20);
     const cz = Math.floor(z / 20);
     for (let a = cx - 1; a <= cx + 1; a++) {

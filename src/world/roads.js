@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { upgradeRoadMats } from './hdTextures.js';
 import { clamp } from '../core/utils.js';
 import { toXZ } from '../core/geo.js';
+import { bridgeRun, bridgeSupports } from './bridges.js';
 
 // ---------------------------------------------------------------------------
 // Road classes. Widths come from OSM `lanes` (field `w`) x lane width, plus
@@ -1190,7 +1191,6 @@ export class RoadNetwork {
 
     const asph = new THREE.Color();
     const earth = new THREE.Color(0x6d7550);
-    const fascia = new THREE.Color(0xb7b2a8);
     for (const pc of pieces) {
       const s = pc.s;
       const spec = specFor(pc.road.cls);
@@ -1232,7 +1232,10 @@ export class RoadNetwork {
           pr = r;
         }
         // side skirts / embankments / bridge fascia for elevated pieces
-        if (pc.elevated) {
+        if (pc.bridge) {
+          // deck edges, F-shape parapets, soffit and girders (bridges.js)
+          bridgeRun(cell.struct, pc, i, j);
+        } else if (pc.elevated) {
           const S = cell.struct;
           for (const side of [1, -1]) {
             let pa = -1;
@@ -1242,42 +1245,21 @@ export class RoadNetwork {
               const z = s.zs[k] + s.lz[k] * hw * side;
               const y = s.ys[k];
               const v = (pc.d0 + s.ds[k]) * TEX_SCALE;
-              let a;
-              let b;
-              if (pc.bridge) {
-                a = S.v(x, y, z, 0, v, fascia.r, fascia.g, fascia.b);
-                b = S.v(x, y - 1.3, z, 0.26, v, fascia.r * 0.8, fascia.g * 0.8, fascia.b * 0.8);
-              } else {
-                const off = s.offs[k];
-                // no embankment where the ramp is nearly at grade or near a
-                // junction (it would cover the crossing street's paving)
-                const fromA = s.ds[k];
-                const fromB = s.ds[s.m - 1] - s.ds[k];
-                const nearJ = (pc.nA.junction && fromA < 14) || (pc.nB.junction && fromB < 14);
-                const out = off < 0.6 || nearJ ? 0 : off * 1.7 + 0.4;
-                a = S.v(x, y, z, 0, v, earth.r, earth.g, earth.b);
-                b = S.v(x + s.lx[k] * out * side, out ? y - off - 0.6 : y - 0.05, z + s.lz[k] * out * side, out * TEX_SCALE, v, earth.r * 0.85, earth.g * 0.85, earth.b * 0.85);
-              }
+              const off = s.offs[k];
+              // no embankment where the ramp is nearly at grade or near a
+              // junction (it would cover the crossing street's paving)
+              const fromA = s.ds[k];
+              const fromB = s.ds[s.m - 1] - s.ds[k];
+              const nearJ = (pc.nA.junction && fromA < 14) || (pc.nB.junction && fromB < 14);
+              const out = off < 0.6 || nearJ ? 0 : off * 1.7 + 0.4;
+              const a = S.v(x, y, z, 0, v, earth.r, earth.g, earth.b);
+              const b = S.v(x + s.lx[k] * out * side, out ? y - off - 0.6 : y - 0.05, z + s.lz[k] * out * side, out * TEX_SCALE, v, earth.r * 0.85, earth.g * 0.85, earth.b * 0.85);
               if (pa >= 0) {
                 if (side > 0) S.quad(pa, pb, a, b);
                 else S.quad(pb, pa, b, a);
               }
               pa = a;
               pb = b;
-            }
-            if (pc.bridge) this.#parapet(S, pc, i, j, side);
-          }
-          if (pc.bridge) {
-            // underside
-            let pl2 = -1;
-            let pr2 = -1;
-            for (let k = i; k <= j; k++) {
-              const y = s.ys[k] - 1.3;
-              const l = S.v(s.xs[k] + s.lx[k] * hw, y, s.zs[k] + s.lz[k] * hw, 0, 0, fascia.r * 0.7, fascia.g * 0.7, fascia.b * 0.7);
-              const r = S.v(s.xs[k] - s.lx[k] * hw, y, s.zs[k] - s.lz[k] * hw, 0, 0, fascia.r * 0.7, fascia.g * 0.7, fascia.b * 0.7);
-              if (pl2 >= 0) S.quad(pr2, pl2, r, l);
-              pl2 = l;
-              pr2 = r;
             }
           }
         }
@@ -1358,80 +1340,9 @@ export class RoadNetwork {
       }
     }
 
-    // Bridge piers (instanced boxes), only where there is room on the ground.
-    const piers = [];
-    const caps = [];
-    for (const pc of pieces) {
-      if (!pc.bridge) continue;
-      const s = pc.s;
-      let next = 12;
-      for (let k = 1; k < s.m; k++) {
-        if (s.ds[k] < next) continue;
-        next = s.ds[k] + 22;
-        if (s.offs[k] < 2.2) continue;
-        const x = s.xs[k];
-        const z = s.zs[k];
-        const g = this.hf.heightAt(x, z);
-        const top = s.ys[k] - 1.3;
-        if (top - g < 1.5) continue;
-        const under = this.nearestRoad(x, z, 25, (r) => !r.bridge && r !== pc.road);
-        const offsets = pc.hw > 9 ? [-pc.hw * 0.62, 0, pc.hw * 0.62] : pc.hw > 5 ? [-pc.hw * 0.5, pc.hw * 0.5] : [0];
-        let placed = 0;
-        for (const o of offsets) {
-          const px = x + s.lx[k] * o;
-          const pz = z + s.lz[k] * o;
-          if (under) {
-            const u = this.nearestRoad(px, pz, 25, (r) => !r.bridge && r !== pc.road);
-            if (u && u.dist < u.road.width / 2 + 1) continue;
-          }
-          piers.push(px, g - 0.5, pz, top - g + 0.5, Math.atan2(s.lx[k], s.lz[k]));
-          placed++;
-        }
-        // pier cap (crosshead beam) under the deck, across its full width
-        if (placed) caps.push(x, top - 1.0, z, pc.hw * 1.9, Math.atan2(s.lx[k], s.lz[k]));
-      }
-    }
-    if (caps.length) {
-      const count = caps.length / 5;
-      const geo = new THREE.BoxGeometry(1, 1.05, 1.9);
-      geo.translate(0, 0.5, 0);
-      const mesh = new THREE.InstancedMesh(geo, this.mats.pier, count);
-      const m4 = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      const up = new THREE.Vector3(0, 1, 0);
-      const p = new THREE.Vector3();
-      const sc = new THREE.Vector3();
-      for (let k = 0; k < count; k++) {
-        p.set(caps[k * 5], caps[k * 5 + 1], caps[k * 5 + 2]);
-        // box x axis runs across the deck (lateral direction)
-        q.setFromAxisAngle(up, caps[k * 5 + 4] - Math.PI / 2);
-        sc.set(caps[k * 5 + 3], 1, 1);
-        m4.compose(p, q, sc);
-        mesh.setMatrixAt(k, m4);
-      }
-      mesh.name = 'bridgePierCaps';
-      this.group.add(mesh);
-    }
-    if (piers.length) {
-      const count = piers.length / 5;
-      const geo = new THREE.CylinderGeometry(0.85, 0.95, 1, 10);
-      geo.translate(0, 0.5, 0);
-      const mesh = new THREE.InstancedMesh(geo, this.mats.pier, count);
-      const m4 = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      const up = new THREE.Vector3(0, 1, 0);
-      const p = new THREE.Vector3();
-      const sc = new THREE.Vector3();
-      for (let k = 0; k < count; k++) {
-        p.set(piers[k * 5], piers[k * 5 + 1], piers[k * 5 + 2]);
-        q.setFromAxisAngle(up, piers[k * 5 + 4]);
-        sc.set(1, piers[k * 5 + 3], 1);
-        m4.compose(p, q, sc);
-        mesh.setMatrixAt(k, m4);
-      }
-      mesh.name = 'bridgePiers';
-      this.group.add(mesh);
-    }
+    // Bridge piers, crossheads and abutments (bridges.js), into the
+    // structure mesh of each cell.
+    this.bridgeStats = bridgeSupports(this, pieces, (x, z) => cellAt(x, z).struct);
 
     for (const c of this.cells.values()) {
       for (const [key, mat, far] of [['major', this.mats.asphalt, ROAD_FAR], ['minor', this.mats.asphalt, MINOR_FAR], ['struct', this.mats.structure, ROAD_FAR], ['cbd', this.mats.cbdStreet, MINOR_FAR]]) {
@@ -1451,42 +1362,6 @@ export class RoadNetwork {
     this.detailGroup = new THREE.Group();
     this.detailGroup.name = 'roadDetail';
     this.group.add(this.detailGroup);
-  }
-
-  #parapet(S, pc, i, j, side) {
-    const s = pc.s;
-    const hw = pc.hw;
-    const col = 0.82;
-    let p0 = -1;
-    let p1 = -1;
-    let p2 = -1;
-    for (let k = i; k <= j; k++) {
-      const x = s.xs[k];
-      const z = s.zs[k];
-      const y = s.ys[k];
-      const v = (pc.d0 + s.ds[k]) * TEX_SCALE;
-      const inner = hw - 0.05;
-      const outer = hw + 0.35;
-      const ix = x + s.lx[k] * inner * side;
-      const iz = z + s.lz[k] * inner * side;
-      const ox = x + s.lx[k] * outer * side;
-      const oz = z + s.lz[k] * outer * side;
-      const a = S.v(ix, y - 0.02, iz, 0, v, col, col, col);
-      const b = S.v(ix, y + 0.95, iz, 0.2, v, col, col, col);
-      const c = S.v(ox, y + 0.95, oz, 0.27, v, col, col, col);
-      if (p0 >= 0) {
-        if (side > 0) {
-          S.quad(p1, p0, b, a);
-          S.quad(p2, p1, c, b);
-        } else {
-          S.quad(p0, p1, a, b);
-          S.quad(p1, p2, b, c);
-        }
-      }
-      p0 = a;
-      p1 = b;
-      p2 = c;
-    }
   }
 
   #buildRail() {
@@ -1543,6 +1418,8 @@ export class RoadNetwork {
         c.detail = null;
       }
     }
+    // things that stream with the roads (guard rails)
+    if (this.extras) for (const f of this.extras) f(camX, camZ, budget);
     return built;
   }
 
