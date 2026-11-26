@@ -23,7 +23,7 @@ import { StreetLife, loadPeople } from './game/streetLife.js';
 import { loadHumans } from './game/humans.js';
 import { Input } from './game/input.js';
 import { registerDialog, dialogOpen, onDialogChange } from './ui/dialogs.js';
-import { honk, unlockAudio, tick, updateEngine, toggleMute, pauseAudio } from './game/audio.js';
+import { honk, unlockAudio, tick, updateEngine, toggleMute, isMuted, pauseAudio } from './game/audio.js';
 import { HUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { GPS } from './game/gps.js';
@@ -50,6 +50,7 @@ import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
+import { SkyHD } from './world/skyHD.js';
 // Full sharpness: every texture made while loading already gets the GPU's
 // max anisotropic filtering (read from a probe context in gfx.js).
 THREE.Texture.DEFAULT_ANISOTROPY = Math.max(1, GFX.maxAniso || 1);
@@ -360,6 +361,7 @@ void main(){
   scene.add(moonDisc);
 
   scene.environment = applyVehicleEnvironment(renderer, scene);
+  const skyHD = new SkyHD({ renderer, scene, skyDome, skyUni, props }); // HD sky, clouds, haze, night lamp glow
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
@@ -637,6 +639,34 @@ void main(){
   const RIDE_CAM = { name: 'Taxi ride', dist: 8, height: 3.2, ahead: 7, look: 1.6 }; // a passenger: close behind the taxi
   const cockpit = buildCockpit();
   vehicle.group.add(cockpit);
+  // Horn in the 3D steering wheel too: a short tap on the wheel's centre pad
+  // in the driver view sounds it (24 Nov 2026, Bheko).
+  {
+    const hubV = new THREE.Vector3();
+    const edgeV = new THREE.Vector3();
+    let tapStart = null;
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      tapStart = cockpit.visible ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const t0 = tapStart;
+      tapStart = null;
+      if (!t0 || !cockpit.visible || performance.now() - t0.t > 350 || Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 12) return;
+      const hub = cockpit.userData.hub;
+      if (!hub) return;
+      hub.updateWorldMatrix(true, false);
+      hubV.set(0, 0, 0).applyMatrix4(hub.matrixWorld);
+      edgeV.set(0.075, 0, 0).applyMatrix4(hub.matrixWorld);
+      const W = renderer.domElement.clientWidth;
+      const H = renderer.domElement.clientHeight;
+      hubV.project(camera);
+      edgeV.project(camera);
+      const hx = (hubV.x * 0.5 + 0.5) * W;
+      const hy = (0.5 - hubV.y * 0.5) * H;
+      const r = Math.max(22, Math.hypot((edgeV.x - hubV.x) * 0.5 * W, (edgeV.y - hubV.y) * 0.5 * H));
+      if (Math.hypot(e.clientX - hx, e.clientY - hy) <= r) input.queue.push('horn');
+    });
+  }
   const camTmp = new THREE.Vector3();
   const orbit = { yaw: 0.6, pitch: 0.28, dist: 7.5, ptrs: new Map(), pinch: 0 };
   {
@@ -703,6 +733,7 @@ void main(){
     mode: document.getElementById('t-lights-mode')
   };
   let sigKey = '';
+  document.getElementById('t-mute')?.classList.toggle('muted', isMuted());
   function updateSignalButtons() {
     const ind = vehicle.indicator;
     const blink = vehicle.blinkOn;
@@ -714,7 +745,8 @@ void main(){
     sigEls.h.classList.toggle('on', ind === 'hazard' && blink);
     sigEls.lights.classList.toggle('on', vehicle.lightMode === 'on' || vehicle.lightMode === 'high');
     sigEls.lights.classList.toggle('high', vehicle.lightMode === 'high');
-    sigEls.mode.textContent = { auto: 'A', on: '', high: 'H', off: 'off' }[vehicle.lightMode];
+    // icons, no words (index.html shows the low/high beam, auto and off marks)
+    sigEls.lights.dataset.mode = vehicle.lightMode;
   }
 
   const riding = () => !!(ride && ride.active);
@@ -813,7 +845,10 @@ void main(){
     actLabel = ctxLabel;
     if (!actEl) return;
     actEl.classList.toggle('none', !actKind);
-    if (actLabel) actEl.textContent = actLabel;
+    // an icon for each action (index.html: #t-act[data-kind]); the words stay
+    // in the aria-label for screen readers, never on screen
+    actEl.dataset.kind = actKind;
+    if (actLabel) actEl.setAttribute('aria-label', actLabel);
   }
   function footAction() {
     footContext();
@@ -923,6 +958,7 @@ void main(){
     stars.position.copy(camera.position);
     moonDisc.visible = solar.night > 0.05 && weather.cur.cloud < 0.6;
     moonDisc.position.copy(camera.position).addScaledVector(moonDir, 7000);
+    skyHD.update({ solar, weather, season, sunDir, sun, camera });
 
     return { season, solar };
   }
@@ -952,18 +988,33 @@ void main(){
     const inCar = inVehicle && !!mode.local;
     cockpit.visible = inVehicle && !!mode.cockpit;
     if (vehicle.mesh) vehicle.mesh.visible = !cockpit.visible;
-    if (cockpit.visible) updateCockpit(cockpit, vehicle.steer || 0);
+    if (cockpit.visible) updateCockpit(cockpit, vehicle.steer || 0, vehicle);
     setNear(inCar ? mode.near : 1.0);
     if (inCar) {
       // Rigidly mounted in the car (follows pitch and roll). Taller vans
       // (Quantum) lift the eye point and cockpit with the body height.
       const sz = vehicle.mesh && vehicle.mesh.userData.size;
-      const lift = sz ? Math.max(0, sz.y * 0.88 - 1.24) : 0;
+      let lift = sz ? Math.max(0, sz.y * 0.88 - 1.24) : 0;
+      // driver view: a normal seated eye point from the cockpit (24 Nov 2026,
+      // Bheko: "it's like the car seat is pushed to the front"): about 0.55 m
+      // behind the wheel hub, eyes level with the top of the windscreen third,
+      // looking a little down the road so the dash and gauges show
+      const eye = mode.cockpit && cockpit.userData.eye;
+      if (eye && cockpit.userData.fixedLift !== undefined) lift = cockpit.userData.fixedLift;
       cockpit.position.y = lift;
       ent.group.updateMatrixWorld(true);
-      camPos.set(mode.local[0], mode.local[1] + lift, mode.local[2]);
+      const ex = eye ? eye[0] : mode.local[0];
+      const ey = eye ? eye[1] : mode.local[1];
+      const ez = eye ? eye[2] : mode.local[2];
+      camPos.set(ex, ey + lift, ez);
       ent.group.localToWorld(camPos);
-      camLook.set(mode.local[0], mode.local[1] + lift - 0.25, mode.local[2] + 12);
+      // with the seat 0.1 m further forward the passenger wing mirror sat
+      // past the left screen edge, so the driver view turns ~4 deg in toward
+      // the car's centre (as a driver does): both wing mirrors stay framed;
+      // and looks ~1.7 deg further down so the closer wheel, the gauges and
+      // the right wing mirror sit clear of the R/N/D stack
+      const turnIn = mode.cockpit ? -Math.sign(ex || -1) * 0.85 : 0;
+      camLook.set(ex + turnIn, ey + lift - (mode.cockpit ? 1.2 : 0.25), ez + 12);
       ent.group.localToWorld(camLook);
       camera.position.copy(camPos);
       camera.lookAt(camLook);
@@ -1073,7 +1124,37 @@ void main(){
   // Menu: Resume / New game (back to the CBD start, clears the save).
   {
     const menu = document.getElementById('menu');
-    document.getElementById('t-menu')?.addEventListener('pointerup', () => {
+    // ☰ opens the settings drawer (24 Nov 2026: tidy screen); the gear icon
+    // inside it opens this pause menu. On phones the clock and wallet panels
+    // live in the drawer too; the place (road + area) stays on screen as a
+    // small pill beside the minimap (24 Nov 2026, Bheko: "where the location
+    // gone that was beside the map?").
+    const drawer = document.getElementById('t-drawer');
+    const menuBtn = document.getElementById('t-menu');
+    const info = drawer?.querySelector('.dr-info');
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const fillInfo = () => {
+      if (!coarse || !info) return;
+      for (const id of ['clock-box', 'wallet']) {
+        const el = document.getElementById(id);
+        if (el && el.parentNode !== info) info.appendChild(el);
+      }
+    };
+    fillInfo();
+    const setDrawer = (open) => {
+      if (!drawer) return;
+      if (open) fillInfo();
+      drawer.classList.toggle('open', open);
+      drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      menuBtn?.classList.toggle('open', open);
+      menuBtn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menuBtn?.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      setDrawer(!drawer?.classList.contains('open'));
+    });
+    document.getElementById('t-pause')?.addEventListener('pointerup', () => {
+      setDrawer(false);
       menu?.classList.add('open');
       setPaused(true);
     });
@@ -1451,7 +1532,8 @@ void main(){
     realLandmarks.update(camera.position.x, camera.position.z);
     if (streetLifeOn) streetLife.update(dt, ent.x, ent.z, now.getHours() + now.getMinutes() / 60, inVehicle ? vehicle : null, traffic.onCrash);
 
-    const targetFov = inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
+    // driver view: a real seated field of view (72-78 deg); outside: 62-74
+    const targetFov = inVehicle && cockpit.visible ? 72 + Math.min(6, (vehicle.speedKmh / 180) * 6) : inVehicle ? 62 + Math.min(12, (vehicle.speedKmh / 180) * 12) : 62;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
       camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
       camera.updateProjectionMatrix();
@@ -1463,7 +1545,11 @@ void main(){
     minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
     bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
-    if (input.takePressed('mute')) hud.toast(toggleMute() ? 'Sound off' : 'Sound on', 1.1);
+    if (input.takePressed('mute')) {
+      const off = toggleMute();
+      document.getElementById('t-mute')?.classList.toggle('muted', off);
+      hud.toast(off ? 'Sound off' : 'Sound on', 1.1);
+    }
     updateEngine(dt, inVehicle ? vehicle.speedKmh : 0, inVehicle ? vehicle.throttleNow || 0 : 0, inVehicle, traffic.nearest(ent.x, ent.z, 3), vehicle.typeId);
 
     newRoadTimer += dt;
@@ -1480,9 +1566,10 @@ void main(){
     }
     if (roadToastCooldown > 0) roadToastCooldown -= dt;
 
-    sharp.render(scene, camera);
+    // mirrors first, so their glass shows this frame's picture
     mirrorFrame();
-    if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, vehicle, inVehicle, cockpit.visible);
+    if (fares && fares.licence) fares.licence.renderMirrors(renderer, scene, camera, vehicle, inVehicle, cockpit.visible);
+    sharp.render(scene, camera);
     // mirrors reset the viewport from the canvas' rounded CSS size; put back the
     // exact full-frame viewport so the next frame maps 1:1 (no sub-pixel blur)
     renderer.getSize(fullView);

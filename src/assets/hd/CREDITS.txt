@@ -31,6 +31,25 @@ Street imagery attributes derived from Mapillary (CC BY-SA)   https://www.mapill
   Sampling script: scripts/fetch-house-mapillary.py
 Fence / boundary wall atlas and barred-window house facades: drawn procedurally in src/world/fences.js and src/world/facades.js (CC0, this project)
 
+HUD icons (index.html, the inline SVG sprite at the top of <body>)
+  camera, car, map, navigation, door-open, volume-2, volume-x, menu, x,
+  settings, megaphone, gauge, octagon-minus, arrow-big-left, arrow-big-right,
+  footprints, bike, bus, graduation-cap, log-out, sun-moon:
+  Lucide icons v0.460.0, https://lucide.dev, ISC License.
+  Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as
+  part of Feather (MIT). All other copyright (c) for Lucide are held by
+  Lucide Contributors 2022. Permission to use, copy, modify, and/or distribute
+  this software for any purpose with or without fee is hereby granted,
+  provided that the above copyright notice and this permission notice appear
+  in all copies.
+  hazard, low beam, high beam, slash, handbrake: drawn for this game (CC0).
+
+BMW E30 interior (src/game/cockpit.js)
+  All geometry and textures (instrument cluster, centre stack, sport cloth,
+  headliner, roundel without lettering) are procedural, drawn in code for this
+  game. Layout taken from the E30 owner's manual and parts catalogues; no
+  photos are copied into the game.
+
 Bus / taxi stop shelters (src/world/shelters.js): both shelter models (the eThekwini municipal dark-blue box
   shelter and the People Mover glass shelter) are built in code from boxes, shaped and coloured from Mapillary
   street photos of real Durban stops (CC0, this project). No third-party model is used.
@@ -51,3 +70,9 @@ checked from the recordings' sound; the models are as their uploaders name them)
                                 https://freesound.org/people/ikbenraar/sounds/415276/
                                 CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
   Changes: trimmed, pitch-flattened, looped, level-matched and re-encoded to Opus and AAC (this project).
+
+HD cars, sky and light (src/game/hdCars.js, src/game/hdTraffic.js, src/world/skyHD.js)
+  VW Polo-style hatch, E30 sedan (traffic), Hilux-style bakkie and SAPS bakkie: body, wheels, lamps and paint
+  all built in code for this game (CC0, this project). No brand logos or badges.
+  Number plates: KZN "ND 123-456" style with made-up numbers, drawn on a canvas in code (CC0, this project).
+  Sky gradient, cloud noise, sun disc, humid haze, street-light halos and light cones: made in code (CC0, this project).
