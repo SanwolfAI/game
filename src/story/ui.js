@@ -130,8 +130,8 @@ const CSS = `
  #sz-scene .sz-box{padding:8px 10px}
  .sz-card{padding:12px 14px}
  .sz-card h2{font-size:19px}
- #sz-obj{top:calc(var(--sat,0px) + 6px);max-width:min(460px,46vw)}
- #sz-chat{top:calc(var(--sat,0px) + 52px)}
+ /* the objective sits under the top HUD row (place pill, nav card, menu), the chat line under it */
+ #sz-obj{max-width:min(460px,52vw)}
 }
 `;
 
