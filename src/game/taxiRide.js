@@ -38,8 +38,11 @@ export class PathMover {
     this.done = false;
   }
 
-  set(route, lane = LANE) {
+  // endLane (rides.js): pull over to this offset from the centre line over the
+  // last 25 m (the kerb), instead of easing towards the middle
+  set(route, lane = LANE, endLane = null) {
     const pts = route.pts;
+    this.endLane = endLane;
     this.pts = pts;
     this.cum = route.cum;
     this.len = route.len;
@@ -123,8 +126,13 @@ export class PathMover {
     const k = dt ? Math.min(1, dt * (2.5 + this.v * 0.35)) : 1;
     this.yaw += d * k;
     // lane: off the road ends (first/last 8 m) so the car meets the kerb stop
-    const edge = Math.min(this.s, this.len - this.s);
-    const lane = this.lane * Math.min(1, edge / 8 + 0.35);
+    let lane;
+    if (this.endLane == null) lane = this.lane * Math.min(1, Math.min(this.s, this.len - this.s) / 8 + 0.35);
+    else {
+      const f = Math.min(1, (this.len - this.s) / 25);
+      const e = f * f * (3 - 2 * f);
+      lane = (this.endLane + (this.lane - this.endLane) * e) * Math.min(1, this.s / 8 + 0.35);
+    }
     const wx = Math.cos(hd) * lane;
     const wz = -Math.sin(hd) * lane;
     this.ox += (wx - this.ox) * k;
@@ -134,6 +142,29 @@ export class PathMover {
     const surf = this.roads.surfaceAt(this.x, this.z, this.y, null, Math.sin(this.yaw), Math.cos(this.yaw));
     this.y = this.y === null || !dt ? surf.y : this.y + Math.max(-8 * dt, Math.min(8 * dt, surf.y - this.y));
   }
+}
+
+// Distance to the nearest traffic car in the lane ahead (2-30 m), else 99.
+// Read only; shared with rides.js so hailed cars queue behind traffic too.
+export function laneGap(T, x, z, yaw) {
+  if (!T || !T.buckets) return 99;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  let best = 99;
+  for (const bucket of T.buckets) {
+    for (const car of bucket) {
+      if (car.px === undefined || car.crash) continue;
+      const dx = car.px - x;
+      const dz = car.pz - z;
+      if (dx > 40 || dx < -40 || dz > 40 || dz < -40) continue;
+      const along = dx * fx + dz * fz;
+      if (along < 2 || along > 30) continue;
+      const side = dx * fz - dz * fx;
+      if (side > 2.2 || side < -2.2) continue;
+      if (along < best) best = along;
+    }
+  }
+  return best;
 }
 
 // a fresh copy of a game car (the shared GLB model is the player's own car)
@@ -340,25 +371,8 @@ export class TaxiRide {
 
   // anything in the lane ahead? (traffic cars, read only)
   #trafficAhead() {
-    const T = this.traffic;
-    if (!T || !T.buckets || this.ghostT > 0) return 99;
-    const fx = Math.sin(this.yaw);
-    const fz = Math.cos(this.yaw);
-    let best = 99;
-    for (const bucket of T.buckets) {
-      for (const car of bucket) {
-        if (car.px === undefined || car.crash) continue;
-        const dx = car.px - this.x;
-        const dz = car.pz - this.z;
-        if (dx > 40 || dx < -40 || dz > 40 || dz < -40) continue;
-        const along = dx * fx + dz * fz;
-        if (along < 2 || along > 30) continue;
-        const side = dx * fz - dz * fx;
-        if (side > 2.2 || side < -2.2) continue;
-        if (along < best) best = along;
-      }
-    }
-    return best;
+    if (this.ghostT > 0) return 99;
+    return laneGap(this.traffic, this.x, this.z, this.yaw);
   }
 
   update(dt) {

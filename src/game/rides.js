@@ -1,7 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { registerDialog } from '../ui/dialogs.js';
 import { PLACES, toXZ } from '../core/geo.js';
-import { PathMover, carMeshClone } from './taxiRide.js';
+import { PathMover, carMeshClone, laneGap } from './taxiRide.js';
 import { animateWheels } from './carModels.js';
 
 // Catch a taxi or call a ride (Sandile, 24 Nov 2026: "let the player be able
@@ -70,6 +70,8 @@ export class Rides {
     this.kind = ''; // taxi | ehail
     this.ff = 1;
     this.checkT = 0;
+    this.stuckT = 0;
+    this.ghostT = 0;
     this.canHail = false;
     this.foot = null;
     this.dest = null; // e-hail destination { name, x, z }
@@ -249,7 +251,7 @@ export class Rides {
     const path = this.#approachPath(nr, f.x, f.z, 170);
     if (!path) return;
     this.kind = 'taxi';
-    this.#start('quantum', path);
+    this.#start('quantum', path, this.#kerbLane(nr));
     this.#setCard('taxi', 'Taxi coming', 'Wave… a Quantum is pulling over');
     this.hud.toast('Hand up: a taxi is coming', 2);
   }
@@ -306,7 +308,13 @@ export class Rides {
     return { pts, cum, len: cum[pts.length - 1] };
   }
 
-  #start(type, path) {
+  // how far left of the centre line the car pulls over: at the kerb, not mid-road
+  #kerbLane(nr) {
+    const w = nr && nr.road && nr.road.width ? nr.road.width : 7;
+    return Math.max(1.8, Math.min(w / 2 - 1.15, 5));
+  }
+
+  #start(type, path, endLane = null) {
     if (!this.meshes[type]) {
       const m = carMeshClone(type);
       this.meshes[type] = m;
@@ -315,8 +323,9 @@ export class Rides {
     for (const k in this.meshes) this.meshes[k].visible = k === type;
     this.mesh = this.meshes[type];
     this.type = type;
-    this.mover.set(path);
+    this.mover.set(path, undefined, endLane);
     this.state = 'coming';
+    this.stuckT = this.ghostT = 0;
     this.ff = 1;
     this.cardFF.classList.remove('on');
     this.group.visible = true;
@@ -330,6 +339,7 @@ export class Rides {
     this.group.visible = false;
     this.cardEl.classList.remove('show');
     this.tpEl.style.display = 'none';
+    if (this.kind === 'ehail') this.drvFrom = null;
     if (byUser) this.hud.toast(this.kind === 'ehail' ? 'Ride cancelled' : 'Taxi drove off', 1.6);
     this.kind = '';
   }
@@ -401,6 +411,8 @@ export class Rides {
       return;
     }
     this.appDests = this.#places(this.foot.x, this.foot.z, 6, 700, 20000);
+    // a driver near where you are now (kept while you pick, so the ETA holds)
+    if (this.drvFrom && Math.hypot(this.drvFrom.x - this.foot.x, this.drvFrom.z - this.foot.z) > 900) this.drvFrom = null;
     this.#renderApp();
     this.appEl.style.display = 'block';
   }
@@ -488,23 +500,43 @@ export class Rides {
   #driverPath(px, pz, dry) {
     const kerb = this.roads.nearestRoad(px, pz, 40, (r) => r.rank >= 2 && !r.bridge) || this.roads.nearestRoad(px, pz, 120, (r) => r.rank >= 2);
     if (!kerb) return 0;
-    if (!this.drvFrom || !dry) {
+    if (!this.drvFrom) { // same driver for the quote and the request
       const a = Math.random() * Math.PI * 2;
       const d = 350 + Math.random() * 300;
       const nr = this.roads.nearestRoad(px + Math.sin(a) * d, pz + Math.cos(a) * d, 250, (r) => r.rank >= 3);
       this.drvFrom = nr ? { x: nr.x, z: nr.z, yaw: Math.atan2(nr.dirX, nr.dirZ) } : null;
     }
     const s = this.drvFrom;
-    const route = s ? this.router.route(s.x, s.z, Math.sin(s.yaw), Math.cos(s.yaw), kerb.x, kerb.z) : null;
-    if (dry) return route ? route.len : 300;
-    // the router ends at the nearest node: finish on the kerb beside you
-    let path = null;
-    if (route && route.len > 20 && route.len < 4000) {
-      const line = route.pts.slice();
-      line.push([kerb.x, kerb.z]);
-      path = this.#poly(line);
+    // the last stretch runs along your kerb with you on the car's left (SA
+    // drives on the left), so the driver stops on your side of the road
+    const near = this.#approachPath(kerb, px, pz, 60);
+    if (!near) return dry ? 300 : null;
+    let route = null;
+    if (s) {
+      route = this.router.route(s.x, s.z, Math.sin(s.yaw), Math.cos(s.yaw), near.pts[0][0], near.pts[0][1]);
+      // arriving against the approach (a U-turn at the join): come in from further back
+      if (route && route.pts.length > 1 && this.#against(route.pts, near.pts)) {
+        const far = this.#approachPath(kerb, px, pz, 160);
+        const r2 = far && this.router.route(s.x, s.z, Math.sin(s.yaw), Math.cos(s.yaw), far.pts[0][0], far.pts[0][1]);
+        if (r2 && !this.#against(r2.pts, far.pts)) return dry ? r2.len + far.len : this.#join(r2, far);
+      }
     }
-    return path || this.#approachPath(kerb, px, pz, 300);
+    if (dry) return route ? route.len + near.len : 300;
+    if (route && route.len > 20 && route.len < 4000) return this.#join(route, near);
+    return this.#approachPath(kerb, px, pz, 300);
+  }
+
+  #against(a, b) {
+    const n = a.length;
+    const ax = a[n - 1][0] - a[n - 2][0];
+    const az = a[n - 1][1] - a[n - 2][1];
+    const bx = b[1][0] - b[0][0];
+    const bz = b[1][1] - b[0][1];
+    return (ax * bx + az * bz) / ((Math.hypot(ax, az) * Math.hypot(bx, bz)) || 1) < -0.3;
+  }
+
+  #join(route, near) {
+    return this.#poly(route.pts.concat(near.pts)) || near;
   }
 
   #request() {
@@ -523,7 +555,8 @@ export class Rides {
     this.closeApp();
     this.kind = 'ehail';
     this.ehFare = q.fare;
-    this.#start('polo', path);
+    const kerb = this.roads.nearestRoad(f.x, f.z, 40, (r) => r.rank >= 2 && !r.bridge);
+    this.#start('polo', path, kerb ? this.#kerbLane(kerb) : null);
     this.#setCard('car', `${this.driver} is on the way`, '');
     this.hud.toast(`Hamba Ride: ${this.carName} is coming`, 2.4);
   }
@@ -590,7 +623,18 @@ export class Rides {
     const m = this.mover;
     if (this.state === 'coming') {
       const sdt = dt * this.ff;
-      const tgt = m.target(this.kind === 'taxi' ? 14 : 12);
+      let tgt = m.target(this.kind === 'taxi' ? 14 : 12);
+      // queue behind traffic in the lane (squeeze past a car stuck > 5 s)
+      if (this.ghostT > 0) this.ghostT -= dt;
+      const gap = this.ghostT > 0 ? 99 : laneGap(this.ride.traffic, m.x, m.z, m.yaw);
+      if (gap < 30) tgt = Math.min(tgt, Math.max(0, (gap - 7) * 0.8));
+      if (gap < 30 && m.v < 0.3 && !m.done) {
+        this.stuckT += dt;
+        if (this.stuckT > 5) {
+          this.ghostT = 3;
+          this.stuckT = 0;
+        }
+      } else this.stuckT = 0;
       const n = Math.ceil(sdt / 0.05);
       for (let k = 0; k < n; k++) m.step(sdt / n, tgt);
       this.#sync(sdt);
