@@ -31,6 +31,7 @@ import { Fares } from './game/fares.js';
 import { Learners } from './world/learners.js';
 import { BusStations } from './world/busStations.js';
 import { Shelters } from './world/shelters.js';
+import { PublicPlaces } from './world/publicPlaces.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
@@ -372,7 +373,7 @@ void main(){
   scene.add(medians.group);
   const water = new Water(waterData, hf);
   scene.add(water.group);
-  const realLandmarks = new LandmarkLayer(lmData, { roads, hf });
+  const realLandmarks = new LandmarkLayer(lmData, { roads, hf, forecourts: false }); // HD forecourts: publicPlaces.js
   scene.add(realLandmarks.group);
   scene.add(landmarks);
   // hospital / clinic / police / fire-station grounds (real OSM outlines)
@@ -570,6 +571,23 @@ void main(){
     }
   } catch (err) {
     console.warn('[IZK] shelters not built', err);
+  }
+  // public places: fuel forecourts, mall fronts + car park bays, parks, school fields, clinic signs, floodlights
+  let publicPlaces = null;
+  try {
+    const pdata = await loadJson('./src/data/durban-public.json');
+    const sports = (realLandmarks.list || []).filter((l) => l.k === 'sports' || l.k === 'stadium');
+    publicPlaces = new PublicPlaces(pdata, { hf, roads, buildings, detail: osmDetail, grounds: groundsData, fuel: realLandmarks.fuel || [], sports });
+    await publicPlaces.load();
+    if (buildings && buildings.addSites) buildings.addSites((pdata?.malls || []).map((m) => ({ k: 'mall', p: m.p })));
+    scene.add(publicPlaces.group);
+    if (osmDetail) {
+      const ob = osmDetail.blocks.bind(osmDetail); // trees keep off the new school fields
+      const pp = publicPlaces;
+      osmDetail.blocks = (x, z) => ob(x, z) || pp.blocks(x, z);
+    }
+  } catch (err) {
+    console.warn('[IZK] public places not built', err);
   }
   // taxi rank fares (real OSM ranks) and the rand wallet
   let fares = null;
@@ -1425,6 +1443,7 @@ void main(){
     if (kasi) kasi.update(camera.position.x, camera.position.z);
     if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
     if (grounds) grounds.update(camera.position.x, camera.position.z);
+    if (publicPlaces) publicPlaces.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     tufts.update(camera.position.x, camera.position.z);
     dirSigns.update(camera.position.x, camera.position.z);
@@ -1479,12 +1498,13 @@ void main(){
   if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
   if (kasi) kasi.update(camera.position.x, camera.position.z);
   if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
+  if (publicPlaces) publicPlaces.update(camera.position.x, camera.position.z);
   props.update(camera.position.x, camera.position.z, 0, 12);
   tufts.update(camera.position.x, camera.position.z, true);
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { shelters, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { shelters, publicPlaces, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
   window.__izk.bike = bike;
