@@ -49,6 +49,7 @@ import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
+import { SkyHD } from './world/skyHD.js';
 // Full sharpness: every texture made while loading already gets the GPU's
 // max anisotropic filtering (read from a probe context in gfx.js).
 THREE.Texture.DEFAULT_ANISOTROPY = Math.max(1, GFX.maxAniso || 1);
@@ -359,6 +360,7 @@ void main(){
   scene.add(moonDisc);
 
   scene.environment = applyVehicleEnvironment(renderer, scene);
+  const skyHD = new SkyHD({ renderer, scene, skyDome, skyUni, props }); // HD sky, haze, ACES, night lamp glow
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
@@ -905,6 +907,7 @@ void main(){
     stars.position.copy(camera.position);
     moonDisc.visible = solar.night > 0.05 && weather.cur.cloud < 0.6;
     moonDisc.position.copy(camera.position).addScaledVector(moonDir, 7000);
+    skyHD.update({ solar, weather, season, sunDir, sun, camera });
 
     return { season, solar };
   }
