@@ -31,6 +31,7 @@ import { Fares } from './game/fares.js';
 import { Learners } from './world/learners.js';
 import { BusStations } from './world/busStations.js';
 import { Shelters } from './world/shelters.js';
+import { PublicPlaces } from './world/publicPlaces.js';
 import { Router } from './game/router.js';
 import { BigMap } from './ui/bigmap.js';
 import { buildCockpit, updateCockpit, DRIVER_X } from './game/cockpit.js';
@@ -49,6 +50,8 @@ import { OsmDetail } from './world/osmDetail.js';
 import { Harbour } from './world/harbour.js';
 import { Trains } from './world/trains.js';
 import { VEHICLE_TYPES } from './game/models.js';
+import { Story } from './story/story.js';
+import { SkyHD } from './world/skyHD.js';
 // Full sharpness: every texture made while loading already gets the GPU's
 // max anisotropic filtering (read from a probe context in gfx.js).
 THREE.Texture.DEFAULT_ANISOTROPY = Math.max(1, GFX.maxAniso || 1);
@@ -359,6 +362,7 @@ void main(){
   scene.add(moonDisc);
 
   scene.environment = applyVehicleEnvironment(renderer, scene);
+  const skyHD = new SkyHD({ renderer, scene, skyDome, skyUni, props }); // HD sky, clouds, haze, night lamp glow
   scene.add(terrain.group);
   scene.add(landuse);
   scene.add(roads.group);
@@ -372,7 +376,7 @@ void main(){
   scene.add(medians.group);
   const water = new Water(waterData, hf);
   scene.add(water.group);
-  const realLandmarks = new LandmarkLayer(lmData, { roads, hf });
+  const realLandmarks = new LandmarkLayer(lmData, { roads, hf, forecourts: false }); // HD forecourts: publicPlaces.js
   scene.add(realLandmarks.group);
   scene.add(landmarks);
   // hospital / clinic / police / fire-station grounds (real OSM outlines)
@@ -497,8 +501,10 @@ void main(){
     }
   }
   let crashToastCd = 0;
+  let story = null; // story mode (src/story/story.js)
   traffic.onCrash = (impact) => {
     if (ride && ride.active) return; // a passenger: the driver's problem
+    if (story && !onBike) story.onCrash(impact);
     if (onBike) {
       if (impact > 5) {
         dismountBike();
@@ -570,6 +576,23 @@ void main(){
     }
   } catch (err) {
     console.warn('[IZK] shelters not built', err);
+  }
+  // public places: fuel forecourts, mall fronts + car park bays, parks, school fields, clinic signs, floodlights
+  let publicPlaces = null;
+  try {
+    const pdata = await loadJson('./src/data/durban-public.json');
+    const sports = (realLandmarks.list || []).filter((l) => l.k === 'sports' || l.k === 'stadium');
+    publicPlaces = new PublicPlaces(pdata, { hf, roads, buildings, detail: osmDetail, grounds: groundsData, fuel: realLandmarks.fuel || [], sports });
+    await publicPlaces.load();
+    if (buildings && buildings.addSites) buildings.addSites((pdata?.malls || []).map((m) => ({ k: 'mall', p: m.p })));
+    scene.add(publicPlaces.group);
+    if (osmDetail) {
+      const ob = osmDetail.blocks.bind(osmDetail); // trees keep off the new school fields
+      const pp = publicPlaces;
+      osmDetail.blocks = (x, z) => ob(x, z) || pp.blocks(x, z);
+    }
+  } catch (err) {
+    console.warn('[IZK] public places not built', err);
   }
   // taxi rank fares (real OSM ranks) and the rand wallet
   let fares = null;
@@ -938,6 +961,7 @@ void main(){
     stars.position.copy(camera.position);
     moonDisc.visible = solar.night > 0.05 && weather.cur.cloud < 0.6;
     moonDisc.position.copy(camera.position).addScaledVector(moonDir, 7000);
+    skyHD.update({ solar, weather, season, sunDir, sun, camera });
 
     return { season, solar };
   }
@@ -1217,6 +1241,43 @@ void main(){
   }
   // an owned house without a bike yet (older saves): it waits at the door
   if (!bike.placed && fares && fares.homes.home) bike.parkAtHome(fares.homes.home);
+  // story mode: missions, dialogue, journal (src/story/*.js)
+  try {
+    story = new Story({
+      scene, hf, roads, gps, hud, fares, minimap, bigmap,
+      hooks: {
+        entity,
+        mode: () => (riding() ? 'ride' : inVehicle ? 'car' : onBike ? 'bike' : 'foot'),
+        // the car there, the player in the driver's seat
+        put: (x, z, yaw) => {
+          if (riding()) return;
+          if (onBike) dismountBike();
+          vehicle.restore(x, z, yaw);
+          if (!inVehicle) {
+            inVehicle = true;
+            player.group.visible = false;
+          }
+          camSnap = true;
+        },
+        // the car parked there (only when you are not in it)
+        park: (x, z, yaw) => {
+          if (!inVehicle) vehicle.restore(x, z, yaw);
+        },
+        foot: (x, z, yaw) => {
+          if (onBike) dismountBike();
+          inVehicle = false;
+          player.placeAt(x, z, yaw, null);
+          player.group.visible = true;
+          camSnap = true;
+        },
+        setCar: (type) => {
+          if (type !== vehicle.typeId && VEHICLE_TYPES.some((t) => t.id === type)) vehicle.setType(type);
+        },
+      },
+    });
+  } catch (err) {
+    console.warn('[IZK] story mode not built', err);
+  }
   let helpTimer = 0;
   let clockSaveTimer = 0;
 
@@ -1485,6 +1546,7 @@ void main(){
       if (fares.licence) fares.licence.passenger = riding(); // no school desks from a taxi window
       fares.update(dt, ent, inVehicle, vehicle, now);
     }
+    if (story) story.update(dt);
     if (learners) learners.update(dt, camera.position.x, camera.position.z, now);
     if (busStations) busStations.update(camera.position.x, camera.position.z);
     if (shelters) shelters.update(camera.position.x, camera.position.z);
@@ -1503,6 +1565,7 @@ void main(){
     if (kasi) kasi.update(camera.position.x, camera.position.z);
     if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
     if (grounds) grounds.update(camera.position.x, camera.position.z);
+    if (publicPlaces) publicPlaces.update(camera.position.x, camera.position.z);
     props.update(camera.position.x, camera.position.z, dt, 1);
     tufts.update(camera.position.x, camera.position.z);
     dirSigns.update(camera.position.x, camera.position.z);
@@ -1521,6 +1584,7 @@ void main(){
     hud.update(dt, ent);
     hud.updateDestination(gps);
     minimap.update(ent.x, ent.z, ent.yaw, gps.dest, gps.route);
+    if (story) story.drawMinimap();
     bigmap.update(dt, ent.x, ent.z, ent.yaw);
 
     if (input.takePressed('mute')) {
@@ -1563,14 +1627,16 @@ void main(){
   if (buildings) buildings.update(camera.position.x, camera.position.z, 400);
   if (kasi) kasi.update(camera.position.x, camera.position.z);
   if (osmDetail) osmDetail.update(camera.position.x, camera.position.z);
+  if (publicPlaces) publicPlaces.update(camera.position.x, camera.position.z);
   props.update(camera.position.x, camera.position.z, 0, 12);
   tufts.update(camera.position.x, camera.position.z, true);
   realLandmarks.update(camera.position.x, camera.position.z);
   cameraReady = true;
   // Small debug handle for automated checks / console tinkering.
-  window.__izk = { shelters, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
+  window.__izk = { shelters, publicPlaces, tufts, gfx: { GFX, stats: gfxStats, state: () => ({ setting: GFX.setting, safety: caps.safety, rescued: GFX.rescued, detected: GFX.detected, signals: GFX.signals, px: renderer.getPixelRatio(), native: nativePx(), buffer: [renderer.domElement.width, renderer.domElement.height], css: [renderer.domElement.style.width, renderer.domElement.style.height], range: roads.range, blobs: blobMat.visible, humans: humanCap(), tufts: tuftD(), traffic: trafD(), trees: treeD(), mirrorEvery: mirE(), hd: caps.hd, normals: caps.normals, aniso: caps.aniso, sharp: sharp.enabled, ms: gfxStats.ms, steps: gfxStats.steps }) }, busStations, learners, fares, kasi, osmDetail, trains, harbour, grounds, THREE, scene, camera, renderer, vehicle, roads, hf, gameClock, weather, traffic, streetLife, buildings, city, props, dirSigns, gps, bigmap, medians, water, realLandmarks };
   // test hooks: player on foot, street life now (no slow-frame watchdog)
   window.__izk.player = player;
+  window.__izk.story = story ? story.api : null; // story mode hook for other agents (src/story/story.js)
   window.__izk.bike = bike;
   window.__izk.ride = ride;
   window.__izk.mountBike = mountBike;
