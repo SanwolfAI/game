@@ -4,6 +4,7 @@ import { prefs, setPref, el } from './prefs.js';
 import { haptic, buzz } from './haptics.js';
 import { setControlMode, askTiltPermission, centreTilt, tiltWorking } from './controls.js';
 import { toggleMute } from '../../game/audio.js';
+import { setPerfPref } from './perfPrefs.js';
 
 const SENS_KEY = 'izk-steer-sens'; // same key the pause menu uses
 
@@ -46,6 +47,8 @@ export function settingsScreen({ input, onClose, onTutorial }) {
       <div class="izk-set"><span>Tilt amount</span><div class="izk-step"><button data-d="4">−</button><b>${p.tiltRange <= 20 ? 'Quick' : p.tiltRange >= 36 ? 'Gentle' : 'Normal'}</b><button data-d="-4">+</button></div></div>` : ''}
       <div class="izk-set"><span>Steering sensitivity</span><div class="izk-step izk-sens"><button data-d="-0.1">−</button><b>${sens.toFixed(1)}×</b><button data-d="0.1">+</button></div></div>
       <div class="izk-set"><span>Vibration</span>${seg('haptics', [['on', 'On'], ['off', 'Off']], p.haptics ? 'on' : 'off')}</div>
+      <div class="izk-set"><span>Mirrors</span>${seg('mirrors', [['on', 'On'], ['off', 'Off', 'faster']], p.mirrors === false ? 'off' : 'on')}</div>
+      <div class="izk-set"><span>FPS counter</span>${seg('fps', [['on', 'On'], ['off', 'Off']], p.fps ? 'on' : 'off')}</div>
       <div class="izk-set"><span>Sound</span>${seg('sound', [['on', 'On'], ['off', 'Off']], isMuted() ? 'off' : 'on')}</div>
       <div class="izk-set"><span>Learn to drive</span><button class="izk-btn small ghost izk-tut">Show the tutorial again</button></div>
       <div class="izk-grow"><button class="izk-btn izk-sclose">Done</button></div>
@@ -63,6 +66,8 @@ export function settingsScreen({ input, onClose, onTutorial }) {
           } else if (name === 'haptics') {
             setPref('haptics', v === 'on');
             if (v === 'on') buzz(30, 0);
+          } else if (name === 'mirrors' || name === 'fps') {
+            setPerfPref(name, v === 'on');
           } else if (name === 'sound') {
             if ((v === 'off') !== isMuted()) {
               const m = toggleMute();

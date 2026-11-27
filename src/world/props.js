@@ -4,6 +4,7 @@ import { treeModel } from './trees.js';
 import { CHUNK, KERB_H, WALK_W, specFor } from './roads.js';
 import { mulberry32 } from '../core/utils.js';
 import { WORLD } from './worldLight.js';
+import { GFX } from '../core/gfx.js';
 import { blobMaterial, blobGeometry } from './blobShadow.js';
 import { glowTexture } from '../game/carLights.js';
 
@@ -37,7 +38,7 @@ const TYPES = {
   tall: { tree: 'tall', max: 500, radius: 600 },
   palm: { tree: 'palm', max: 500, radius: 800 },
   palmBend: { tree: 'palmBend', max: 300, radius: 800 },
-  bush: { tree: 'bush', max: 1200, radius: 260 },
+  bush: { tree: 'bush', max: 1200, radius: 260, small: true },
   lamp: { file: ROADKIT + 'light-curved.glb', scale: 12, max: 700, radius: 650, center: false },
   lamp2: { file: ROADKIT + 'light-curved-double.glb', scale: 12, max: 300, radius: 650, center: false },
   robot: { file: ROADKIT + 'traffic-light.glb', scale: 8, max: 500, radius: 500, center: false }
@@ -741,7 +742,8 @@ export class Props {
         if (!mesh) continue;
         const t = TYPES[name];
         const lod = t.tree ? this.treeLod ?? 1 : 1;
-        const rad = t.radius * lod;
+        // budget phones: small props (bushes) only close by
+        const rad = (t.small && GFX.caps.smallProps ? Math.min(t.radius, GFX.caps.smallProps * 1.25) : t.radius) * lod;
         if (cd > rad) continue;
         const r2 = rad * rad;
         const thin2 = lod < 0.999 ? r2 * 0.25 : Infinity; // past half the range: every other tree

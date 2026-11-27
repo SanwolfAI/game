@@ -18,6 +18,7 @@ import { registerDialog } from '../dialogs.js';
 import { toXZ } from '../../core/geo.js';
 import { MABHIDA } from '../../world/landmarks.js';
 import { perfPass } from '../../world/perfPass.js';
+import { applyPerfPrefs } from './perfPrefs.js';
 
 const qs = new URLSearchParams(location.search);
 // automated rigs (other agents' screenshots and physics checks) start straight
@@ -307,6 +308,9 @@ function onBooted() {
     console.warn('[IZK] perf pass', err);
   }
   makeScreens();
+  try {
+    applyPerfPrefs(); // Mirrors on/off, FPS counter
+  } catch {}
   hookGame();
   extendPauseMenu();
   addDrawerButton();

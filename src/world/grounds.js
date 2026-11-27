@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { GFX } from '../core/gfx.js';
 import { trafficCarModel } from '../game/carModels.js';
 
 // Hospital, clinic, police and fire-station grounds (src/data/durban-grounds.json,
@@ -416,20 +417,73 @@ export class Grounds {
     const p = new THREE.Vector3();
     const one = new THREE.Vector3(1, 1, 1);
     const col = new THREE.Color();
+    // Parked cars were ALL drawn at full detail, map-wide (~2M triangles at
+    // the start spot, 28 Nov 2026). Now: full model near, the light LOD
+    // further out, nothing past the far range (repacked in update()).
+    this.parkedSets = [];
     for (const [type, list] of by) {
       const model = trafficCarModel(type);
       if (!model) continue;
-      for (const part of model.parts) {
-        const mesh = new THREE.InstancedMesh(part.geometry, part.material, list.length);
-        list.forEach((c, i) => {
-          q.setFromAxisAngle(Y, c.yaw);
-          p.set(c.x, c.y, c.z);
-          m.compose(p, q, one);
-          mesh.setMatrixAt(i, m);
-          if (part.paint) mesh.setColorAt(i, col.setHex(c.paint == null ? 0xf2f2f2 : c.paint));
-        });
+      const mats = list.map((c) => {
+        q.setFromAxisAngle(Y, c.yaw);
+        p.set(c.x, c.y, c.z);
+        return new THREE.Matrix4().compose(p, q, one);
+      });
+      const mk = (geometry, material, paint) => {
+        const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+        if (paint) list.forEach((c, i) => mesh.setColorAt(i, col.setHex(c.paint == null ? 0xf2f2f2 : c.paint)));
         mesh.name = 'grounds-parked-' + type;
+        mesh.frustumCulled = false;
+        mesh.count = 0;
         this.group.add(mesh);
+        return mesh;
+      };
+      const hi = model.parts.map((part) => mk(part.geometry, part.material, !!part.paint));
+      const lo = model.lod ? [mk(model.lod.geometry, model.lod.material, true)] : null;
+      this.parkedSets.push({ list, mats, hi, lo, paints: list.map((c) => (c.paint == null ? 0xf2f2f2 : c.paint)) });
+    }
+    this.parkedAt = { x: 1e9, z: 1e9 };
+  }
+
+  // repack parked cars around the camera: full detail within NEAR, LOD to FAR
+  #packParked(x, z) {
+    if (!this.parkedSets || !this.parkedSets.length) return;
+    if (Math.abs(x - this.parkedAt.x) + Math.abs(z - this.parkedAt.z) < 20) return;
+    this.parkedAt.x = x;
+    this.parkedAt.z = z;
+    const budget = GFX.caps.budget;
+    const near2 = (budget ? 90 : 160) ** 2;
+    const far2 = (budget ? 450 : 900) ** 2;
+    const col = this._pc || (this._pc = new THREE.Color());
+    for (const S of this.parkedSets) {
+      let nh = 0;
+      let nl = 0;
+      for (let i = 0; i < S.list.length; i++) {
+        const c = S.list[i];
+        const d2 = (c.x - x) * (c.x - x) + (c.z - z) * (c.z - z);
+        if (d2 > far2) continue;
+        if (d2 < near2 || !S.lo) {
+          for (const m of S.hi) {
+            m.setMatrixAt(nh, S.mats[i]);
+            if (m.instanceColor) m.setColorAt(nh, col.setHex(S.paints[i]));
+          }
+          nh++;
+        } else {
+          const m = S.lo[0];
+          m.setMatrixAt(nl, S.mats[i]);
+          m.setColorAt(nl, col.setHex(S.paints[i]));
+          nl++;
+        }
+      }
+      for (const m of S.hi) {
+        m.count = nh;
+        m.instanceMatrix.needsUpdate = true;
+        if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      }
+      if (S.lo) {
+        S.lo[0].count = nl;
+        S.lo[0].instanceMatrix.needsUpdate = true;
+        if (S.lo[0].instanceColor) S.lo[0].instanceColor.needsUpdate = true;
       }
     }
   }
@@ -820,6 +874,7 @@ export class Grounds {
 
   // keep the nearest named schools' boards showing their real names
   update(x, z) {
+    this.#packParked(x, z);
     if (!this.schoolBoards || !this.schoolBoards.length) return;
     const now = performance.now();
     if (now - this.schoolT < 1500) return;

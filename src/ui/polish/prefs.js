@@ -7,6 +7,8 @@ const DEFAULTS = {
   tiltCentre: 0, // tilt that counts as "straight" (set with Centre tilt)
   tiltRange: 28, // degrees of phone tilt for full lock
   haptics: true,
+  mirrors: true, // car mirrors drawn (off = faster on weak phones)
+  fps: false, // small FPS counter in the corner
   tutorialDone: false,
   titleSkip: false // test rigs only: start straight in the game
 };

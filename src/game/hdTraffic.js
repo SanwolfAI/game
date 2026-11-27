@@ -9,6 +9,29 @@ import { plateInstanceGeometry, plateInstanceMaterial, hdWheelGeometry, hdWheelM
 export const HD_NEAR = 75; // m: full detail + wheels + plates inside this
 const NEAR2 = HD_NEAR * HD_NEAR;
 
+// Budget phones: only the nearest `n` cars get the full HD model (the rest
+// draw the light LOD). Returns the squared distance of the n-th nearest car
+// (from last frame's positions), or Infinity when there is no limit.
+const _near = [];
+export function hdNearCut2(buckets, px, pz, n) {
+  if (!n || n <= 0) return Infinity;
+  _near.length = 0;
+  for (const bucket of buckets) {
+    for (const car of bucket) {
+      if (car.px === undefined) continue;
+      const d2 = (car.px - px) * (car.px - px) + (car.pz - pz) * (car.pz - pz);
+      if (_near.length < n) {
+        _near.push(d2);
+        _near.sort((a, b) => a - b);
+      } else if (d2 < _near[n - 1]) {
+        _near[n - 1] = d2;
+        _near.sort((a, b) => a - b);
+      }
+    }
+  }
+  return _near.length < n ? Infinity : _near[n - 1] + 1;
+}
+
 function inst(geo, mat, n, paint) {
   const m = new THREE.InstancedMesh(geo, mat, n);
   if (paint) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);

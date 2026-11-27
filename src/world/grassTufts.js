@@ -11,7 +11,7 @@ import { specFor, WALK_W } from './roads.js';
 // paved CBD stay clear. Tufts shrink to nothing toward the edge of the ring
 // so there is no hard line where they stop.
 
-const R = 30;
+const R = GFX.caps.budget ? 22 : 30; // budget phones: tufts only close by
 const CELL = 1.5;
 const REFILL = 9;
 const MAX = 1400;
