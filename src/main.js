@@ -268,7 +268,7 @@ async function main() {
   const tufts = new GrassTufts({ hf, roads, buildings, detail: osmDetail });
   setLoad(86, 'Polishing the gusheshe…');
   await nextFrame();
-  await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? null : loadHumans().then((lib) => (lib ? lib : loadPeople()))]), new Promise((r) => setTimeout(r, 20000))]);
+  await Promise.race([Promise.all([loadCarModels(), props.load(), SAFE ? loadHumans(undefined, ['male_casual_hoodie']) : loadHumans().then((lib) => (lib ? lib : loadPeople()))]), new Promise((r) => setTimeout(r, 20000))]);
 
   setLoad(90, 'Warming up the engine…');
   await nextFrame();

@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 import { renderMirrorView, mirrorDue } from '../core/mirrorCache.js';
+import { GFX } from '../core/gfx.js';
 
 // Real car mirrors for the inside (driver) view.
 // Bheko, 23-24 Nov 2026: "the mirrors are not attached to the car, they're
@@ -101,7 +102,7 @@ export class CarMirrors {
     this.lowEnd = lowEndGuess();
     const gl = renderer.getContext();
     // half-float targets keep the dark end smooth (no banding in the shade)
-    this.half = renderer.capabilities.isWebGL2 && !!(gl.getExtension('EXT_color_buffer_half_float') || gl.getExtension('EXT_color_buffer_float'));
+    this.half = !GFX.caps.budget && renderer.capabilities.isWebGL2 && !!(gl.getExtension('EXT_color_buffer_half_float') || gl.getExtension('EXT_color_buffer_float'));
     this.frame = 0;
     this.tmpV = new THREE.Vector3();
     this.tmpQ = new THREE.Quaternion();
@@ -248,7 +249,11 @@ export class CarMirrors {
     const W = r.domElement.clientWidth;
     const H = r.domElement.clientHeight;
     // never upscale: at least the device's pixels (capped at 2x for phones)
-    const pr = Math.max(r.getPixelRatio(), Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
+    // budget phones: half-size pictures (GFX.caps.mirrorScale), redrawn every
+    // 3rd frame with centre / left / right taking turns (mirrorCache.js)
+    const pr = GFX.caps.budget
+      ? r.getPixelRatio() * GFX.caps.mirrorScale
+      : Math.max(r.getPixelRatio(), Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
     const g = vehicle.group;
     const size = vehicle.mesh && vehicle.mesh.userData && vehicle.mesh.userData.size;
     // the mesh size includes the factory wing mirrors: the door skin is ~5 cm in
@@ -274,7 +279,7 @@ export class CarMirrors {
       const b = this.#box(o, camera, W, H);
       const pw = b ? b.w : 64;
       const ph = b ? b.h : 24;
-      const tw = Math.min(768, Math.max(64, Math.ceil((pw * pr) / 8) * 8));
+      const tw = Math.min(GFX.caps.budget ? 320 : 768, Math.max(48, Math.ceil((pw * pr) / 8) * 8));
       const th = Math.min(384, Math.max(24, Math.ceil(((tw / o.size.w) * o.size.h) / 4) * 4));
       // only resize on a real change (a drifting fov would realloc every frame)
       if (!o.drawn || Math.abs(tw - o.rt.width) > o.rt.width * 0.15) {

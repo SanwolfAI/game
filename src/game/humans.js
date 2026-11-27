@@ -42,20 +42,46 @@ function parse(loader, buf) {
   return new Promise((res, rej) => loader.parse(buf, '', res, rej));
 }
 
-export async function loadHumans(base = './src/assets/people/') {
+// Each model loads on its own with a retry (weak phones on a slow line
+// dropped one file and the whole set failed, so the player showed as the old
+// block "box" body). A model that still fails borrows a loaded one, so every
+// name always resolves. `only` loads a subset (safe mode: the player only).
+async function fetchGlb(url, tries = 3) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { cache: i ? 'reload' : 'default' });
+      if (!r.ok) throw new Error(url + ' ' + r.status);
+      return await r.arrayBuffer();
+    } catch (err) {
+      last = err;
+      await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
+export async function loadHumans(base = './src/assets/people/', only = null) {
   try {
     const loader = new GLTFLoader();
-    const bufs = await Promise.all(HUMAN_MODELS.map((n) => fetch(base + n + '.glb').then((r) => {
-      if (!r.ok) throw new Error(n + ' ' + r.status);
-      return r.arrayBuffer();
-    })));
-    MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const names = only || HUMAN_MODELS;
+    const bufs = await Promise.all(names.map((n) => fetchGlb(base + n + '.glb').catch((err) => (console.warn('[IZK] person model not loaded', n, err), null))));
+    MAT = MAT || new THREE.MeshLambertMaterial({ vertexColors: true });
     MAT.name = 'human';
     const lib = {};
-    for (let i = 0; i < HUMAN_MODELS.length; i++) {
-      const g = await parse(loader, bufs[i]);
-      lib[HUMAN_MODELS[i]] = buildTemplate(HUMAN_MODELS[i], g);
+    let first = null;
+    for (let i = 0; i < names.length; i++) {
+      if (!bufs[i]) continue;
+      try {
+        const g = await parse(loader, bufs[i]);
+        lib[names[i]] = buildTemplate(names[i], g);
+        first = first || lib[names[i]];
+      } catch (err) {
+        console.warn('[IZK] person model bad', names[i], err);
+      }
     }
+    if (!first) throw new Error('no person models');
+    for (const n of HUMAN_MODELS) if (!lib[n]) lib[n] = first;
     LIB = lib;
   } catch (err) {
     console.warn('[IZK] animated people not loaded', err);

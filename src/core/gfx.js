@@ -1,5 +1,12 @@
 // Graphics: ONE look, "HD", on every phone. There is no graphics menu.
 //
+// BUDGET PHONES (owner-approved change, 28 Nov 2026, replaces the PR #8
+// "never lower pixels" rule for budget phones ONLY): the game was a slideshow
+// on the Hisense E32 Pro / Samsung A04. On a budget phone (safety level >= 2,
+// or ?budget=1 to simulate one) the pixel ratio is capped at 1.5x, with the
+// sharpen/FXAA pass kept on so edges stay clean. Strong and mid phones keep
+// the native ratio (cap 3) exactly as before. ?budget=0 forces it off.
+//
 // FULL SHARPNESS, always (never given up, never lowered automatically):
 //  - the screen's own native pixel ratio (devicePixelRatio, capped at 3),
 //    on phones too: one drawing-buffer pixel per screen pixel
@@ -67,8 +74,10 @@ export function detectSafety(mobile) {
 // Native pixel ratio of this screen (capped at 3). Read live: it changes
 // when a window moves between screens or the page is zoomed.
 export const PX_CAP = 3;
+export const BUDGET_PX_CAP = 1.5;
+let pxCap = PX_CAP; // set to BUDGET_PX_CAP below on budget phones
 export function nativePx() {
-  return Math.max(1, Math.min(PX_CAP, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
+  return Math.max(1, Math.min(pxCap, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
 }
 
 // The HD look plus the safety budget for a level (0..3; 3 = budget phone
@@ -88,11 +97,16 @@ export function hdCaps(level) {
     startPx: px,
     minPx: px, // the resolution floor IS native: never lowered
     humanCap: [30, 22, 12, 6][L],
-    range: [1, 1, 0.8, 0.6][L],
+    range: [1, 1, 0.65, 0.5][L],
     tufts: [1, 1, 0.6, 0.35][L], // grass tuft density
     trees: [1, 1, 0.8, 0.6][L], // tree draw distance / far density
     traffic: [1, 1, 0.75, 0.5][L], // share of far traffic cars drawn
-    mirrorEvery: [1, 1, 2, 3][L], // mirrors redraw every N frames
+    mirrorEvery: [1, 1, 3, 3][L], // mirrors redraw every N frames (budget: every 3rd, staggered)
+    budget: L >= 2, // budget phone: 1.5x pixel cap + the lighter extras below
+    mirrorScale: L >= 2 ? 0.5 : 1, // mirror picture size vs the glass on screen
+    hdCars: L >= 2 ? 4 : 0, // full-detail traffic cars: only the nearest N (0 = no limit)
+    smallProps: L >= 2 ? 120 : 0, // benches / bins / planters / bushes: draw range (m), 0 = default
+    skyLite: L >= 2, // one cloud layer instead of two
     blobs: L < 3, // soft ground shadows
     streetLife: L < 3
   };
@@ -110,7 +124,15 @@ function frozeLastTime() {
 const MOBILE_UA = /Android|Mobi|iPhone|iPad/i.test(navigator.userAgent || '') || ((navigator.maxTouchPoints || 0) > 0 && Math.min(screen.width, screen.height) < 900);
 const det = detectSafety(MOBILE_UA);
 const rescued = frozeLastTime();
-const level = Math.min(3, det.level + (rescued ? 1 : 0));
+let level = Math.min(3, det.level + (rescued ? 1 : 0));
+// ?budget=1 simulates a budget phone on any device (perf tests); ?budget=0 off
+let budgetQ = null;
+try {
+  budgetQ = new URLSearchParams(location.search).get('budget');
+} catch {}
+if (budgetQ === '1') level = Math.max(2, level);
+else if (budgetQ === '0') level = Math.min(1, level);
+if (level >= 2) pxCap = BUDGET_PX_CAP;
 export const GFX = {
   setting: 'hd',
   detected: det.level,
@@ -118,6 +140,7 @@ export const GFX = {
   signals: det.signals,
   maxAniso, // the GPU's max anisotropic filtering (every texture uses it)
   caps: hdCaps(level),
+  budget: level >= 2,
   // live safety values read by other modules each frame (main.js sets them)
   live: { mirrorEvery: 1 }
 };

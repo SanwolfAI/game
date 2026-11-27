@@ -4,7 +4,8 @@ import { VEHICLE_TYPES, buildVehicleMesh, BUILTIN_WHEELS, buildWheelGeometry } f
 import { trafficCarModel } from './carModels.js';
 import { glowTexture } from './carLights.js';
 import { hdPaint, updateCarLamps } from './hdCars.js';
-import { hdTrafficType, hdTrafficWheels, hdPlates, pushPlates } from './hdTraffic.js';
+import { hdTrafficType, hdTrafficWheels, hdPlates, pushPlates, hdNearCut2 } from './hdTraffic.js';
+import { GFX } from '../core/gfx.js';
 import { WORLD } from '../world/worldLight.js';
 import { honkFar, crashSound } from './audio.js';
 
@@ -1205,6 +1206,8 @@ export class Traffic {
 
     let li = 0;
     let bi = 0;
+    // budget phones: full HD model for the nearest few cars only
+    const hdCut2 = hdNearCut2(this.buckets, px, pz, GFX.caps.hdCars);
     for (let b = 0; b < this.buckets.length; b++) {
       const bucket = this.buckets[b];
       const parts = this.meshes[b];
@@ -1343,7 +1346,8 @@ export class Traffic {
         if (hd) {
           for (let pi = 0; pi < hd.always.length; pi++) hd.always[pi].setMatrixAt(i, this.matrix);
           if (hide) continue;
-          if ((cx - px) * (cx - px) + (cz - pz) * (cz - pz) < hd.near2) {
+          const nd2 = (cx - px) * (cx - px) + (cz - pz) * (cz - pz);
+          if (nd2 < hd.near2 && nd2 <= hdCut2) {
             hd.hi.setMatrixAt(hd.ni, this.matrix);
             hd.hi.setColorAt(hd.ni, car.paint);
             this.#wheels(b, hd.ni, car, cx, cz);

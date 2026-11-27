@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { GLTFLoader } from '../../vendor/three/loaders/GLTFLoader.js';
 import { mergeGeometries } from '../../vendor/three/BufferGeometryUtils.js';
 import { Flat, minRect, flatMaterial } from './osmDetail.js';
+import { GFX } from '../core/gfx.js';
 
 // Public places, built from real OpenStreetMap outlines (ODbL):
 //  - fuel stations: a concrete forecourt to the road, a canopy with a coloured
@@ -607,6 +608,8 @@ export class PublicPlaces {
       box(o, 0, 0.45, 0, 0.6, 0.9, 0.6, '#3e5d46');
       P.bin = new Pool('bin', merge(o), S, 350);
     }
+    // budget phones: benches, bins and planters only near the camera
+    if (GFX.caps.smallProps) for (const k of ['bench', 'bin', 'planter']) if (P[k]) P[k].r = Math.min(P[k].r, GFX.caps.smallProps);
   }
 
   // place a shared prop (bench, planter, bin, lamp...) from another module

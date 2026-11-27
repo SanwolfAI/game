@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.js';
+import { GFX } from '../core/gfx.js';
 import { glowTexture } from '../game/carLights.js';
 
 // HD light and sky (cheap enough for Hisense E32 / Samsung A04 class GPUs):
@@ -13,7 +14,7 @@ import { glowTexture } from '../game/carLights.js';
 // No extra render passes, no shadow maps.
 
 // -------------------------------------------------------------- cloud noise
-function cloudTexture(size = 256) {
+function cloudTexture(size = GFX.caps.skyLite ? 128 : 256) {
   // tileable value-noise fBm, 5 octaves
   const data = new Uint8Array(size * size * 4);
   const rnd = (() => {
@@ -95,8 +96,12 @@ void main(){
   if (d.y > 0.0 && uCover > 0.01) {
     vec2 p = d.xz / (d.y + 0.12);
     float n1 = texture2D(uClouds, p * 0.16 + vec2(uTime * 0.0016, uTime * 0.0007)).r;
+#ifdef SKY_LITE
+    float dens = n1;
+#else
     float n2 = texture2D(uClouds, p * 0.52 + vec2(-uTime * 0.0025, uTime * 0.0012)).r;
     float dens = n1 * 0.68 + n2 * 0.32;
+#endif
     float th = 1.0 - uCover;
     float cov = smoothstep(th, th + 0.22, dens) * smoothstep(0.0, 0.2, d.y);
     float shade = smoothstep(th + 0.05, th + 0.45, dens);
@@ -160,6 +165,8 @@ export class SkyHD {
     });
     const mat = skyDome.material;
     mat.fragmentShader = SKY_FRAG;
+    // budget phones: one cloud layer (one texture read per sky pixel)
+    if (GFX.caps.skyLite) mat.defines = Object.assign({}, mat.defines, { SKY_LITE: 1 });
     mat.uniforms = skyUni;
     mat.needsUpdate = true;
     this.sunCol = new THREE.Color();
